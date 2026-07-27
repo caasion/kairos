@@ -1,18 +1,18 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import MyPlugin from './main';
+import Kairos from './main';
 
-export interface MyPluginSettings {
+export interface KairosSettings {
 	mySetting: string;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
+export const DEFAULT_SETTINGS: KairosSettings = {
 	mySetting: 'default',
 };
 
-export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export class KairosSettingTab extends PluginSettingTab {
+	plugin: Kairos;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: Kairos) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
