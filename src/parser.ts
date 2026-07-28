@@ -25,8 +25,6 @@ import type {
   Task,
   TaskStatus,
   TimeRange,
-  TimedBlock,
-  UnscheduledBlock,
 } from "./types";
 
 // ─── configuration ─────────────────────────────────────────────
@@ -120,7 +118,7 @@ function parseBlock(
   // when a time range is present, the block title is the text after it
   const blockTitle = time ? time.title : title;
 
-  const base: Omit<Block, "kind"> = {
+  const base: Omit<Block, "scheduled"> = {
     source,
     title: blockTitle,
     ...(assoc ? { assoc } : {}),
@@ -139,14 +137,14 @@ function parseBlock(
   }
 
   if (time) {
-    const block: TimedBlock = { ...base, kind: "timed", time: time.range };
+    const block: Block = { ...base, scheduled: true, time: time.range };
     return block;
   }
 
   // Non-timed top-level item: the reserved Unscheduled inbox block.
   // Any other untimed item is treated as unscheduled as well.
   if (UNSCHEDULED_TITLE.test(base.title)) base.title = "Unscheduled";
-  const block: UnscheduledBlock = { ...base, kind: "unscheduled" };
+  const block: Block = { ...base, scheduled: false };
   return block;
 }
 

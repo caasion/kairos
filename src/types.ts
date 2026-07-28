@@ -133,8 +133,6 @@ export type {
   TaskStatus,
   Task,
   Block,
-  TimedBlock,
-  UnscheduledBlock,
   CheckableBlock,
   Day,
   LifecycleState,
