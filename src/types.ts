@@ -33,33 +33,34 @@ interface Task {
   tag?: string; // freeform user metadata (priority stand-in)
 }
 
+// ─── resolved (derived) ────────────────────────────────────────
+
+interface ResolvedTask extends Task {
+  date: ISODate;
+  block: Block; // a reference to the parent block
+  owner?: Association; // assoc ?? block.assoc ?? none
+  scheduled: boolean; // true iff inside a block that isn't Unscheduled
+  colocated: boolean; // shares its line with a block
+}
+
 // ─── block ─────────────────────────────────────────────────────
 
-interface BlockBase {
+interface Block {
   source: SourceRef;
   title: string;
   assoc?: Association;
   tasks: Task[];
   task?: Task; // present iff line carries a checkbox; shares block's line
+  scheduled: boolean;
+  time?: TimeRange;
 }
-
-interface TimedBlock extends BlockBase {
-  kind: "timed";
-  time: TimeRange;
-}
-
-interface UnscheduledBlock extends BlockBase {
-  kind: "unscheduled"; // one reserved inbox block per daily note
-}
-
-type Block = TimedBlock | UnscheduledBlock;
 
 type CheckableBlock = Block & { task: Task };
 
 const isCheckable = (b: Block): b is CheckableBlock => b.task !== undefined;
 
 const minutesOf = (b: Block): Minutes =>
-  b.kind === "timed" ? b.time.end - b.time.start : 0;
+  b.time ? b.time.end - b.time.start : -1;
 
 // ─── daily note ────────────────────────────────────────────────
 
@@ -109,16 +110,6 @@ interface BacklogEntry {
   text: string;
   assoc?: Association; // project, domain, or none
   resurface?: ISODate; // snooze / visibility date
-}
-
-// ─── resolved (derived) ────────────────────────────────────────
-
-interface ResolvedTask extends Task {
-  date: ISODate;
-  blockId?: string; // undefined → Unscheduled
-  owner?: Association; // assoc ?? block.assoc ?? none
-  scheduled: boolean; // true iff inside a block that isn't Unscheduled
-  colocated: boolean; // shares its line with a block
 }
 
 // ─── index ─────────────────────────────────────────────────────
