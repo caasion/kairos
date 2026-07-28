@@ -1,11 +1,10 @@
-import type { Block, ResolvedTask } from "./types";
+import type { Block, ISODate, ResolvedTask } from "./types";
 
-export function resolveBlocks(blocks: Block[]): ResolvedTask[] {
+export function resolveBlocks(blocks: Block[], date: ISODate): ResolvedTask[] {
     const tasks: ResolvedTask[] = [];
 
     for (const block of blocks) {
         const scheduled = block.scheduled;
-        const date = "placeholder";
 
         // Handle a checkable block
         if (block.task) {
