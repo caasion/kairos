@@ -1,14 +1,38 @@
-import { MarkdownView, Notice, Plugin } from 'obsidian';
+import { MarkdownView, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
 import { DEFAULT_SETTINGS, KairosSettingTab } from './settings';
 import type { KairosSettings } from './settings';
 import { parseSchedule } from './parser';
 import { resolveBlocks } from './resolver';
+import type { ISODate } from './types';
+import { KAIROS_VIEW_TYPE, KairosView } from './KairosView';
+
+// Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
+// the basename itself when it doesn't look like a date.
+function dateFromBasename(basename: string): ISODate {
+	const m = /(\d{4}-\d{2}-\d{2})/.exec(basename);
+	return m?.[1] ?? basename;
+}
 
 export default class Kairos extends Plugin {
 	settings!: KairosSettings;
 
 	async onload() {
 		await this.loadSettings();
+
+		this.registerView(
+			KAIROS_VIEW_TYPE,
+			(leaf) => new KairosView(leaf, this),
+		);
+
+		this.addRibbonIcon('clock', 'Open Kairos Day view', () => {
+			void this.activateView();
+		});
+
+		this.addCommand({
+			id: 'open-kairos-day-view',
+			name: 'Open Day view',
+			callback: () => void this.activateView(),
+		});
 
 		// Dev command: parse the active note's Schedule section and log the JSON.
 		this.addCommand({
@@ -45,6 +69,22 @@ export default class Kairos extends Plugin {
 
 	onunload() {}
 
+	// Reveal the Kairos view, reusing an existing leaf if one is already open.
+	async activateView() {
+		const { workspace } = this.app;
+
+		const existing = workspace.getLeavesOfType(KAIROS_VIEW_TYPE);
+		let leaf: WorkspaceLeaf | null =
+			existing.length > 0 ? existing[0] ?? null : null;
+
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(false);
+			await leaf?.setViewState({ type: KAIROS_VIEW_TYPE, active: true });
+		}
+
+		if (leaf) void workspace.revealLeaf(leaf);
+	}
+
 	private async testParse() {
 		const file = this.app.workspace.getActiveFile();
 		if (!file) {
@@ -74,7 +114,7 @@ export default class Kairos extends Plugin {
 		console.log(JSON.stringify(blocks, null, 2));
 		new Notice(`Kairos: parsed ${blocks.length} block(s) — see console`);
 
-		const tasks = resolveBlocks(blocks);
+		const tasks = resolveBlocks(blocks, dateFromBasename(file.basename));
 		console.log(`[Kairos] resolve ${blocks.length} blocks(s) from ${file.path}`)
 		console.log(JSON.stringify(tasks, null, 2))
 	}
