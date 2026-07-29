@@ -1,200 +1,333 @@
 <script lang="ts">
-	import type { Association, Block, ResolvedTask } from "../../types";
-	import { isCheckable } from "../../types";
+  import type { Association, Block, ResolvedTask } from "../../types";
+  import { isCheckable } from "../../types";
 
-	interface Props {
-		block: Block;
-		tasks: ResolvedTask[];
-		top: number;
-		height: number;
-		column: number;
-		lanes: number;
-	}
+  interface Props {
+    block: Block;
+    tasks: ResolvedTask[];
+    top: number;
+    height: number;
+    column: number;
+    lanes: number;
+    selected?: boolean;
+    dragging?: boolean;
+    // Emitted when a pointer press starts a gesture on this block. The parent
+    // (DayView) owns the canvas-level pointer tracking and decides what the
+    // gesture becomes; this component only reports where it began.
+    onGestureStart: (
+      mode: "move" | "resize-top" | "resize-bottom",
+      block: Block,
+      event: PointerEvent,
+    ) => void;
+		onDelete: (
+			block: Block,
+			event: PointerEvent,
+	 ) => void;
+  }
 
-	let { block, tasks, top, height, column, lanes }: Props = $props();
+  let {
+    block,
+    tasks,
+    top,
+    height,
+    column,
+    lanes,
+    selected = false,
+    dragging = false,
+    onGestureStart,
+		onDelete,
+  }: Props = $props();
 
-	function fmt(minutes: number): string {
-		const hh = Math.floor(minutes / 60);
-		const mm = minutes % 60;
-		return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-	}
+  function fmt(minutes: number): string {
+    const hh = Math.floor(minutes / 60);
+    const mm = minutes % 60;
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
 
-	const timeLabel = $derived(
-		block.time ? `${fmt(block.time.start)}–${fmt(block.time.end)}` : "",
-	);
+  const timeLabel = $derived(
+    block.time ? `${fmt(block.time.start)}–${fmt(block.time.end)}` : "",
+  );
 
-	function assocLabel(assoc: Association): string {
-		return assoc.id;
-	}
+  function assocLabel(assoc: Association): string {
+    return assoc.id;
+  }
 
-	const checkable = $derived(isCheckable(block));
-	const blockChecked = $derived(block.task?.status === "x");
+  const checkable = $derived(isCheckable(block));
+  const blockChecked = $derived(block.task?.status === "x");
 
-	// The colocated task is represented by the block header itself, so it is not
-	// repeated in the chip list.
-	const chips = $derived(tasks.filter((t) => !t.colocated));
+  // The colocated task is represented by the block header itself, so it is not
+  // repeated in the chip list.
+  const chips = $derived(tasks.filter((t) => !t.colocated));
 
-	// Horizontal lane geometry: equal-width columns within the block's cluster.
-	const widthPct = $derived(100 / lanes);
-	const leftPct = $derived(column * widthPct);
+  // Horizontal lane geometry: equal-width columns within the block's cluster.
+  // Blocks occupy a left band (BAND%) of the row, leaving a gutter on the right
+  // so you can press empty canvas beside a block to create another there
+  // (spec CP2: blocks take ~90–95% of the timeline width).
+  const BAND = 92;
+  const widthPct = $derived(BAND / lanes);
+  const leftPct = $derived(column * widthPct);
 
-	// A short block can't show its task chips; collapse to a compact look.
-	const compact = $derived(height < 44);
+  // A short block can't show its task chips; collapse to a compact look.
+  const compact = $derived(height < 44);
+
+  function start(
+    mode: "move" | "resize-top" | "resize-bottom",
+    event: PointerEvent,
+  ) {
+    // Only the primary button drives gestures; ignore right/middle clicks.
+    if (event.button !== 0) return;
+    onGestureStart?.(mode, block, event);
+  }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="tl-block"
-	class:compact
-	class:checked={blockChecked}
-	style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
+  class="tl-block"
+  class:selected
+  class:dragging
+  style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
+  onpointerdown={(e) => start("move", e)}
 >
-	<div class="tl-block-header">
-		{#if checkable}
-			<span class="tl-check" class:on={blockChecked}>{blockChecked ? "✓" : "○"}</span>
-		{/if}
-		<span class="tl-title">{block.title}</span>
-		{#if block.assoc}
-			<span class="tl-assoc" class:domain={block.assoc.kind === "domain"}>
-				{assocLabel(block.assoc)}
-			</span>
-		{/if}
-	</div>
+  <!-- Resize edges. Placed directly at the outer edge of tl-block -->
+  <div
+    class="tl-resize tl-resize-top"
+    onpointerdown={(e) => {
+      e.stopPropagation();
+      start("resize-top", e);
+    }}
+  ></div>
 
-	{#if !compact}
-		<span class="tl-time">{timeLabel}</span>
-		{#if chips.length > 0}
-			<div class="tl-chips">
-				{#each chips as task (task.source.line)}
-					<span
-						class="tl-chip"
-						class:done={task.status === "x"}
-						class:cancelled={task.status === "-"}
-						title={task.text}
-					>
-						<span class="tl-chip-dot" class:half={task.status === "/"}></span>
-						{task.text}
-					</span>
-				{/each}
-			</div>
-		{/if}
-	{/if}
+  <!-- Inner visual container -->
+  <div
+    class="tl-content"
+    class:compact
+    class:checked={blockChecked}
+  >
+    <div class="tl-block-header">
+      {#if checkable}
+        <span class="tl-check" class:on={blockChecked}>{blockChecked ? "✓" : "○"}</span>
+      {/if}
+      <span class="tl-title">{block.title}</span>
+      {#if block.assoc}
+        <span class="tl-assoc" class:domain={block.assoc.kind === "domain"}>
+          {assocLabel(block.assoc)}
+        </span>
+      {/if}
+    </div>
+
+    {#if !compact}
+      <span class="tl-time">{timeLabel}</span>
+      {#if chips.length > 0}
+        <div class="tl-chips">
+          {#each chips as task (task.source.line)}
+            <span
+              class="tl-chip"
+              class:done={task.status === "x"}
+              class:cancelled={task.status === "-"}
+              title={task.text}
+            >
+              <span class="tl-chip-dot" class:half={task.status === "/"}></span>
+              {task.text}
+            </span>
+          {/each}
+        </div>
+      {/if}
+    {/if}
+  </div>
+
+  <div
+    class="tl-resize tl-resize-bottom"
+    onpointerdown={(e) => {
+      e.stopPropagation();
+      start("resize-bottom", e);
+    }}
+  ></div>
 </div>
 
 <style>
-	.tl-block {
-		position: absolute;
-		box-sizing: border-box;
-		border: 1px solid var(--background-modifier-border);
-		border-left: 3px solid var(--interactive-accent);
-		border-radius: 5px;
-		background: var(--background-secondary);
-		padding: 4px 6px;
-		overflow: hidden;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		transition: filter 0.12s;
-	}
+  .tl-block {
+    position: absolute;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    cursor: grab;
+    user-select: none;
+  }
 
-	.tl-block:hover {
-		filter: brightness(1.08);
-		z-index: 2;
-	}
+  .tl-block.dragging {
+    cursor: grabbing;
+    z-index: 4;
+  }
 
-	.tl-block.checked {
-		opacity: 0.6;
-	}
+  .tl-block.selected {
+    z-index: 3;
+  }
 
-	.tl-block.compact {
-		flex-direction: row;
-		align-items: center;
-		padding: 2px 6px;
-	}
+  .tl-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 6px;
+    border: 1px solid var(--background-modifier-border);
+    border-left: 3px solid var(--interactive-accent);
+    border-radius: 5px;
+    background: var(--background-secondary);
+    overflow: hidden;
+    transition: filter 0.12s;
+    min-height: 0;
+  }
 
-	.tl-block-header {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		min-width: 0;
-	}
+  .tl-block:hover .tl-content {
+    filter: brightness(1.08);
+    z-index: 2;
+  }
 
-	.tl-check {
-		flex-shrink: 0;
-		font-size: 11px;
-		color: var(--text-muted);
-	}
+  .tl-block.dragging .tl-content {
+    box-shadow: var(--shadow-s);
+    filter: brightness(1.1);
+  }
 
-	.tl-check.on {
-		color: var(--text-accent);
-	}
+  .tl-block.selected .tl-content {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+  }
 
-	.tl-title {
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--text-normal);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
+  .tl-content.checked {
+    opacity: 0.6;
+  }
 
-	.checked .tl-title {
-		text-decoration: line-through;
-	}
+  .tl-content.compact {
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 6px;
+  }
 
-	.tl-assoc {
-		flex-shrink: 0;
-		font-size: 9px;
-		padding: 0 5px;
-		border-radius: 7px;
-		background: var(--background-modifier-border);
-		color: var(--text-muted);
-		white-space: nowrap;
-	}
+  /* ── Resize edges ── */
+  .tl-resize {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 9px;
+    cursor: ns-resize;
+    z-index: 6;
+    touch-action: none;
+  }
 
-	.tl-assoc.domain {
-		background: var(--background-modifier-success);
-	}
+  .tl-resize-top {
+    top: 0;
+  }
 
-	.tl-time {
-		font-size: 10px;
-		color: var(--text-muted);
-		font-variant-numeric: tabular-nums;
-	}
+  .tl-resize-bottom {
+    bottom: 0;
+  }
 
-	.tl-chips {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		min-height: 0;
-		overflow: hidden;
-	}
+  /* A faint grab affordance on the edge when hovering the block. */
+  .tl-block:hover .tl-resize::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--interactive-accent);
+    opacity: 0.5;
+  }
 
-	.tl-chip {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		font-size: 11px;
-		color: var(--text-normal);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
+  .tl-resize-top::after {
+    top: 2px;
+  }
 
-	.tl-chip-dot {
-		flex-shrink: 0;
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--text-muted);
-	}
+  .tl-resize-bottom::after {
+    bottom: 2px;
+  }
 
-	.tl-chip-dot.half {
-		background: var(--text-accent);
-	}
+  .tl-block-header {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
 
-	.tl-chip.done,
-	.tl-chip.cancelled {
-		text-decoration: line-through;
-		opacity: 0.5;
-	}
+  .tl-check {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .tl-check.on {
+    color: var(--text-accent);
+  }
+
+  .tl-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .checked .tl-title {
+    text-decoration: line-through;
+  }
+
+  .tl-assoc {
+    flex-shrink: 0;
+    font-size: 9px;
+    padding: 0 5px;
+    border-radius: 7px;
+    background: var(--background-modifier-border);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .tl-assoc.domain {
+    background: var(--background-modifier-success);
+  }
+
+  .tl-time {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tl-chips {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .tl-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tl-chip-dot {
+    flex-shrink: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+  }
+
+  .tl-chip-dot.half {
+    background: var(--text-accent);
+  }
+
+  .tl-chip.done,
+  .tl-chip.cancelled {
+    text-decoration: line-through;
+    opacity: 0.5;
+  }
 </style>

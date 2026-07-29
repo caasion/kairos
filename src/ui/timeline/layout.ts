@@ -14,6 +14,15 @@ export interface TimelineGeometry {
 
 const TOP_PAD = 8;
 
+// Drag/resize/create all snap the mouse to this many minutes. Kept here (not in
+// settings yet) so the interaction math has a single knob; day-planner exposes
+// the equivalent `snapStepMinutes`, and this can graduate to a setting later.
+export const SNAP_MINUTES = 5;
+
+// A block can never be shorter than one snap step, so a resize or create can't
+// collapse it to zero (spec §2.1: "it cannot have zero minutes").
+export const MIN_BLOCK_MINUTES = SNAP_MINUTES;
+
 /**
  * Build timeline geometry from the plugin settings. `endHour` is clamped to
  * stay above `startHour` so the body always has positive height even if the
@@ -46,6 +55,25 @@ export function visibleHours(g: TimelineGeometry): number[] {
 /** Vertical offset (px from the top of the body) for a minutes-since-midnight value. */
 export function minutesToOffset(minutes: Minutes, g: TimelineGeometry): number {
 	return ((minutes - g.startHour * 60) / 60) * g.hourHeight + g.topPad;
+}
+
+/**
+ * Inverse of `minutesToOffset`: a pixel offset from the top of the body back to
+ * minutes-since-midnight. Not clamped or snapped — callers decide (a drag may
+ * pass through out-of-range values before being clamped on drop).
+ */
+export function offsetToMinutes(offset: number, g: TimelineGeometry): Minutes {
+	return ((offset - g.topPad) / g.hourHeight) * 60 + g.startHour * 60;
+}
+
+/** Round a minute value to the nearest `SNAP_MINUTES` step. */
+export function snap(minutes: Minutes): Minutes {
+	return Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
+}
+
+/** Clamp a minute value into the timeline's visible [startHour, endHour] range. */
+export function clampToDay(minutes: Minutes, g: TimelineGeometry): Minutes {
+	return clamp(minutes, g.startHour * 60, g.endHour * 60);
 }
 
 /** A block's placement rectangle in the timeline body. */
