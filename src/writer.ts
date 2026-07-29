@@ -1,0 +1,205 @@
+// Kairos write-back layer
+//
+// The only module that mutates daily-note files. Everything above it (the
+// timeline interactions) works on in-memory `Block[]` and hands a finished
+// array here to persist. Writing is a whole-section splice, not a per-line
+// edit: we re-serialize the entire Schedule section and drop it back into the
+// file between its surrounding content. That keeps this layer trivially
+// correct — there is exactly one code path from `Block[]` to disk, shared by
+// move, resize, create, and delete.
+//
+// Boundaries mirror the parser exactly (see `parser.ts`):
+//   - the section starts on the line after the first `#{1,6} Schedule` heading
+//   - it ends at the next heading line (`#{1,6} …`), or end-of-file
+// so the range this module replaces is the same range the parser reads.
+//
+// Blocks are kept ordered by time on every write, matching spec §4.1 ("move
+// rewrites the file so that entries stay ordered by time"). Untimed blocks
+// (the Unscheduled inbox) are pinned to the end in their existing order.
+
+import type { TFile, Vault } from "obsidian";
+import { serialize } from "./serializer";
+import type { Block, TimeRange } from "./types";
+
+// Matches the parser's heading regexes. `SCHEDULE_HEADING` finds the section;
+// `ANY_HEADING` finds where it ends.
+const SCHEDULE_HEADING = /^#{1,6}\s+Schedule\s*$/;
+const ANY_HEADING = /^#{1,6}\s/;
+
+const DEFAULT_BLOCK_TITLE = "New block";
+
+// ─── public API ────────────────────────────────────────────────
+
+/**
+ * Persist a full set of blocks as the note's Schedule section.
+ *
+ * The blocks are re-serialized and spliced over the existing section, leaving
+ * frontmatter, other headings, and surrounding prose untouched. If the note has
+ * no Schedule section yet, one is appended.
+ *
+ * Ordering is normalized here (timed blocks by start time, untimed pinned to
+ * the end) so callers never have to keep the array sorted themselves.
+ */
+export async function writeSchedule(
+  vault: Vault,
+  file: TFile,
+  blocks: Block[],
+): Promise<void> {
+  const ordered = sortForWrite(blocks);
+  const section = serialize(ordered); // includes the "## Schedule" heading
+
+  await vault.process(file, (text) => spliceSection(text, section));
+}
+
+// ─── block operations ──────────────────────────────────────────
+//
+// These are pure array transforms — they never touch the file. The caller
+// applies one (or several) and then hands the result to `writeSchedule`. Kept
+// pure so the timeline can preview an operation in local state and only persist
+// on drop.
+
+/** Return a copy of `blocks` with `target`'s time replaced. */
+export function retimeBlock(
+  blocks: Block[],
+  target: Block,
+  time: TimeRange,
+): Block[] {
+  return blocks.map((b) => (b === target ? { ...b, time } : b));
+}
+
+/**
+ * Retime several blocks at once (used when a multi-selection is dragged as a
+ * group). `times` maps each target block to its new range.
+ */
+export function retimeBlocks(
+  blocks: Block[],
+  times: Map<Block, TimeRange>,
+): Block[] {
+  return blocks.map((b) => {
+    const time = times.get(b);
+    return time ? { ...b, time } : b;
+  });
+}
+
+/** Return a copy of `blocks` with `target` removed. */
+export function deleteBlock(blocks: Block[], target: Block): Block[] {
+  return blocks.filter((b) => b !== target);
+}
+
+/** Return a copy of `blocks` with every block in `targets` removed. */
+export function deleteBlocks(
+  blocks: Block[],
+  targets: Iterable<Block>,
+): Block[] {
+  const set = new Set(targets);
+  return blocks.filter((b) => !set.has(b));
+}
+
+/**
+ * Build a fresh timed block with a placeholder title. Not spliced into an array
+ * here — the caller appends it and persists — so callers stay in control of
+ * ordering (which `writeSchedule` normalizes anyway).
+ *
+ * `source` is a throwaway handle; the parser re-derives the real line on the
+ * next read. It only needs to be unique enough for keyed rendering until then.
+ */
+export function makeBlock(
+  time: TimeRange,
+  path: string,
+  title = DEFAULT_BLOCK_TITLE,
+): Block {
+  return {
+    source: { path, line: -1 },
+    title,
+    tasks: [],
+    scheduled: true,
+    time,
+  };
+}
+
+// ─── section splicing ──────────────────────────────────────────
+
+/**
+ * Replace the Schedule section of `text` with `section` (which is itself a
+ * complete "## Schedule …" block with a trailing newline). If there is no
+ * Schedule section, append one after a blank-line separator.
+ *
+ * Returns the full new file text.
+ */
+function spliceSection(text: string, section: string): string {
+  const lines = text.split(/\r?\n/);
+  const bounds = sectionBounds(lines);
+
+  if (!bounds) {
+    // No section yet: append, keeping a blank line between existing content and
+    // the new heading (unless the file is empty).
+    const trimmed = text.replace(/\s*$/, "");
+    const prefix = trimmed.length > 0 ? trimmed + "\n\n" : "";
+    return prefix + section;
+  }
+
+  const before = lines.slice(0, bounds.headingLine);
+  const after = lines.slice(bounds.end);
+
+  // `section` ends with a newline; splitting it drops the trailing empty entry.
+  const sectionLines = section.replace(/\n$/, "").split("\n");
+
+  // Keep a single blank line between the section and whatever heading follows,
+  // so the rewrite doesn't butt the section straight up against the next "##".
+  if (after.length > 0 && ANY_HEADING.test(after[0] ?? "")) {
+    sectionLines.push("");
+  }
+
+  return [...before, ...sectionLines, ...after].join("\n");
+}
+
+interface SectionBounds {
+  headingLine: number; // index of the "## Schedule" line
+  end: number; // index one past the last line of the section
+}
+
+/**
+ * Find the Schedule section's line range: from its heading through the line
+ * before the next heading (or EOF).
+ */
+function sectionBounds(lines: string[]): SectionBounds | undefined {
+  let headingLine = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (SCHEDULE_HEADING.test(lines[i] ?? "")) {
+      headingLine = i;
+      break;
+    }
+  }
+  if (headingLine === -1) return undefined;
+
+  let end = lines.length;
+  for (let i = headingLine + 1; i < lines.length; i++) {
+    if (ANY_HEADING.test(lines[i] ?? "")) {
+      end = i;
+      break;
+    }
+  }
+
+  return { headingLine, end };
+}
+
+// ─── ordering ──────────────────────────────────────────────────
+
+/**
+ * Sort blocks for writing: timed blocks first, ascending by start (then end),
+ * then untimed blocks in their original relative order. Stable so equal-start
+ * blocks keep their prior arrangement.
+ */
+function sortForWrite(blocks: Block[]): Block[] {
+  const timed: Block[] = [];
+  const untimed: Block[] = [];
+  for (const b of blocks) (b.time ? timed : untimed).push(b);
+
+  timed.sort((a, b) => {
+    const at = a.time as TimeRange;
+    const bt = b.time as TimeRange;
+    return at.start - bt.start || at.end - bt.end;
+  });
+
+  return [...timed, ...untimed];
+}
