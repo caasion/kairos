@@ -76,7 +76,7 @@ function parseSchedule(markdown: string, path: string): Block[] {
     if (!item) continue; // blank lines, prose, etc. — skip, stay in section
 
     const indent = indentWidth(item[1] ?? "");
-    const status = item[2] as string | undefined;
+    const status = item[2];
     const body = item[3] ?? "";
     const source: SourceRef = { path, line: i };
 
@@ -113,7 +113,7 @@ function parseBlock(
   status: string | undefined,
   source: SourceRef,
 ): Block {
-  const { title, assoc, tag } = stripMetadata(body);
+  const { title, assoc, metadata } = stripMetadata(body);
   const time = parseTime(title);
   // when a time range is present, the block title is the text after it
   const blockTitle = time ? time.title : title;
@@ -122,19 +122,11 @@ function parseBlock(
     source,
     title: blockTitle,
     ...(assoc ? { assoc } : {}),
+    ...(metadata ? { metadata } : {}),
     tasks: [],
+    // A checkbox on the block line makes the block itself checkable.
+    ...(status !== undefined ? { status: toStatus(status) } : {}),
   };
-
-  // A checkbox on the block line yields a colocated task sharing the line.
-  if (status !== undefined) {
-    base.task = {
-      source,
-      text: blockTitle,
-      status: toStatus(status),
-      ...(assoc ? { assoc } : {}),
-      ...(tag ? { tag } : {}),
-    };
-  }
 
   if (time) {
     const block: Block = { ...base, scheduled: true, time: time.range };
@@ -153,13 +145,13 @@ function parseTask(
   status: string | undefined,
   source: SourceRef,
 ): Task {
-  const { title, assoc, tag } = stripMetadata(body);
+  const { title, assoc, metadata } = stripMetadata(body);
   return {
     source,
     text: title,
     status: toStatus(status),
     ...(assoc ? { assoc } : {}),
-    ...(tag ? { tag } : {}),
+    ...(metadata ? { metadata } : {}),
   };
 }
 
@@ -180,20 +172,21 @@ function toStatus(status: string | undefined): TaskStatus {
 interface Metadata {
   title: string;
   assoc?: Association;
-  tag?: string;
+  metadata?: string;
 }
 
 /**
  * Strip trailing associations and a trailing parenthesised note off a title.
  * Associations are matched right-to-left; the last one wins for `assoc`
  * (there is at most one Association per line in the model). The parenthesised
- * note is stripped before associations if it trails them, and after if it
- * doesn't — both orderings in the sample resolve correctly.
+ * note becomes `metadata` and is stripped before associations if it trails
+ * them, and after if it doesn't — both orderings in the sample resolve
+ * correctly.
  */
 function stripMetadata(body: string): Metadata {
   let title = body.trim();
   let assoc: Association | undefined;
-  let tag: string | undefined;
+  let metadata: string | undefined;
 
   // Loop peeling trailing [assoc] and (note) tokens in whatever order.
   for (;;) {
@@ -206,15 +199,19 @@ function stripMetadata(body: string): Metadata {
       continue;
     }
     const p = TRAILING_PAREN.exec(title);
-    if (p && tag === undefined) {
-      tag = (p[1] ?? "").trim();
+    if (p && metadata === undefined) {
+      metadata = (p[1] ?? "").trim();
       title = title.slice(0, p.index).trimEnd();
       continue;
     }
     break;
   }
 
-  return { title, ...(assoc ? { assoc } : {}), ...(tag ? { tag } : {}) };
+  return {
+    title,
+    ...(assoc ? { assoc } : {}),
+    ...(metadata ? { metadata } : {}),
+  };
 }
 
 /** Classify a bracket tag: `D:Name` → domain, anything else → project. */

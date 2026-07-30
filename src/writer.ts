@@ -84,28 +84,20 @@ export function retimeBlocks(
 // ─── block field edits ─────────────────────────────────────────
 
 /**
- * Rename a block. A checkable block's colocated task text mirrors the title (by
- * construction they're the same string), so the task text is renamed in step to
- * keep the two from drifting apart across a serialize round-trip.
+ * Rename a block. The title is the block line's text; a checkable block has no
+ * separate task text to keep in sync, so this is a single-field edit.
  */
 export function setBlockTitle(
   blocks: Block[],
   target: Block,
   title: string,
 ): Block[] {
-  return blocks.map((b) => {
-    if (!isOwner(b, target)) return b;
-    return {
-      ...b,
-      title,
-      ...(b.task ? { task: { ...b.task, text: title } } : {}),
-    };
-  });
+  return blocks.map((b) => (isOwner(b, target) ? { ...b, title } : b));
 }
 
 /**
- * Cycle a checkable block's colocated task status. No-op on a block without a
- * checkbox — adding a checkbox is a separate action, not a status change.
+ * Set a checkable block's status. No-op on a block without a checkbox — adding a
+ * checkbox is a separate action, not a status change.
  */
 export function setBlockStatus(
   blocks: Block[],
@@ -113,22 +105,27 @@ export function setBlockStatus(
   status: TaskStatus,
 ): Block[] {
   return blocks.map((b) => {
-    if (!isOwner(b, target) || !b.task) return b;
-    return { ...b, task: { ...b.task, status } };
+    if (!isOwner(b, target) || b.status === undefined) return b;
+    return { ...b, status };
   });
 }
 
 // ─── task operations ───────────────────────────────────────────
 //
-// A task lives either as a block's colocated `task` (sharing the block line) or
-// as an entry in `block.tasks`. These transforms take the owning block and the
-// target task and return a fresh `Block[]` with just that task changed.
+// A task is either a block's colocated checkbox (its `source` is the block's
+// own line) or an entry in `block.tasks`. These transforms take the owning
+// block and the target task and return a fresh `Block[]` with just that task
+// changed.
 //
 // Matching is by source location, not object identity. The render layer hands
-// tasks out as resolved clones (`resolveBlocks` spreads each task), so the
-// object the caller passes back is never the same reference stored in `blocks`.
-// A `SourceRef` (path + line) is stable across that clone and uniquely names a
-// task line, so it's the handle every match uses.
+// tasks out as resolved clones (`resolveBlocks` synthesizes/spreads each task),
+// so the object the caller passes back is never the same reference stored in
+// `blocks`. A `SourceRef` (path + line) is stable across that clone and
+// uniquely names a task line, so it's the handle every match uses.
+//
+// The colocated task has no separate storage: its fields *are* the block's
+// (`title`↔`text`, `status`, `assoc`, `metadata`). Patching it therefore folds
+// the patched task fields back onto the block, keeping one source of truth.
 
 /** True if two source refs name the same file line. */
 function sameSource(a: SourceRef, b: SourceRef): boolean {
@@ -143,6 +140,30 @@ function isOwner(block: Block, owner: Block): boolean {
   return sameSource(block.source, owner.source);
 }
 
+/** A checkable block viewed as its colocated task. */
+function blockAsTask(b: Block): Task {
+  return {
+    source: b.source,
+    text: b.title,
+    status: b.status as TaskStatus,
+    ...(b.assoc ? { assoc: b.assoc } : {}),
+    ...(b.metadata ? { metadata: b.metadata } : {}),
+  };
+}
+
+/** Fold patched colocated-task fields back onto the block. */
+function foldTaskOntoBlock(b: Block, t: Task): Block {
+  return {
+    ...b,
+    title: t.text,
+    status: t.status,
+    ...(t.assoc ? { assoc: t.assoc } : { assoc: undefined }),
+    ...(t.metadata !== undefined
+      ? { metadata: t.metadata }
+      : { metadata: undefined }),
+  };
+}
+
 /** Replace a task's fields via `patch`, returning a new `Block[]`. */
 function patchTask(
   blocks: Block[],
@@ -153,9 +174,10 @@ function patchTask(
   return blocks.map((b) => {
     if (!isOwner(b, owner)) return b;
 
-    // Colocated task: it *is* the block's checkbox, so patch `b.task`.
-    if (b.task && sameSource(b.task.source, target.source)) {
-      return { ...b, task: patch(b.task) };
+    // Colocated task: the target shares the block's line, so patch the block's
+    // own fields (there is no nested task object).
+    if (b.status !== undefined && sameSource(b.source, target.source)) {
+      return foldTaskOntoBlock(b, patch(blockAsTask(b)));
     }
     // Otherwise a nested task in `b.tasks`.
     return {
@@ -190,13 +212,14 @@ export function setTaskText(
 /**
  * Remove a task. A nested task is filtered out of its block's `tasks`. A
  * colocated task can't be removed on its own without also removing the block's
- * checkbox, so deleting it drops the `task` field (the block itself stays).
+ * checkbox, so deleting it drops the block's `status`/`metadata` (the block
+ * itself, its title and time, stays).
  */
 export function deleteTask(blocks: Block[], owner: Block, target: Task): Block[] {
   return blocks.map((b) => {
     if (!isOwner(b, owner)) return b;
-    if (b.task && sameSource(b.task.source, target.source)) {
-      const { task: _removed, ...rest } = b;
+    if (b.status !== undefined && sameSource(b.source, target.source)) {
+      const { status: _s, metadata: _m, ...rest } = b;
       return { ...rest };
     }
     return {

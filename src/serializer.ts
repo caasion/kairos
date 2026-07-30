@@ -55,19 +55,18 @@ export { serialize, serializeBlock, serializeTask };
 function serializeBlock(block: Block): string[] {
   const lines: string[] = [];
 
-  // The block line. A colocated task supplies the checkbox and tag; the block
-  // title and the task text are the same string by construction.
-  const status = block.task ? block.task.status : undefined;
-  const tag = block.task ? block.task.tag : undefined;
-
+  // The block line. `status` (the checkbox) is present iff the block is
+  // checkable; `metadata` is the trailing paren note. Both live directly on the
+  // block now, so there is a single source for the line's text — no title/text
+  // pair to drift apart.
   lines.push(
     "- " +
       renderBody({
-        status,
+        status: block.status,
         time: block.time,
         title: block.title,
         assoc: block.assoc,
-        tag,
+        metadata: block.metadata,
       }),
   );
 
@@ -85,7 +84,7 @@ function serializeTask(task: Task): string {
     status: task.status,
     title: task.text,
     assoc: task.assoc,
-    tag: task.tag,
+    metadata: task.metadata,
   });
 }
 
@@ -96,13 +95,13 @@ interface Body {
   time?: { start: number; end: number };
   title: string;
   assoc?: Association;
-  tag?: string;
+  metadata?: string;
 }
 
 /**
  * Assemble the text after the list marker: optional checkbox, optional time
  * range, title, then trailing metadata in the order the parser peels off
- * (assoc before tag, right-to-left).
+ * (assoc before the paren note, right-to-left).
  */
 function renderBody(b: Body): string {
   let out = "";
@@ -110,7 +109,7 @@ function renderBody(b: Body): string {
   if (b.time) out += `${formatTime(b.time.start)} - ${formatTime(b.time.end)} `;
   out += b.title;
   if (b.assoc) out += ` [${formatAssoc(b.assoc)}]`;
-  if (b.tag !== undefined) out += ` (${b.tag})`;
+  if (b.metadata !== undefined) out += ` (${b.metadata})`;
   return out;
 }
 

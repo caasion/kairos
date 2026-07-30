@@ -6,15 +6,22 @@ export function resolveBlocks(blocks: Block[], date: ISODate): ResolvedTask[] {
     for (const block of blocks) {
         const scheduled = block.scheduled;
 
-        // Handle a checkable block
-        if (block.task) {
+        // A checkable block surfaces as a task in the flat stream (spec §5:
+        // "Tasks and Checkable blocks"). The colocated task is synthesized from
+        // the block's own fields — it has no separate storage — and shares the
+        // block's source line.
+        if (block.status !== undefined) {
             tasks.push({
-                ...block.task,
-                owner: block.task.assoc ?? block.assoc,
+                source: block.source,
+                text: block.title,
+                status: block.status,
+                ...(block.assoc ? { assoc: block.assoc } : {}),
+                ...(block.metadata ? { metadata: block.metadata } : {}),
+                owner: block.assoc,
                 block,
                 date,
                 scheduled,
-                colocated: true
+                colocated: true,
             })
         }
 

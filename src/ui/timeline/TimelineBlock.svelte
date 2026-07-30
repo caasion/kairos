@@ -74,7 +74,7 @@
   }
 
   const checkable = $derived(isCheckable(block));
-  const blockChecked = $derived(block.task?.status === "x");
+  const blockChecked = $derived(block.status === "x");
 
   // The colocated task is represented by the block header itself, so it is not
   // repeated in the chip list.
@@ -191,12 +191,12 @@
   }
 
   function cycleBlockStatus() {
-    if (!block.task) return;
-    onSetBlockStatus(block, nextStatus(block.task.status));
+    if (block.status === undefined) return;
+    onSetBlockStatus(block, nextStatus(block.status));
   }
 
   function cancelBlockStatus() {
-    if (!block.task) return;
+    if (block.status === undefined) return;
     onSetBlockStatus(block, "-");
   }
 </script>
@@ -245,7 +245,7 @@
              doesn't also start a block move. -->
         <span class="tl-check-wrap" onpointerdown={(e) => e.stopPropagation()}>
           <TaskCheckbox
-            status={block.task?.status ?? " "}
+            status={block.status ?? " "}
             onToggle={cycleBlockStatus}
             onCancel={cancelBlockStatus}
           />
