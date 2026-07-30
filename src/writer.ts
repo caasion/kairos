@@ -19,7 +19,7 @@
 
 import type { TFile, Vault } from "obsidian";
 import { serialize } from "./serializer";
-import type { Block, Task, TaskStatus, TimeRange } from "./types";
+import type { Block, SourceRef, Task, TaskStatus, TimeRange } from "./types";
 
 // Matches the parser's heading regexes. `SCHEDULE_HEADING` finds the section;
 // `ANY_HEADING` finds where it ends.
@@ -64,7 +64,7 @@ export function retimeBlock(
   target: Block,
   time: TimeRange,
 ): Block[] {
-  return blocks.map((b) => (b === target ? { ...b, time } : b));
+  return blocks.map((b) => (isOwner(b, target) ? { ...b, time } : b));
 }
 
 /**
@@ -94,7 +94,7 @@ export function setBlockTitle(
   title: string,
 ): Block[] {
   return blocks.map((b) => {
-    if (b !== target) return b;
+    if (!isOwner(b, target)) return b;
     return {
       ...b,
       title,
@@ -113,7 +113,7 @@ export function setBlockStatus(
   status: TaskStatus,
 ): Block[] {
   return blocks.map((b) => {
-    if (b !== target || !b.task) return b;
+    if (!isOwner(b, target) || !b.task) return b;
     return { ...b, task: { ...b.task, status } };
   });
 }
@@ -122,9 +122,26 @@ export function setBlockStatus(
 //
 // A task lives either as a block's colocated `task` (sharing the block line) or
 // as an entry in `block.tasks`. These transforms take the owning block and the
-// target task and return a fresh `Block[]` with just that task changed. Tasks
-// are matched by identity (the same object reference the render handed out), so
-// callers pass the task they got from the resolver/parser, not a copy.
+// target task and return a fresh `Block[]` with just that task changed.
+//
+// Matching is by source location, not object identity. The render layer hands
+// tasks out as resolved clones (`resolveBlocks` spreads each task), so the
+// object the caller passes back is never the same reference stored in `blocks`.
+// A `SourceRef` (path + line) is stable across that clone and uniquely names a
+// task line, so it's the handle every match uses.
+
+/** True if two source refs name the same file line. */
+function sameSource(a: SourceRef, b: SourceRef): boolean {
+  return a.line === b.line && a.path === b.path;
+}
+
+/**
+ * Match a block by owner. Same clone problem as tasks: a block handed back from
+ * a preview/resolve pass is a spread copy, so compare by source, not identity.
+ */
+function isOwner(block: Block, owner: Block): boolean {
+  return sameSource(block.source, owner.source);
+}
 
 /** Replace a task's fields via `patch`, returning a new `Block[]`. */
 function patchTask(
@@ -134,16 +151,18 @@ function patchTask(
   patch: (task: Task) => Task,
 ): Block[] {
   return blocks.map((b) => {
-    if (b !== owner) return b;
+    if (!isOwner(b, owner)) return b;
 
     // Colocated task: it *is* the block's checkbox, so patch `b.task`.
-    if (b.task === target) {
+    if (b.task && sameSource(b.task.source, target.source)) {
       return { ...b, task: patch(b.task) };
     }
     // Otherwise a nested task in `b.tasks`.
     return {
       ...b,
-      tasks: b.tasks.map((t) => (t === target ? patch(t) : t)),
+      tasks: b.tasks.map((t) =>
+        sameSource(t.source, target.source) ? patch(t) : t,
+      ),
     };
   });
 }
@@ -175,18 +194,21 @@ export function setTaskText(
  */
 export function deleteTask(blocks: Block[], owner: Block, target: Task): Block[] {
   return blocks.map((b) => {
-    if (b !== owner) return b;
-    if (b.task === target) {
+    if (!isOwner(b, owner)) return b;
+    if (b.task && sameSource(b.task.source, target.source)) {
       const { task: _removed, ...rest } = b;
       return { ...rest };
     }
-    return { ...b, tasks: b.tasks.filter((t) => t !== target) };
+    return {
+      ...b,
+      tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)),
+    };
   });
 }
 
 /** Return a copy of `blocks` with `target` removed. */
 export function deleteBlock(blocks: Block[], target: Block): Block[] {
-  return blocks.filter((b) => b !== target);
+  return blocks.filter((b) => !isOwner(b, target));
 }
 
 /** Return a copy of `blocks` with every block in `targets` removed. */
@@ -194,8 +216,9 @@ export function deleteBlocks(
   blocks: Block[],
   targets: Iterable<Block>,
 ): Block[] {
-  const set = new Set(targets);
-  return blocks.filter((b) => !set.has(b));
+  const lines = new Set<string>();
+  for (const t of targets) lines.add(`${t.source.path}:${t.source.line}`);
+  return blocks.filter((b) => !lines.has(`${b.source.path}:${b.source.line}`));
 }
 
 /**
