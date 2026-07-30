@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { Association, Block, ResolvedTask } from "../../types";
+  import type { Association, Block, ResolvedTask, Task, TaskStatus } from "../../types";
   import { isCheckable } from "../../types";
+  import TaskComponent from "../task/Task.svelte";
 
   interface Props {
     block: Block;
@@ -19,9 +20,12 @@
       block: Block,
       event: PointerEvent,
     ) => void;
-		onDelete: (
-			block: Block,
-	 ) => void;
+		onDelete: (block: Block) => void;
+		// Task write-back, forwarded to DayView which persists via the writer. The
+		// owning block travels with each call so the writer can locate the task.
+		onSetTaskStatus: (owner: Block, task: Task, status: TaskStatus) => void;
+		onSetTaskText: (owner: Block, task: Task, text: string) => void;
+		onDeleteTask: (owner: Block, task: Task) => void;
   }
 
   let {
@@ -35,6 +39,9 @@
     dragging = false,
     onGestureStart,
 		onDelete,
+		onSetTaskStatus,
+		onSetTaskText,
+		onDeleteTask,
   }: Props = $props();
 
   function fmt(minutes: number): string {
@@ -129,17 +136,19 @@
     {#if !compact}
       <span class="tl-time">{timeLabel}</span>
       {#if chips.length > 0}
-        <div class="tl-chips">
+        <!-- Editable tasks. A press here must not start a block move/resize, so
+             the container swallows pointerdown before it reaches the block. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="tl-tasks" onpointerdown={(e) => e.stopPropagation()}>
           {#each chips as task (task.source.line)}
-            <span
-              class="tl-chip"
-              class:done={task.status === "x"}
-              class:cancelled={task.status === "-"}
-              title={task.text}
-            >
-              <span class="tl-chip-dot" class:half={task.status === "/"}></span>
-              {task.text}
-            </span>
+            <TaskComponent
+              {task}
+              association={task.owner}
+              inherited={task.assoc === undefined}
+              onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
+              onSetText={(t, text) => onSetTaskText(block, t, text)}
+              onDelete={(t) => onDeleteTask(block, t)}
+            />
           {/each}
         </div>
       {/if}
@@ -349,40 +358,11 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .tl-chips {
+  .tl-tasks {
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 0;
     min-height: 0;
-    overflow: hidden;
-  }
-
-  .tl-chip {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--text-normal);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .tl-chip-dot {
-    flex-shrink: 0;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--text-muted);
-  }
-
-  .tl-chip-dot.half {
-    background: var(--text-accent);
-  }
-
-  .tl-chip.done,
-  .tl-chip.cancelled {
-    text-decoration: line-through;
-    opacity: 0.5;
+    overflow-y: auto;
   }
 </style>

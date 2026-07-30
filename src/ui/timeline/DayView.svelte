@@ -4,11 +4,21 @@
 	import { parseSchedule } from "../../parser";
 	import { resolveBlocks } from "../../resolver";
 	import type { KairosSettings } from "../../settings";
-	import type { Block, ISODate, ResolvedTask, TimeRange } from "../../types";
+	import type {
+		Block,
+		ISODate,
+		ResolvedTask,
+		Task,
+		TaskStatus,
+		TimeRange,
+	} from "../../types";
 	import {
 		deleteBlocks,
+		deleteTask,
 		makeBlock,
 		retimeBlocks,
+		setTaskStatus,
+		setTaskText,
 		writeSchedule,
 	} from "../../writer";
 	import TimelineBlock from "./TimelineBlock.svelte";
@@ -114,6 +124,40 @@
 
 	function handleBlockDelete(blockToDelete: Block) {
 		void applyDeletion([blockToDelete]);
+	}
+
+	// ── Task write-back ─────────────────────────────────────────────
+	// TimelineBlock forwards task edits here. The `owner` it hands us may be a
+	// preview clone during a gesture, so we resolve the real block from the live
+	// array by source line before applying a transform. Tasks aren't edited
+	// mid-gesture in practice, but this keeps identity honest either way.
+
+	function ownerFor(owner: Block): Block | undefined {
+		return blocks.find((b) => b.source.line === owner.source.line);
+	}
+
+	async function persist(next: Block[]) {
+		const file = app.workspace.getActiveFile();
+		if (!file) return;
+		await writeSchedule(app.vault, file, next);
+	}
+
+	function handleSetTaskStatus(owner: Block, task: Task, status: TaskStatus) {
+		const real = ownerFor(owner);
+		if (!real) return;
+		void persist(setTaskStatus(blocks, real, task, status));
+	}
+
+	function handleSetTaskText(owner: Block, task: Task, text: string) {
+		const real = ownerFor(owner);
+		if (!real) return;
+		void persist(setTaskText(blocks, real, task, text));
+	}
+
+	function handleDeleteTask(owner: Block, task: Task) {
+		const real = ownerFor(owner);
+		if (!real) return;
+		void persist(deleteTask(blocks, real, task));
 	}
 
 	// Tasks keyed by their block's source line, so lookups survive the preview
@@ -455,6 +499,9 @@
 							dragging={gesture !== null && isSelected(p.block)}
 							onGestureStart={onBlockGestureStart}
 							onDelete={handleBlockDelete}
+							onSetTaskStatus={handleSetTaskStatus}
+							onSetTaskText={handleSetTaskText}
+							onDeleteTask={handleDeleteTask}
 						/>
 					{/each}
 

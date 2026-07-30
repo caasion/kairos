@@ -19,7 +19,7 @@
 
 import type { TFile, Vault } from "obsidian";
 import { serialize } from "./serializer";
-import type { Block, TimeRange } from "./types";
+import type { Block, Task, TaskStatus, TimeRange } from "./types";
 
 // Matches the parser's heading regexes. `SCHEDULE_HEADING` finds the section;
 // `ANY_HEADING` finds where it ends.
@@ -78,6 +78,72 @@ export function retimeBlocks(
   return blocks.map((b) => {
     const time = times.get(b);
     return time ? { ...b, time } : b;
+  });
+}
+
+// ─── task operations ───────────────────────────────────────────
+//
+// A task lives either as a block's colocated `task` (sharing the block line) or
+// as an entry in `block.tasks`. These transforms take the owning block and the
+// target task and return a fresh `Block[]` with just that task changed. Tasks
+// are matched by identity (the same object reference the render handed out), so
+// callers pass the task they got from the resolver/parser, not a copy.
+
+/** Replace a task's fields via `patch`, returning a new `Block[]`. */
+function patchTask(
+  blocks: Block[],
+  owner: Block,
+  target: Task,
+  patch: (task: Task) => Task,
+): Block[] {
+  return blocks.map((b) => {
+    if (b !== owner) return b;
+
+    // Colocated task: it *is* the block's checkbox, so patch `b.task`.
+    if (b.task === target) {
+      return { ...b, task: patch(b.task) };
+    }
+    // Otherwise a nested task in `b.tasks`.
+    return {
+      ...b,
+      tasks: b.tasks.map((t) => (t === target ? patch(t) : t)),
+    };
+  });
+}
+
+/** Set a task's status (open / done / half-done / cancelled). */
+export function setTaskStatus(
+  blocks: Block[],
+  owner: Block,
+  target: Task,
+  status: TaskStatus,
+): Block[] {
+  return patchTask(blocks, owner, target, (t) => ({ ...t, status }));
+}
+
+/** Replace a task's description text. */
+export function setTaskText(
+  blocks: Block[],
+  owner: Block,
+  target: Task,
+  text: string,
+): Block[] {
+  return patchTask(blocks, owner, target, (t) => ({ ...t, text }));
+}
+
+/**
+ * Remove a task. A nested task is filtered out of its block's `tasks`. A
+ * colocated task can't be removed on its own without also removing the block's
+ * checkbox, so deleting it drops the `task` field (the block itself stays).
+ */
+export function deleteTask(blocks: Block[], owner: Block, target: Task): Block[] {
+  return blocks.map((b) => {
+    if (b !== owner) return b;
+    if (b.task === target) {
+      const { task: _removed, ...rest } = b;
+      return { ...rest };
+    }
+    return { ...b, tasks: b.tasks.filter((t) => t !== target) };
   });
 }
 
