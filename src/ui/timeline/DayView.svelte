@@ -104,6 +104,18 @@
 		resolved = resolveBlocks(blocks, date);
 	}
 
+	async function applyDeletion(targets: Iterable<Block>) {
+		const file = app.workspace.getActiveFile();
+		if (!file) return;
+		const next = deleteBlocks(blocks, targets);
+		selection = new Set();
+		await writeSchedule(app.vault, file, next);
+	}
+
+	function handleBlockDelete(blockToDelete: Block) {
+		void applyDeletion([blockToDelete]);
+	}
+
 	// Tasks keyed by their block's source line, so lookups survive the preview
 	// pass (which clones blocks into new objects but keeps their source).
 	const tasksBySource = $derived.by(() => {
@@ -282,11 +294,7 @@
 
 	async function deleteSelected() {
 		if (selection.size === 0) return;
-		const file = app.workspace.getActiveFile();
-		if (!file) return;
-		const next = deleteBlocks(blocks, selection);
-		selection = new Set();
-		await writeSchedule(app.vault, file, next);
+		await applyDeletion(selection);
 	}
 
 	function onKeyDown(event: KeyboardEvent) {
@@ -446,7 +454,7 @@
 							selected={isSelected(p.block)}
 							dragging={gesture !== null && isSelected(p.block)}
 							onGestureStart={onBlockGestureStart}
-							onDelete={onDelete}
+							onDelete={handleBlockDelete}
 						/>
 					{/each}
 

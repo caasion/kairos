@@ -21,7 +21,6 @@
     ) => void;
 		onDelete: (
 			block: Block,
-			event: PointerEvent,
 	 ) => void;
   }
 
@@ -96,6 +95,18 @@
       start("resize-top", e);
     }}
   ></div>
+
+	<!-- Delete button. Placed on the top right corner, appearing on hover. -->
+	<button
+		type="button"
+		class="tl-delete-btn"
+		title="Delete block"
+		onpointerdown={(e) => e.stopPropagation()}
+		onclick={(e) => {
+			e.stopPropagation();
+			onDelete(block);
+		}}
+	>x</button>
 
   <!-- Inner visual container -->
   <div
@@ -244,6 +255,50 @@
     bottom: 2px;
   }
 
+	/* Delete button */
+	.tl-delete-btn {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 10; /* Keep it above content and handles */
+		
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		
+		background: var(--background-modifier-error, #ff4d4f);
+		color: var(--text-on-accent, #ffffff);
+		font-size: 10px;
+		font-weight: bold;
+		line-height: 1;
+		cursor: pointer;
+
+		/* Smooth transition for hover effect */
+		opacity: 0;
+		pointer-events: none; /* Prevents accidental clicks when invisible */
+		transition: opacity 0.15s ease, transform 0.1s ease;
+	}
+
+	.tl-block:hover .tl-delete-btn {
+		opacity: 1;
+		pointer-events: auto; /* Re-enable pointer events on hover */
+	}
+
+	.tl-delete-btn:hover {
+		transform: scale(1.15);
+		filter: brightness(1.1);
+	}
+
+	.tl-delete-btn:active {
+		transform: scale(0.95);
+	}
+
+/* Block contents */
   .tl-block-header {
     display: flex;
     align-items: center;
