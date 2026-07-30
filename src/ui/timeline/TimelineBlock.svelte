@@ -113,7 +113,9 @@
 			e.stopPropagation();
 			onDelete(block);
 		}}
-	>x</button>
+	>
+    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  </button>
 
   <!-- Inner visual container -->
   <div
@@ -274,23 +276,19 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 18px;
-		height: 18px;
+		width: 20px;
+		height: 20px;
 		padding: 0;
 		border: none;
-		border-radius: 50%;
-		
-		background: var(--background-modifier-error, #ff4d4f);
-		color: var(--text-on-accent, #ffffff);
-		font-size: 10px;
-		font-weight: bold;
-		line-height: 1;
+		box-shadow: none;
+		background: transparent;
+		color: var(--text-muted);
 		cursor: pointer;
 
-		/* Smooth transition for hover effect */
+		/* Revealed on block hover. */
 		opacity: 0;
 		pointer-events: none; /* Prevents accidental clicks when invisible */
-		transition: opacity 0.15s ease, transform 0.1s ease;
+		transition: opacity 0.1s;
 	}
 
 	.tl-block:hover .tl-delete-btn {
@@ -299,12 +297,8 @@
 	}
 
 	.tl-delete-btn:hover {
-		transform: scale(1.15);
-		filter: brightness(1.1);
-	}
-
-	.tl-delete-btn:active {
-		transform: scale(0.95);
+		color: var(--text-error);
+		background: var(--background-modifier-hover);
 	}
 
 /* Block contents */
