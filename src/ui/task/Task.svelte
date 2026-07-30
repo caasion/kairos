@@ -15,6 +15,7 @@
 
 	import { Menu, Notice } from "obsidian";
 	import type { Association, Task, TaskStatus } from "../../types";
+	import TaskCheckbox from "./TaskCheckbox.svelte";
 
 	interface Props {
 		task: Task;
@@ -46,16 +47,31 @@
 	}: Props = $props();
 
 	// ── Status / checkbox ───────────────────────────────────────────
-	// Click cycles the two everyday states (open ↔ done). Half-done and
-	// cancelled are reachable from the context menu; a single click shouldn't
-	// have to walk a four-state cycle.
+	// Behaviour matches Holos (see TaskCheckbox): click cycles
+	// open → half → done → open; long-press cancels.
 
 	const done = $derived(task.status === "x");
 	const half = $derived(task.status === "/");
 	const cancelled = $derived(task.status === "-");
 
-	function toggleStatus() {
-		onSetStatus(task, done ? " " : "x");
+	// The forward cycle for a click. Cancelled rejoins the cycle at open.
+	function nextStatus(status: TaskStatus): TaskStatus {
+		switch (status) {
+			case " ":
+				return "/";
+			case "/":
+				return "x";
+			default: // "x" or "-"
+				return " ";
+		}
+	}
+
+	function cycleStatus() {
+		onSetStatus(task, nextStatus(task.status));
+	}
+
+	function cancelStatus() {
+		onSetStatus(task, "-");
 	}
 
 	// ── Inline description editing (single click) ────────────────────
@@ -196,18 +212,7 @@
 	</div>
 
 	<div class="k-task-row">
-		<button
-			class="k-task-check"
-			class:on={done}
-			class:half
-			class:cancelled
-			style={`--k-task-accent: ${color};`}
-			title="Toggle status"
-			aria-label="Toggle status"
-			onclick={toggleStatus}
-		>
-			{#if done}✓{:else if half}◐{:else if cancelled}✕{:else}○{/if}
-		</button>
+		<TaskCheckbox status={task.status} onToggle={cycleStatus} onCancel={cancelStatus} />
 
 		{#if editing}
 			<input
@@ -298,31 +303,9 @@
 	/* ── Row: checkbox + text ── */
 	.k-task-row {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		gap: 6px;
 		min-width: 0;
-	}
-
-	.k-task-check {
-		flex-shrink: 0;
-		width: 16px;
-		height: 16px;
-		padding: 0;
-		border: none;
-		box-shadow: none;
-		background: transparent;
-		color: var(--text-muted);
-		cursor: pointer;
-		font-size: 12px;
-		line-height: 1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.k-task-check.on,
-	.k-task-check.half {
-		color: var(--k-task-accent);
 	}
 
 	.k-task-text {
@@ -378,7 +361,7 @@
 		display: flex;
 		align-items: center;
 		gap: 3px;
-		padding-left: 22px; /* align under the text, past the checkbox */
+		padding-left: 24px; /* align under the text, past the 18px checkbox + gap */
 		font-size: 10px;
 		color: var(--text-muted);
 		min-width: 0;
