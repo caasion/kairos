@@ -30,7 +30,7 @@ interface Task {
   text: string;
   status: TaskStatus;
   assoc?: Association; // absent → inherits parent block's assoc
-  tag?: string; // freeform user metadata (priority stand-in)
+  metadata?: string; // freeform user data (priority stand-in, and anything else)
 }
 
 // ─── resolved (derived) ────────────────────────────────────────
@@ -45,19 +45,24 @@ interface ResolvedTask extends Task {
 
 // ─── block ─────────────────────────────────────────────────────
 
+// A block is a task with scheduling: it carries the same intrinsic fields a
+// task does (title/text, status, association, metadata) plus a time range and
+// child tasks. The only things distinguishing a block from a task are time and
+// scheduling — a block is checkable in its own right when `status` is present.
 interface Block {
   source: SourceRef;
   title: string;
   assoc?: Association;
+  metadata?: string; // freeform user data, same as a task's
   tasks: Task[];
-  task?: Task; // present iff line carries a checkbox; shares block's line
+  status?: TaskStatus; // present iff the block line carries a checkbox
   scheduled: boolean;
   time?: TimeRange;
 }
 
-type CheckableBlock = Block & { task: Task };
+type CheckableBlock = Block & { status: TaskStatus };
 
-const isCheckable = (b: Block): b is CheckableBlock => b.task !== undefined;
+const isCheckable = (b: Block): b is CheckableBlock => b.status !== undefined;
 
 const minutesOf = (b: Block): Minutes =>
   b.time ? b.time.end - b.time.start : -1;
