@@ -40,15 +40,32 @@ const DEFAULT_BLOCK_TITLE = "New block";
  * Ordering is normalized here (timed blocks by start time, untimed pinned to
  * the end) so callers never have to keep the array sorted themselves.
  */
+export interface WriteResult {
+  // The normalized block order actually written. A caller doing an optimistic
+  // in-memory update should adopt this, not its pre-sort input, so memory and
+  // disk stay identical (no correcting re-render).
+  blocks: Block[];
+  // The full new file text. A caller can cache this and compare it against the
+  // `vault.on("modify")` echo of this very write, to skip reparsing its own
+  // change while still reacting to genuinely external edits.
+  text: string;
+}
+
 export async function writeSchedule(
   vault: Vault,
   file: TFile,
   blocks: Block[],
-): Promise<void> {
+): Promise<WriteResult> {
   const ordered = sortForWrite(blocks);
   const section = serialize(ordered); // includes the "## Schedule" heading
 
-  await vault.process(file, (text) => spliceSection(text, section));
+  let written = "";
+  await vault.process(file, (text) => {
+    written = spliceSection(text, section);
+    return written;
+  });
+
+  return { blocks: ordered, text: written };
 }
 
 // ─── block operations ──────────────────────────────────────────

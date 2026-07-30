@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { App, TFile } from "obsidian";
+	import { TFile } from "obsidian";
+	import type { App } from "obsidian";
 	import { onMount } from "svelte";
 	import { parseSchedule } from "../../parser";
 	import { resolveBlocks } from "../../resolver";
@@ -12,18 +13,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import {
-		deleteBlocks,
-		deleteTask,
-		makeBlock,
-		retimeBlock,
-		retimeBlocks,
-		setBlockStatus,
-		setBlockTitle,
-		setTaskStatus,
-		setTaskText,
-		writeSchedule,
-	} from "../../writer";
+	import { makeBlock, writeSchedule } from "../../writer";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import {
 		type Gesture,
@@ -86,9 +76,13 @@
 	}
 
 	let blocks = $state<Block[]>([]);
-	let resolved = $state<ResolvedTask[]>([]);
 	let date = $state<ISODate>("");
 	let notePath = $state<string | null>(null);
+
+	// Resolved tasks are derived from `blocks`, so an in-place edit to a block or
+	// task (see the handlers below) flows through to the render automatically —
+	// no separate reassignment to keep in sync.
+	const resolved = $derived(resolveBlocks(blocks, date));
 
 	// A live-updating "now" offset, so the needle tracks real time.
 	let nowMinutes = $state(currentMinutes());
@@ -106,7 +100,6 @@
 		const file = app.workspace.getActiveFile();
 		if (!file) {
 			blocks = [];
-			resolved = [];
 			notePath = null;
 			return;
 		}
@@ -114,75 +107,134 @@
 		notePath = file.path;
 		date = dateOf(file);
 		blocks = parseSchedule(markdown, file.path);
-		resolved = resolveBlocks(blocks, date);
 	}
 
-	async function applyDeletion(targets: Iterable<Block>) {
-		const file = app.workspace.getActiveFile();
-		if (!file) return;
-		const next = deleteBlocks(blocks, targets);
-		selection = new Set();
-		await writeSchedule(app.vault, file, next);
+	// A `modify` on the active note is either the echo of our own optimistic
+	// write (skip — local state already matches) or an external edit (reparse).
+	// We tell them apart by content: our last write cached its exact text.
+	// `lastWrittenText` stays set so a double-fired echo is also absorbed; it's
+	// only cleared when an external edit lands (below) or replaced by a new
+	// write. The theoretical case of an external edit reproducing our exact text
+	// byte-for-byte just skips one harmless refresh.
+	async function handleModify(file: TFile) {
+		const markdown = await app.vault.cachedRead(file);
+		if (markdown === lastWrittenText) return;
+		lastWrittenText = null;
+		void refresh();
 	}
 
 	function handleBlockDelete(blockToDelete: Block) {
-		void applyDeletion([blockToDelete]);
+		const real = ownerFor(blockToDelete);
+		if (!real) return;
+		selection = new Set();
+		// Deletion changes the array, so reassign locally (removal doesn't have
+		// the reorder/identity problem an edit does), then write.
+		blocks = blocks.filter((b) => b !== real);
+		void writeToDisk();
 	}
 
-	// ── Task write-back ─────────────────────────────────────────────
-	// TimelineBlock forwards task edits here. The `owner` it hands us may be a
-	// preview clone during a gesture, so we resolve the real block from the live
-	// array by source line before applying a transform. Tasks aren't edited
-	// mid-gesture in practice, but this keeps identity honest either way.
+	// ── Write-back ──────────────────────────────────────────────────
+	// The model: an edit mutates the live view object *in place*. `blocks` is
+	// never reassigned on an edit, so nothing the render keys on changes identity
+	// — no re-diff, no flicker, no lost focus/selection. The disk write is a pure
+	// background side effect that reflects the state we already updated; we do
+	// not read anything back from it.
+	//
+	// Because `blocks` is $state, Svelte 5 deep-proxies it: assigning a field on
+	// a live block/task (e.g. `real.time = time`) is reactive and updates only
+	// that field's DOM. `resolved` is $derived from `blocks`, so it follows too.
+	//
+	// In-memory array order intentionally drifts from file order: the file is
+	// time-sorted on write, but the display sorts by time itself (layoutBlocks),
+	// so the array's order is never observed. This is what lets a retime skip a
+	// reorder — and thus skip the identity churn that a reorder would cause.
 
 	function ownerFor(owner: Block): Block | undefined {
 		return blocks.find((b) => b.source.line === owner.source.line);
 	}
 
-	async function persist(next: Block[]) {
+	function realTask(owner: Block, target: Task): Task | undefined {
+		if (owner.status !== undefined && owner.source.line === target.source.line) {
+			// Colocated task: it *is* the block, patched via block fields below.
+			return undefined;
+		}
+		return owner.tasks.find((t) => t.source.line === target.source.line);
+	}
+
+	// Echo suppression: cache the text we wrote so `handleModify` can skip the
+	// `modify` event our own write triggers, while still reparsing genuinely
+	// external edits. Content compare, so it's timing-independent.
+	let lastWrittenText: string | null = null;
+
+	// Serialize the current `blocks` to disk. Fire-and-forget: the view is
+	// already correct (we mutated it in place), so we adopt nothing back.
+	async function writeToDisk() {
 		const file = app.workspace.getActiveFile();
 		if (!file) return;
-		await writeSchedule(app.vault, file, next);
+		const result = await writeSchedule(app.vault, file, blocks);
+		lastWrittenText = result.text;
 	}
 
 	function handleSetTaskStatus(owner: Block, task: Task, status: TaskStatus) {
 		const real = ownerFor(owner);
 		if (!real) return;
-		void persist(setTaskStatus(blocks, real, task, status));
+		if (real.status !== undefined && real.source.line === task.source.line) {
+			real.status = status; // colocated task → block's own status
+		} else {
+			const t = realTask(real, task);
+			if (!t) return;
+			t.status = status;
+		}
+		void writeToDisk();
 	}
 
 	function handleSetTaskText(owner: Block, task: Task, text: string) {
 		const real = ownerFor(owner);
 		if (!real) return;
-		void persist(setTaskText(blocks, real, task, text));
+		if (real.status !== undefined && real.source.line === task.source.line) {
+			real.title = text; // colocated task text is the block title
+		} else {
+			const t = realTask(real, task);
+			if (!t) return;
+			t.text = text;
+		}
+		void writeToDisk();
 	}
 
 	function handleDeleteTask(owner: Block, task: Task) {
 		const real = ownerFor(owner);
 		if (!real) return;
-		void persist(deleteTask(blocks, real, task));
+		if (real.status !== undefined && real.source.line === task.source.line) {
+			// Deleting a colocated task drops the block's checkbox, keeps the block.
+			delete real.status;
+			delete real.metadata;
+		} else {
+			real.tasks = real.tasks.filter((t) => t.source.line !== task.source.line);
+		}
+		void writeToDisk();
 	}
 
 	// ── Block field write-back ──────────────────────────────────────
-	// Same owner-resolution guard as the task handlers: TimelineBlock may hand
-	// us a preview clone, so resolve the live block by source line first.
 
 	function handleSetBlockTitle(block: Block, title: string) {
 		const real = ownerFor(block);
 		if (!real) return;
-		void persist(setBlockTitle(blocks, real, title));
+		real.title = title;
+		void writeToDisk();
 	}
 
 	function handleSetBlockTime(block: Block, time: TimeRange) {
 		const real = ownerFor(block);
 		if (!real) return;
-		void persist(retimeBlock(blocks, real, time));
+		real.time = time; // in place — array position (and thus identity) unchanged
+		void writeToDisk();
 	}
 
 	function handleSetBlockStatus(block: Block, status: TaskStatus) {
 		const real = ownerFor(block);
-		if (!real) return;
-		void persist(setBlockStatus(blocks, real, status));
+		if (real?.status === undefined) return;
+		real.status = status;
+		void writeToDisk();
 	}
 
 	// Tasks keyed by their block's source line, so lookups survive the preview
@@ -347,26 +399,47 @@
 	}
 
 	async function commitRetime(ranges: Map<Block, TimeRange>) {
-		const file = app.workspace.getActiveFile();
-		if (!file) return;
-		const next = retimeBlocks(blocks, ranges);
-		await writeSchedule(app.vault, file, next);
-		selection = new Set();
+		// Apply each new range in place on the live block. `ranges` is keyed by the
+		// preview's block objects; match back to the live array by source line.
+		for (const [previewBlock, time] of ranges) {
+			const real = ownerFor(previewBlock);
+			if (real) real.time = time;
+		}
+		// Selection is intentionally preserved — the dragged block stays selected,
+		// so it keeps focus and its handles.
+		await writeToDisk();
 	}
 
 	async function commitCreate(range: TimeRange) {
 		const file = app.workspace.getActiveFile();
 		if (!file) return;
 		const block = makeBlock(range, file.path);
-		await writeSchedule(app.vault, file, [...blocks, block]);
+		blocks = [...blocks, block]; // growing the array doesn't reorder existing ones
+		await writeToDisk();
 	}
 
 	async function deleteSelected() {
 		if (selection.size === 0) return;
-		await applyDeletion(selection);
+		const doomed = new Set([...selection].map((b) => b.source.line));
+		selection = new Set();
+		blocks = blocks.filter((b) => !doomed.has(b.source.line));
+		await writeToDisk();
+	}
+
+	function isEditableTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tag = target.tagName;
+		return (
+			tag === "INPUT" ||
+			tag === "TEXTAREA" ||
+			target.isContentEditable
+		);
 	}
 
 	function onKeyDown(event: KeyboardEvent) {
+		// Don't hijack keys while the user is typing in a textbox/editor.
+		if (isEditableTarget(event.target)) return;
+
 		// X (or Delete/Backspace) removes the current selection.
 		const key = event.key.toLowerCase();
 		if (key === "x" || key === "delete" || key === "backspace") {
@@ -383,7 +456,8 @@
 
 		const onOpen = app.workspace.on("file-open", () => void refresh());
 		const onModify = app.vault.on("modify", (f) => {
-			if (f.path === notePath) void refresh();
+			if (f.path !== notePath || !(f instanceof TFile)) return;
+			void handleModify(f);
 		});
 		const tick = window.setInterval(() => {
 			nowMinutes = currentMinutes();
