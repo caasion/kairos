@@ -1,7 +1,15 @@
 <script lang="ts">
-  import type { Association, Block, ResolvedTask, Task, TaskStatus } from "../../types";
+  import type {
+    Association,
+    Block,
+    ResolvedTask,
+    Task,
+    TaskStatus,
+    TimeRange,
+  } from "../../types";
   import { isCheckable } from "../../types";
   import TaskComponent from "../task/Task.svelte";
+  import TaskCheckbox from "../task/TaskCheckbox.svelte";
 
   interface Props {
     block: Block;
@@ -26,6 +34,10 @@
 		onSetTaskStatus: (owner: Block, task: Task, status: TaskStatus) => void;
 		onSetTaskText: (owner: Block, task: Task, text: string) => void;
 		onDeleteTask: (owner: Block, task: Task) => void;
+		// Block field write-back.
+		onSetBlockTitle: (block: Block, title: string) => void;
+		onSetBlockTime: (block: Block, time: TimeRange) => void;
+		onSetBlockStatus: (block: Block, status: TaskStatus) => void;
   }
 
   let {
@@ -42,6 +54,9 @@
 		onSetTaskStatus,
 		onSetTaskText,
 		onDeleteTask,
+		onSetBlockTitle,
+		onSetBlockTime,
+		onSetBlockStatus,
   }: Props = $props();
 
   function fmt(minutes: number): string {
@@ -84,6 +99,106 @@
     if (event.button !== 0) return;
     onGestureStart?.(mode, block, event);
   }
+
+  // ── Title editing (single click, in place) ──────────────────────
+
+  let editingTitle = $state(false);
+  let titleDraft = $state("");
+  let titleInputEl = $state<HTMLInputElement>();
+
+  function beginTitleEdit() {
+    if (editingTitle) return;
+    titleDraft = block.title;
+    editingTitle = true;
+    queueMicrotask(() => titleInputEl?.focus());
+  }
+
+  function commitTitleEdit() {
+    if (!editingTitle) return;
+    editingTitle = false;
+    const next = titleDraft.trim();
+    if (next.length > 0 && next !== block.title) onSetBlockTitle(block, next);
+  }
+
+  function onTitleKeydown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitTitleEdit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      editingTitle = false;
+    }
+  }
+
+  // ── Time editing (native time inputs; reject end ≤ start) ────────
+
+  let editingTime = $state(false);
+  let startDraft = $state(""); // "HH:MM"
+  let endDraft = $state("");
+
+  function beginTimeEdit() {
+    if (!block.time || editingTime) return;
+    startDraft = fmt(block.time.start);
+    endDraft = fmt(block.time.end);
+    editingTime = true;
+  }
+
+  // Parse an "HH:MM" value from a native time input to minutes-since-midnight.
+  function parseHHMM(value: string): number | undefined {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(value);
+    if (!m) return undefined;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return undefined;
+    return hh * 60 + mm;
+  }
+
+  function commitTimeEdit() {
+    if (!editingTime) return;
+    const start = parseHHMM(startDraft);
+    const end = parseHHMM(endDraft);
+    // Only persist a valid range; a block can't have zero/negative minutes
+    // (spec §2.1). An invalid entry just closes the editor unchanged.
+    if (start !== undefined && end !== undefined && end > start) {
+      if (!block.time || start !== block.time.start || end !== block.time.end) {
+        onSetBlockTime(block, { start, end });
+      }
+    }
+    editingTime = false;
+  }
+
+  function onTimeKeydown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitTimeEdit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      editingTime = false;
+    }
+  }
+
+  // ── Block checkbox (checkable block) ─────────────────────────────
+
+  function nextStatus(status: TaskStatus): TaskStatus {
+    switch (status) {
+      case " ":
+        return "/";
+      case "/":
+        return "x";
+      default:
+        return " ";
+    }
+  }
+
+  function cycleBlockStatus() {
+    if (!block.task) return;
+    onSetBlockStatus(block, nextStatus(block.task.status));
+  }
+
+  function cancelBlockStatus() {
+    if (!block.task) return;
+    onSetBlockStatus(block, "-");
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -123,11 +238,40 @@
     class:compact
     class:checked={blockChecked}
   >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="tl-block-header">
       {#if checkable}
-        <span class="tl-check" class:on={blockChecked}>{blockChecked ? "✓" : "○"}</span>
+        <!-- The colocated task's checkbox. Stop pointerdown so pressing it
+             doesn't also start a block move. -->
+        <span class="tl-check-wrap" onpointerdown={(e) => e.stopPropagation()}>
+          <TaskCheckbox
+            status={block.task?.status ?? " "}
+            onToggle={cycleBlockStatus}
+            onCancel={cancelBlockStatus}
+          />
+        </span>
       {/if}
-      <span class="tl-title">{block.title}</span>
+      {#if editingTitle}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <input
+          class="tl-title-input"
+          type="text"
+          bind:value={titleDraft}
+          bind:this={titleInputEl}
+          onpointerdown={(e) => e.stopPropagation()}
+          onkeydown={onTitleKeydown}
+          onblur={commitTitleEdit}
+        />
+      {:else}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <span
+          class="tl-title"
+          role="textbox"
+          tabindex="0"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={beginTitleEdit}
+        >{block.title}</span>
+      {/if}
       {#if block.assoc}
         <span class="tl-assoc" class:domain={block.assoc.kind === "domain"}>
           {assocLabel(block.assoc)}
@@ -136,7 +280,41 @@
     </div>
 
     {#if !compact}
-      <span class="tl-time">{timeLabel}</span>
+      {#if editingTime}
+        <!-- Commit on focusout only when focus leaves the whole editor, so
+             tabbing between the two inputs doesn't close it early. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="tl-time-edit"
+          onpointerdown={(e) => e.stopPropagation()}
+          onfocusout={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) commitTimeEdit();
+          }}
+        >
+          <input
+            class="tl-time-input"
+            type="time"
+            bind:value={startDraft}
+            onkeydown={onTimeKeydown}
+          />
+          <span class="tl-time-dash">–</span>
+          <input
+            class="tl-time-input"
+            type="time"
+            bind:value={endDraft}
+            onkeydown={onTimeKeydown}
+          />
+        </div>
+      {:else}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <span
+          class="tl-time"
+          role="button"
+          tabindex="0"
+          onpointerdown={(e) => e.stopPropagation()}
+          onclick={beginTimeEdit}
+        >{timeLabel}</span>
+      {/if}
       {#if chips.length > 0}
         <!-- Editable tasks. A press here must not start a block move/resize, so
              the container swallows pointerdown before it reaches the block. -->
@@ -272,7 +450,7 @@
 		top: 4px;
 		right: 4px;
 		z-index: 10; /* Keep it above content and handles */
-		
+
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -309,14 +487,10 @@
     min-width: 0;
   }
 
-  .tl-check {
+  .tl-check-wrap {
     flex-shrink: 0;
-    font-size: 11px;
-    color: var(--text-muted);
-  }
-
-  .tl-check.on {
-    color: var(--text-accent);
+    display: flex;
+    align-items: center;
   }
 
   .tl-title {
@@ -326,10 +500,36 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: text;
   }
 
   .checked .tl-title {
     text-decoration: line-through;
+  }
+
+  /* Title edit input: indistinguishable from the static title. */
+  .tl-title-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    line-height: inherit;
+    color: var(--text-normal);
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+  }
+
+  .tl-title-input:focus,
+  .tl-title-input:focus-visible {
+    border: none;
+    box-shadow: none;
+    outline: none;
   }
 
   .tl-assoc {
@@ -350,6 +550,34 @@
     font-size: 10px;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
+    cursor: text;
+    align-self: flex-start;
+  }
+
+  /* ── Time editor (native time inputs) ── */
+  .tl-time-edit {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .tl-time-input {
+    font-size: 10px;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    padding: 0 2px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 0;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    min-height: 0;
+    height: auto;
+    box-shadow: none;
+  }
+
+  .tl-time-dash {
+    font-size: 10px;
+    color: var(--text-muted);
   }
 
   .tl-tasks {

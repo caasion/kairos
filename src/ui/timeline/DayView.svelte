@@ -16,7 +16,10 @@
 		deleteBlocks,
 		deleteTask,
 		makeBlock,
+		retimeBlock,
 		retimeBlocks,
+		setBlockStatus,
+		setBlockTitle,
 		setTaskStatus,
 		setTaskText,
 		writeSchedule,
@@ -158,6 +161,28 @@
 		const real = ownerFor(owner);
 		if (!real) return;
 		void persist(deleteTask(blocks, real, task));
+	}
+
+	// ── Block field write-back ──────────────────────────────────────
+	// Same owner-resolution guard as the task handlers: TimelineBlock may hand
+	// us a preview clone, so resolve the live block by source line first.
+
+	function handleSetBlockTitle(block: Block, title: string) {
+		const real = ownerFor(block);
+		if (!real) return;
+		void persist(setBlockTitle(blocks, real, title));
+	}
+
+	function handleSetBlockTime(block: Block, time: TimeRange) {
+		const real = ownerFor(block);
+		if (!real) return;
+		void persist(retimeBlock(blocks, real, time));
+	}
+
+	function handleSetBlockStatus(block: Block, status: TaskStatus) {
+		const real = ownerFor(block);
+		if (!real) return;
+		void persist(setBlockStatus(blocks, real, status));
 	}
 
 	// Tasks keyed by their block's source line, so lookups survive the preview
@@ -502,6 +527,9 @@
 							onSetTaskStatus={handleSetTaskStatus}
 							onSetTaskText={handleSetTaskText}
 							onDeleteTask={handleDeleteTask}
+							onSetBlockTitle={handleSetBlockTitle}
+							onSetBlockTime={handleSetBlockTime}
+							onSetBlockStatus={handleSetBlockStatus}
 						/>
 					{/each}
 

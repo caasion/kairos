@@ -81,6 +81,43 @@ export function retimeBlocks(
   });
 }
 
+// ─── block field edits ─────────────────────────────────────────
+
+/**
+ * Rename a block. A checkable block's colocated task text mirrors the title (by
+ * construction they're the same string), so the task text is renamed in step to
+ * keep the two from drifting apart across a serialize round-trip.
+ */
+export function setBlockTitle(
+  blocks: Block[],
+  target: Block,
+  title: string,
+): Block[] {
+  return blocks.map((b) => {
+    if (b !== target) return b;
+    return {
+      ...b,
+      title,
+      ...(b.task ? { task: { ...b.task, text: title } } : {}),
+    };
+  });
+}
+
+/**
+ * Cycle a checkable block's colocated task status. No-op on a block without a
+ * checkbox — adding a checkbox is a separate action, not a status change.
+ */
+export function setBlockStatus(
+  blocks: Block[],
+  target: Block,
+  status: TaskStatus,
+): Block[] {
+  return blocks.map((b) => {
+    if (b !== target || !b.task) return b;
+    return { ...b, task: { ...b.task, status } };
+  });
+}
+
 // ─── task operations ───────────────────────────────────────────
 //
 // A task lives either as a block's colocated `task` (sharing the block line) or
