@@ -101,7 +101,6 @@ interface Domain {
   aliases: string[];
   order: number;
   color: string;
-  effective: { start?: ISODate; end?: ISODate };
   history: StatusRecord[];
   archived: boolean;
   source: SourceRef;
