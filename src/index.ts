@@ -31,10 +31,12 @@ import type {
 	ISODate,
 	Project,
 	ResolvedTask,
+	SourceRef,
 } from "./types";
 import { parseSchedule } from "./parser";
 import { serialize } from "./serializer";
 import { resolveBlocks } from "./resolver";
+import { parseDomain, parseProject } from "./projectFile";
 
 // ─── file routing ──────────────────────────────────────────────
 
@@ -150,6 +152,67 @@ export function removeDay(state: IndexState, date: ISODate): IndexState {
 	return deriveLookups({ ...state, days });
 }
 
+/**
+ * Reparse a project file into the state, keyed by the project's name (since
+ * associations match by name). A file that no longer parses as a project (tag
+ * removed) drops any prior entry at `path`.
+ */
+export function reindexProject(
+	state: IndexState,
+	path: string,
+	content: string,
+): IndexState {
+	const projects = new Map(state.projects);
+	dropByPath(projects, path);
+	const project = parseProject(content, path);
+	if (project) projects.set(project.name, project);
+	return deriveLookups({ ...state, projects });
+}
+
+/** Reparse a domain file into the state, keyed by the domain's name. */
+export function reindexDomain(
+	state: IndexState,
+	path: string,
+	content: string,
+): IndexState {
+	const domains = new Map(state.domains);
+	dropByPath(domains, path);
+	const domain = parseDomain(content, path);
+	if (domain) domains.set(domain.name, domain);
+	return deriveLookups({ ...state, domains });
+}
+
+/** Remove whatever project/domain a deleted file provided. */
+export function removeProjectFile(state: IndexState, path: string): IndexState {
+	const projects = new Map(state.projects);
+	if (!dropByPath(projects, path)) return state;
+	return deriveLookups({ ...state, projects });
+}
+
+export function removeDomainFile(state: IndexState, path: string): IndexState {
+	const domains = new Map(state.domains);
+	if (!dropByPath(domains, path)) return state;
+	return deriveLookups({ ...state, domains });
+}
+
+/**
+ * Remove any entry sourced from `path`. Needed because these maps are keyed by
+ * name, not path: a rename or a name change means the old key must be found via
+ * its source. Returns whether anything was removed.
+ */
+function dropByPath(
+	map: Map<string, { source: SourceRef }>,
+	path: string,
+): boolean {
+	for (const [key, value] of map) {
+		if (value.source.path === path) {
+			map.delete(key);
+			return true;
+		}
+	}
+	return false;
+}
+
 // ─── day signature (echo-dedup) ────────────────────────────────
 
 /**
@@ -196,6 +259,18 @@ export interface IndexDeps {
 	writeDebounceMs: number;
 }
 
+/** What a project-page store yields: the project plus its resolved tasks. */
+export interface ProjectView {
+	project: Project;
+	tasks: ResolvedTask[];
+}
+
+/** What a domain store yields: the domain plus its resolved tasks. */
+export interface DomainView {
+	domain: Domain;
+	tasks: ResolvedTask[];
+}
+
 /**
  * Wraps the pure state in Svelte stores and the optimistic write path. The
  * vault watcher calls `onFileChanged` / `onFileDeleted`; the UI calls `day(date)`
@@ -205,6 +280,8 @@ export class KairosIndex {
 	private state: IndexState = emptyState();
 
 	private dayStores = new Map<ISODate, Writable<Day | undefined>>();
+	private projectStores = new Map<string, Writable<ProjectView | undefined>>();
+	private domainStores = new Map<string, Writable<DomainView | undefined>>();
 	private backlogStore: Writable<BacklogEntry[]> = writable([]);
 	private writeTimers = new Map<ISODate, ReturnType<typeof setTimeout>>();
 
@@ -215,10 +292,18 @@ export class KairosIndex {
 		let state = emptyState();
 		for (const f of files) {
 			const what = classify(f.path, this.deps.settings);
-			if (what.kind === "day") {
-				state = reindexDay(state, f.path, what.date, f.content, f.mtime);
+			switch (what.kind) {
+				case "day":
+					state = reindexDay(state, f.path, what.date, f.content, f.mtime);
+					break;
+				case "project":
+					state = reindexProject(state, f.path, f.content);
+					break;
+				case "domain":
+					state = reindexDomain(state, f.path, f.content);
+					break;
+				// TODO: backlog branch once its shape lands.
 			}
-			// TODO: project / domain / backlog branches once shapes land.
 		}
 		this.state = state;
 		this.publishAll();
@@ -240,16 +325,14 @@ export class KairosIndex {
 		return this.backlogStore;
 	}
 
-	// TODO: project(name) / domain(name) stores once their maps are populated.
-	project(
-		_name: string,
-	): Readable<{ project: Project; tasks: ResolvedTask[] } | undefined> {
-		throw new Error("project() not implemented until project shape lands");
+	/** A live store of a project and its resolved tasks (undefined if unknown). */
+	project(name: string): Readable<ProjectView | undefined> {
+		return this.ensureProjectStore(name);
 	}
-	domain(
-		_name: string,
-	): Readable<{ domain: Domain; tasks: ResolvedTask[] } | undefined> {
-		throw new Error("domain() not implemented until domain shape lands");
+
+	/** A live store of a domain and its resolved tasks (undefined if unknown). */
+	domain(name: string): Readable<DomainView | undefined> {
+		return this.ensureDomainStore(name);
 	}
 
 	// ── vault events (called by the adapter) ──
@@ -257,12 +340,29 @@ export class KairosIndex {
 	/** A file changed on disk (modify or create). Reparse and notify if it moved. */
 	onFileChanged(path: string, content: string, mtime: number): void {
 		const what = classify(path, this.deps.settings);
-		if (what.kind !== "day") {
-			// TODO: route project/domain/backlog reparse here.
-			return;
+		switch (what.kind) {
+			case "day":
+				this.onDayChanged(path, what.date, content, mtime);
+				return;
+			case "project":
+				this.state = reindexProject(this.state, path, content);
+				this.publishProjectsAndDomains();
+				return;
+			case "domain":
+				this.state = reindexDomain(this.state, path, content);
+				this.publishProjectsAndDomains();
+				return;
+			// TODO: backlog branch once its shape lands.
 		}
+	}
 
-		const prev = this.state.days.get(what.date);
+	private onDayChanged(
+		path: string,
+		date: ISODate,
+		content: string,
+		mtime: number,
+	): void {
+		const prev = this.state.days.get(date);
 		// mtime gate: ignore stale echoes older than what we already hold.
 		if (prev && mtime !== 0 && prev.mtime > mtime) return;
 
@@ -273,16 +373,30 @@ export class KairosIndex {
 			return;
 		}
 
-		this.state = reindexDay(this.state, path, what.date, content, mtime);
-		this.publishDay(what.date);
+		this.state = reindexDay(this.state, path, date, content, mtime);
+		this.publishDay(date);
+		// A day's tasks feed project/domain views, so refresh those too.
+		this.publishProjectsAndDomains();
 	}
 
 	/** A file was deleted on disk. */
 	onFileDeleted(path: string): void {
 		const what = classify(path, this.deps.settings);
-		if (what.kind !== "day") return;
-		this.state = removeDay(this.state, what.date);
-		this.publishDay(what.date);
+		switch (what.kind) {
+			case "day":
+				this.state = removeDay(this.state, what.date);
+				this.publishDay(what.date);
+				this.publishProjectsAndDomains();
+				return;
+			case "project":
+				this.state = removeProjectFile(this.state, path);
+				this.publishProjectsAndDomains();
+				return;
+			case "domain":
+				this.state = removeDomainFile(this.state, path);
+				this.publishProjectsAndDomains();
+				return;
+		}
 	}
 
 	// ── optimistic edit ──
@@ -304,6 +418,7 @@ export class KairosIndex {
 		days.set(date, day);
 		this.state = deriveLookups({ ...this.state, days });
 		this.publishDay(date);
+		this.publishProjectsAndDomains();
 
 		this.scheduleWrite(date, path);
 	}
@@ -340,15 +455,61 @@ export class KairosIndex {
 		return store;
 	}
 
+	private ensureProjectStore(name: string): Writable<ProjectView | undefined> {
+		let store = this.projectStores.get(name);
+		if (!store) {
+			store = writable(this.projectView(name));
+			this.projectStores.set(name, store);
+		}
+		return store;
+	}
+
+	private ensureDomainStore(name: string): Writable<DomainView | undefined> {
+		let store = this.domainStores.get(name);
+		if (!store) {
+			store = writable(this.domainView(name));
+			this.domainStores.set(name, store);
+		}
+		return store;
+	}
+
+	/** Assemble a project + its resolved tasks from current state. */
+	private projectView(name: string): ProjectView | undefined {
+		const project = this.state.projects.get(name);
+		if (!project) return undefined;
+		return { project, tasks: this.state.byProject.get(name) ?? [] };
+	}
+
+	private domainView(name: string): DomainView | undefined {
+		const domain = this.state.domains.get(name);
+		if (!domain) return undefined;
+		return { domain, tasks: this.state.byDomain.get(name) ?? [] };
+	}
+
 	private publishDay(date: ISODate): void {
 		const store = this.dayStores.get(date);
 		if (store) store.set(this.state.days.get(date));
+	}
+
+	/**
+	 * Republish every subscribed project/domain store. Called whenever either
+	 * the metadata (project/domain files) or the task rollups (day edits) change,
+	 * since a project view depends on both.
+	 */
+	private publishProjectsAndDomains(): void {
+		for (const [name, store] of this.projectStores) {
+			store.set(this.projectView(name));
+		}
+		for (const [name, store] of this.domainStores) {
+			store.set(this.domainView(name));
+		}
 	}
 
 	private publishAll(): void {
 		for (const [date, store] of this.dayStores) {
 			store.set(this.state.days.get(date));
 		}
+		this.publishProjectsAndDomains();
 		this.backlogStore.set(this.state.backlog);
 	}
 }
