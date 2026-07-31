@@ -5,6 +5,7 @@ import { parseSchedule } from './parser';
 import { resolveBlocks } from './resolver';
 import type { ISODate } from './types';
 import { KAIROS_VIEW_TYPE, KairosView } from './KairosView';
+import { IndexAdapter } from './indexAdapter';
 
 // Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
 // the basename itself when it doesn't look like a date.
@@ -15,9 +16,18 @@ function dateFromBasename(basename: string): ISODate {
 
 export default class Kairos extends Plugin {
 	settings!: KairosSettings;
+	/** The live index. Views read from `plugin.index.index`. */
+	indexAdapter!: IndexAdapter;
 
 	async onload() {
 		await this.loadSettings();
+
+		// Build the index now; cold-start it once the vault is fully loaded so
+		// the seed sees every file (and doesn't race Obsidian's own indexing).
+		this.indexAdapter = new IndexAdapter(this);
+		this.app.workspace.onLayoutReady(() => {
+			void this.indexAdapter.start();
+		});
 
 		this.registerView(
 			KAIROS_VIEW_TYPE,
@@ -67,7 +77,9 @@ export default class Kairos extends Plugin {
 		this.addSettingTab(new KairosSettingTab(this.app, this));
 	}
 
-	onunload() {}
+	onunload() {
+		this.indexAdapter?.stop();
+	}
 
 	// Reveal the Kairos view, reusing an existing leaf if one is already open.
 	async activateView() {
