@@ -315,3 +315,64 @@ describe("KairosIndex", () => {
 		expect(writes).toHaveLength(0);
 	});
 });
+
+// ─── live index: project / domain stores ───────────────────────
+
+const PROJECT_FILE = `---
+tags:
+  - kairos/project
+id: p-alpha
+aliases: []
+domain_id:
+status:
+  2026-07-01: active
+---
+`;
+
+describe("KairosIndex project/domain stores", () => {
+	const deps: IndexDeps = {
+		read: async () => "",
+		write: async () => {},
+		now: () => 1000,
+		settings: PATHS,
+		writeDebounceMs: 500,
+	};
+
+	it("seeds a project and exposes it via the project store", () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([{ path: "Projects/Alpha.md", content: PROJECT_FILE, mtime: 1 }]);
+		const view = get(idx.project("Alpha"));
+		expect(view?.project.id).toBe("p-alpha");
+		expect(view?.tasks).toEqual([]);
+	});
+
+	it("is undefined for an unknown project", () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([]);
+		expect(get(idx.project("Nope"))).toBeUndefined();
+	});
+
+	it("project view gains tasks when a day edit associates one", () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([{ path: "Projects/Alpha.md", content: PROJECT_FILE, mtime: 1 }]);
+		const store = idx.project("Alpha");
+		expect(get(store)?.tasks).toHaveLength(0);
+
+		const path = dayPath("2026-07-31");
+		idx.applyDayEdit(
+			"2026-07-31",
+			path,
+			parseSchedule(note("- 09:00 - 10:00 Work [Alpha]\n\t- [ ] t"), path),
+		);
+		// The inherited-[Alpha] child task now shows in the project view.
+		expect(get(store)?.tasks).toHaveLength(1);
+	});
+
+	it("drops a project when its file is deleted", () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([{ path: "Projects/Alpha.md", content: PROJECT_FILE, mtime: 1 }]);
+		const store = idx.project("Alpha");
+		idx.onFileDeleted("Projects/Alpha.md");
+		expect(get(store)).toBeUndefined();
+	});
+});
