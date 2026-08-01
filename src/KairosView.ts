@@ -38,6 +38,7 @@ export class KairosView extends ItemView {
 			target: container,
 			props: {
 				app: this.app,
+				index: this.plugin.indexAdapter.index,
 				settings: this.plugin.settings,
 				saveSettings: () => void this.plugin.saveSettings(),
 			},
