@@ -18,8 +18,17 @@
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import type { Association } from "../../types";
 	import { navigateToAssociation } from "../../navigate";
+	import {
+		dateFromISO,
+		ensureNoteForDate,
+		isoFromDate,
+		notePathForDate,
+		shiftISO,
+		todayISO,
+	} from "../../dayNote";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import Datepicker from "../components/Datepicker.svelte";
 	import {
 		type Gesture,
 		beginBlockGesture,
@@ -89,11 +98,38 @@
 		) {
 			showControls = false;
 		}
+		if (
+			showCalendar &&
+			dateNavRef &&
+			!dateNavRef.contains(event.target as Node)
+		) {
+			showCalendar = false;
+		}
 	}
 
 	let blocks = $state<Block[]>([]);
-	let date = $state<ISODate>("");
+	// The view owns a date, defaulting to today, independent of the active file.
+	// Navigation (arrows / calendar) changes this; nothing else does.
+	let date = $state<ISODate>(todayISO());
+	// The daily note backing `date`, or null when that day has no note yet. An
+	// empty day still renders (an empty timeline) — the note is created lazily on
+	// the first write (see `notePathForWrite`).
 	let notePath = $state<string | null>(null);
+
+	// Calendar popup (Holos Datepicker, inline mode) toggled from the date label.
+	let showCalendar = $state(false);
+	let calendarValue = $state<Date>(dateFromISO(todayISO()));
+	let dateNavRef = $state<HTMLDivElement>();
+
+	// A human-friendly header label, e.g. "Thu, Jul 31". The ISO date remains the
+	// source of truth; this is display only.
+	const dateLabel = $derived(
+		dateFromISO(date).toLocaleDateString(undefined, {
+			weekday: "short",
+			month: "short",
+			day: "numeric",
+		}),
+	);
 
 	// Resolved tasks are derived from `blocks`, so an in-place edit to a block or
 	// task (see the handlers below) flows through to the render automatically —
@@ -107,33 +143,66 @@
 		return d.getHours() * 60 + d.getMinutes();
 	}
 
-	function dateOf(file: TFile): ISODate {
-		const m = /(\d{4}-\d{2}-\d{2})/.exec(file.basename);
-		return m?.[1] ?? file.basename;
-	}
-
-	// Subscription to the active day's store. Rebuilt whenever the active file
+	// Subscription to the current date's day store. Rebuilt whenever `date`
 	// changes; adopting the store's blocks is guarded (see `adoptDay`).
 	let unsubscribeDay: Unsubscriber | null = null;
 
-	// Point the view at the active file: resolve its date, subscribe to that
-	// day's store, and seed local `blocks` from whatever the index holds.
+	// Point the view at `date`: resolve its note path (may be null if the day has
+	// no note yet), subscribe to that day's store, and seed `blocks` from the
+	// index. Called on mount and after every navigation.
 	function retarget() {
-		const file = app.workspace.getActiveFile();
 		unsubscribeDay?.();
 		unsubscribeDay = null;
 
-		if (!file) {
-			blocks = [];
-			notePath = null;
-			date = "";
-			return;
-		}
-		notePath = file.path;
-		date = dateOf(file);
+		notePath = notePathForDate(date);
+		calendarValue = dateFromISO(date);
+		blocks = [];
 
 		unsubscribeDay = index.day(date).subscribe((day) => adoptDay(day));
 	}
+
+	// ── Day navigation ──────────────────────────────────────────────
+	// Changing `date` re-points the subscription. A mid-gesture guard isn't
+	// needed here (nav controls aren't reachable during a drag), but resetting
+	// interaction state keeps a stale preview from leaking across days.
+
+	function goToDate(next: ISODate) {
+		if (next === date) return;
+		selection = new Set();
+		preview = new Map();
+		draft = null;
+		date = next;
+		retarget();
+	}
+
+	function goToday() {
+		goToDate(todayISO());
+	}
+
+	function stepDay(delta: number) {
+		goToDate(shiftISO(date, delta));
+	}
+
+	function onCalendarSelect(picked: Date) {
+		showCalendar = false;
+		goToDate(isoFromDate(picked));
+	}
+
+	// Ctrl/Cmd+click the date label opens (creating if needed) that day's note.
+	async function openDayNote(event: MouseEvent) {
+		if (!(event.ctrlKey || event.metaKey)) {
+			showCalendar = !showCalendar;
+			return;
+		}
+		event.preventDefault();
+		const path = await ensureNoteForDate(date);
+		const file = app.vault.getAbstractFileByPath(path);
+		if (file instanceof TFile) {
+			void app.workspace.getLeaf("tab").openFile(file);
+		}
+	}
+
+	const isToday = $derived(date === todayISO());
 
 	// Adopt the index's version of the day into local `blocks`. This is the read
 	// side of the optimistic loop: the index pushes here on cold-load and on
@@ -193,9 +262,23 @@
 	// own memory immediately and debounces the file write; echo suppression is
 	// the index's job (via daySignature), so there's nothing to track here. The
 	// view is already correct — we mutated it in place — so we adopt nothing back.
+	//
+	// When the current day has no note yet, the first edit creates it: we resolve
+	// (and if necessary create) the path, then apply. `ensureNoteForDate` is
+	// idempotent, so a burst of edits before the create resolves is harmless — the
+	// debounced write in the index only ever targets the final path.
 	function writeToDisk() {
-		if (notePath === null) return;
-		index.applyDayEdit(date, notePath, blocks);
+		if (notePath !== null) {
+			index.applyDayEdit(date, notePath, blocks);
+			return;
+		}
+		const forDate = date;
+		void ensureNoteForDate(forDate).then((path) => {
+			// The user may have navigated away while the note was being created;
+			// only adopt the path if we're still on the same day.
+			if (date === forDate) notePath = path;
+			index.applyDayEdit(forDate, path, blocks);
+		});
 	}
 
 	function handleSetTaskStatus(owner: Block, task: Task, status: TaskStatus) {
@@ -501,9 +584,17 @@
 	}
 
 	async function commitCreate(range: TimeRange) {
-		const file = app.workspace.getActiveFile();
-		if (!file) return;
-		const block = makeBlock(range, file.path);
+		// Create into the current day's note, making the note if it doesn't exist
+		// yet. `makeBlock` only needs the path for its SourceRef; a placeholder is
+		// fine because the block's identity is re-derived on the next reparse.
+		const forDate = date;
+		const path = notePath ?? (await ensureNoteForDate(forDate));
+		// The create may have awaited note-creation across a navigation. If the
+		// day changed underneath us, drop this block rather than land it on the
+		// wrong day's timeline.
+		if (date !== forDate) return;
+		notePath = path;
+		const block = makeBlock(range, path);
 		blocks = [...blocks, block]; // growing the array doesn't reorder existing ones
 		await writeToDisk();
 	}
@@ -549,10 +640,9 @@
 			resolve = r;
 		});
 
-		// Re-point at the newly active note. The index owns `modify` events now,
-		// so there's no vault listener here — genuine external edits arrive
-		// through the day store's subscription (see `adoptDay`).
-		const onOpen = app.workspace.on("file-open", () => retarget());
+		// The Day view no longer follows the active file — it owns its own date
+		// (defaulting to today, navigable via the header). Genuine external edits
+		// to the shown day arrive through the day store's subscription (adoptDay).
 		const tick = window.setInterval(() => {
 			nowMinutes = currentMinutes();
 		}, 60_000);
@@ -565,7 +655,6 @@
 		window.addEventListener("pointerup", up);
 
 		return () => {
-			app.workspace.offref(onOpen);
 			unsubscribeDay?.();
 			unsubscribeResolver();
 			window.clearInterval(tick);
@@ -586,7 +675,64 @@
 	onkeydown={onKeyDown}
 >
 	<div class="day-header">
-		<span class="day-date">{date || "—"}</span>
+		<div class="day-nav" bind:this={dateNavRef}>
+			<button
+				class="icon-btn nav-btn"
+				onclick={(e) => {
+					e.stopPropagation();
+					stepDay(-1);
+				}}
+				aria-label="Previous day"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+			</button>
+
+			<button
+				class="day-date"
+				class:today={isToday}
+				title="Click to pick a date · Ctrl+click to open the daily note"
+				onclick={(e) => {
+					e.stopPropagation();
+					void openDayNote(e);
+				}}
+			>
+				{dateLabel}
+			</button>
+
+			<button
+				class="icon-btn nav-btn"
+				onclick={(e) => {
+					e.stopPropagation();
+					stepDay(1);
+				}}
+				aria-label="Next day"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+			</button>
+
+			{#if !isToday}
+				<button
+					class="today-btn"
+					onclick={(e) => {
+						e.stopPropagation();
+						goToday();
+					}}
+				>
+					Today
+				</button>
+			{/if}
+
+			{#if showCalendar}
+				<div class="calendar-popup">
+					<Datepicker
+						inline
+						bind:value={calendarValue}
+						onselect={onCalendarSelect}
+					/>
+				</div>
+			{/if}
+		</div>
+
 		<span class="day-header-spacer"></span>
 		<span class="day-range-label">
 			{String(geo.startHour).padStart(2, "0")}:00–{String(geo.endHour).padStart(2, "0")}:00
@@ -644,11 +790,10 @@
 		</div>
 	</div>
 
-	{#if notePath === null}
-		<p class="day-empty">Open a daily note to see its schedule.</p>
-	{:else}
-		<div class="day-scroll">
-			<div class="day-body" style={`height: ${bodyHeight}px;`}>
+	<!-- The timeline always renders, even for a day with no note yet: creating a
+	     block on an empty day lazily creates the daily note (see writeToDisk). -->
+	<div class="day-scroll">
+		<div class="day-body" style={`height: ${bodyHeight}px;`}>
 				<!-- Hour gutter -->
 				<div class="day-gutter">
 					{#each hours as hour (hour)}
@@ -756,7 +901,6 @@
 				</div>
 			{/if}
 		</div>
-	{/if}
 </div>
 
 {#if pickerTarget && pickerAnchor}
@@ -784,11 +928,63 @@
 		flex-shrink: 0;
 	}
 
+	/* ── Day navigation (arrows + date label + calendar) ── */
+	.day-nav {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.nav-btn {
+		height: 24px;
+		width: 24px;
+	}
+
 	.day-date {
 		font-size: 12px;
 		font-weight: 600;
-		color: var(--text-muted);
+		color: var(--text-normal);
 		font-variant-numeric: tabular-nums;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		padding: 3px 8px;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.day-date:hover {
+		background: var(--background-modifier-hover);
+	}
+
+	/* When viewing today, tint the label with the accent so it's obvious. */
+	.day-date.today {
+		color: var(--interactive-accent);
+	}
+
+	.today-btn {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		background: var(--background-primary-alt);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 6px;
+		padding: 3px 8px;
+		cursor: pointer;
+	}
+
+	.today-btn:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
+	}
+
+	/* The inline calendar drops below the date label. */
+	.calendar-popup {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 100;
 	}
 
 	.day-header-spacer {
@@ -826,6 +1022,15 @@
 	.icon-btn:hover {
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
+	}
+
+	/* Some themes reset `svg { width: var(--icon-size) }`, and a CSS rule beats
+	   the inline width/height attributes — collapsing the icon to 0. Pin the size
+	   back explicitly and stop flex from shrinking it. */
+	.icon-btn svg {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
 	}
 
 	.controls-popup {
@@ -868,11 +1073,6 @@
 		text-align: center;
 	}
 
-	.day-empty {
-		color: var(--text-muted);
-		font-size: 13px;
-		padding: 8px 10px;
-	}
 
 	.day-scroll {
 		flex: 1;
