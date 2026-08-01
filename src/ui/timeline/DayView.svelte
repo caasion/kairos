@@ -2,7 +2,7 @@
 	import { TFile } from "obsidian";
 	import type { App } from "obsidian";
 	import { onMount } from "svelte";
-	import type { Unsubscriber } from "svelte/store";
+	import type { Readable, Unsubscriber } from "svelte/store";
 	import { resolveBlocks } from "../../resolver";
 	import type { KairosSettings } from "../../settings";
 	import type {
@@ -46,11 +46,18 @@
 	interface Props {
 		app: App;
 		index: KairosIndex;
-		settings: KairosSettings;
-		saveSettings: () => void;
+		// Reactive settings store: the plugin republishes it on every write, so a
+		// change from here, the Week view, or the settings tab reaches us live.
+		settings$: Readable<KairosSettings>;
+		// The one write path back to the plugin; it persists and republishes.
+		updateSettings: (mutate: (s: KairosSettings) => void) => void;
 	}
 
-	let { app, index, settings, saveSettings }: Props = $props();
+	let { app, index, settings$, updateSettings }: Props = $props();
+
+	// Local reactive view of the settings. `$store` auto-subscribes, so every
+	// derived below recomputes the instant the plugin republishes.
+	const settings = $derived($settings$);
 
 	// Live association resolver: re-tints tags when a project/domain file changes.
 	// Starts as a pass-through so the first render before subscription is neutral.
@@ -62,24 +69,8 @@
 		navigateToAssociation(app, resolve(assoc));
 	}
 
-	// `settings` is a plain (non-reactive) object shared with the plugin, so
-	// mutating a field on it doesn't trip Svelte's reactivity. This counter,
-	// bumped by every setter, is what the settings-derived values depend on so
-	// they recompute (and the popup inputs re-read) the moment a setting changes.
-	let settingsVersion = $state(0);
-	function touchSettings() {
-		settingsVersion++;
-		saveSettings();
-	}
-	// Read `settingsVersion` so any $derived calling this re-runs when a setting
-	// changes, then hand back the (plain, non-reactive) settings object to read.
-	function liveSettings(): typeof settings {
-		void settingsVersion;
-		return settings;
-	}
-
 	// Geometry follows the persisted hour-range / zoom settings, live.
-	const geo = $derived(geometryFromSettings(liveSettings()));
+	const geo = $derived(geometryFromSettings(settings));
 	const hours = $derived(visibleHours(geo));
 	const bodyHeight = $derived(gridHeight(geo));
 
@@ -89,21 +80,24 @@
 
 	function setStartHour(value: number) {
 		const v = Math.max(0, Math.min(23, Math.floor(value)));
-		settings.timelineStartHour = v;
-		if (settings.timelineEndHour <= v) settings.timelineEndHour = v + 1;
-		touchSettings();
+		updateSettings((s) => {
+			s.timelineStartHour = v;
+			if (s.timelineEndHour <= v) s.timelineEndHour = v + 1;
+		});
 	}
 
 	function setEndHour(value: number) {
 		const v = Math.max(1, Math.min(24, Math.floor(value)));
-		settings.timelineEndHour = v;
-		if (settings.timelineStartHour >= v) settings.timelineStartHour = v - 1;
-		touchSettings();
+		updateSettings((s) => {
+			s.timelineEndHour = v;
+			if (s.timelineStartHour >= v) s.timelineStartHour = v - 1;
+		});
 	}
 
 	function setHourHeight(value: number) {
-		settings.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
-		touchSettings();
+		updateSettings((s) => {
+			s.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
+		});
 	}
 
 	function handleClickOutside(event: MouseEvent) {

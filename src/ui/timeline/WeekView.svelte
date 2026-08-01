@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { App } from "obsidian";
 	import { onMount } from "svelte";
+	import type { Readable } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
 	import type { Association, Block, ISODate, Task } from "../../types";
 	import type { TimeRange } from "../../types";
@@ -27,33 +28,24 @@
 	interface Props {
 		app: App;
 		index: KairosIndex;
-		settings: KairosSettings;
-		saveSettings: () => void;
+		// Reactive settings store: the plugin republishes it on every write, so a
+		// change from here, the Day view, or the settings tab reaches us live.
+		settings$: Readable<KairosSettings>;
+		// The one write path back to the plugin; it persists and republishes.
+		updateSettings: (mutate: (s: KairosSettings) => void) => void;
 	}
 
-	let { app, index, settings, saveSettings }: Props = $props();
+	let { app, index, settings$, updateSettings }: Props = $props();
+
+	// Local reactive view of the settings. `$store` auto-subscribes, so every
+	// derived below recomputes the instant the plugin republishes.
+	const settings = $derived($settings$);
 
 	// Live association resolver (re-tints on project/domain file changes).
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
-	// `settings` is a plain (non-reactive) object shared with the plugin, so
-	// mutating a field on it doesn't trip Svelte's reactivity. This counter,
-	// bumped by every setter, is what the settings-derived values depend on so
-	// they recompute (and the popup inputs re-read) the moment a setting changes.
-	let settingsVersion = $state(0);
-	function touchSettings() {
-		settingsVersion++;
-		saveSettings();
-	}
-	// Read `settingsVersion` so any $derived calling this re-runs when a setting
-	// changes, then hand back the (plain, non-reactive) settings object to read.
-	function liveSettings(): typeof settings {
-		void settingsVersion;
-		return settings;
-	}
-
 	// Shared vertical geometry — one time axis for the whole week.
-	const geo = $derived(geometryFromSettings(liveSettings()));
+	const geo = $derived(geometryFromSettings(settings));
 	const hours = $derived(visibleHours(geo));
 	const bodyHeight = $derived(gridHeight(geo));
 
@@ -66,8 +58,8 @@
 		return Math.max(1, Math.min(7, Math.floor(n)));
 	}
 
-	const before = $derived(clampSpan(liveSettings().weekDaysBefore));
-	const after = $derived(clampSpan(liveSettings().weekDaysAfter));
+	const before = $derived(clampSpan(settings.weekDaysBefore));
+	const after = $derived(clampSpan(settings.weekDaysAfter));
 	const windowSize = $derived(before + after + 1); // inclusive of today
 
 	// The window's first day. Initialized to the today-relative default; arrows
@@ -138,27 +130,32 @@
 
 	function setStartHour(value: number) {
 		const v = Math.max(0, Math.min(23, Math.floor(value)));
-		settings.timelineStartHour = v;
-		if (settings.timelineEndHour <= v) settings.timelineEndHour = v + 1;
-		touchSettings();
+		updateSettings((s) => {
+			s.timelineStartHour = v;
+			if (s.timelineEndHour <= v) s.timelineEndHour = v + 1;
+		});
 	}
 	function setEndHour(value: number) {
 		const v = Math.max(1, Math.min(24, Math.floor(value)));
-		settings.timelineEndHour = v;
-		if (settings.timelineStartHour >= v) settings.timelineStartHour = v - 1;
-		touchSettings();
+		updateSettings((s) => {
+			s.timelineEndHour = v;
+			if (s.timelineStartHour >= v) s.timelineStartHour = v - 1;
+		});
 	}
 	function setHourHeight(value: number) {
-		settings.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
-		touchSettings();
+		updateSettings((s) => {
+			s.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
+		});
 	}
 	function setDaysBefore(value: number) {
-		settings.weekDaysBefore = clampSpan(value);
-		touchSettings();
+		updateSettings((s) => {
+			s.weekDaysBefore = clampSpan(value);
+		});
 	}
 	function setDaysAfter(value: number) {
-		settings.weekDaysAfter = clampSpan(value);
-		touchSettings();
+		updateSettings((s) => {
+			s.weekDaysAfter = clampSpan(value);
+		});
 	}
 
 	function handleClickOutside(event: MouseEvent) {

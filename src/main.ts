@@ -1,4 +1,6 @@
 import { MarkdownView, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { writable } from 'svelte/store';
+import type { Readable } from 'svelte/store';
 import { DEFAULT_SETTINGS, KairosSettingTab } from './settings';
 import type { KairosSettings } from './settings';
 import { parseSchedule } from './parser';
@@ -16,7 +18,22 @@ function dateFromBasename(basename: string): ISODate {
 }
 
 export default class Kairos extends Plugin {
+	/**
+	 * The canonical settings object. Synchronous, non-UI code (the index, path
+	 * helpers, layout math) reads this directly. It is also what gets persisted.
+	 * The UI must NOT read this for reactivity — it reads `settings$` instead, so
+	 * a change reaches every open view (and the settings tab) live. `updateSettings`
+	 * is the one write path that keeps the two in sync.
+	 */
 	settings!: KairosSettings;
+	/**
+	 * Reactive mirror of `settings` for the UI. Every write goes through
+	 * `updateSettings`, which mutates `settings`, persists, and republishes here,
+	 * so all subscribed views re-derive at once — regardless of which view or the
+	 * settings tab made the change.
+	 */
+	settings$!: Readable<KairosSettings>;
+	private setSettings!: (s: KairosSettings) => void;
 	/** The live index. Views read from `plugin.index.index`. */
 	indexAdapter!: IndexAdapter;
 
@@ -172,9 +189,25 @@ export default class Kairos extends Plugin {
 			DEFAULT_SETTINGS,
 			(await this.loadData()) as Partial<KairosSettings>,
 		);
+		const store = writable(this.settings);
+		this.settings$ = { subscribe: store.subscribe };
+		this.setSettings = store.set;
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		// Republish so subscribed UI re-derives. A fresh object identity guarantees
+		// the store notifies even though `settings` was mutated in place.
+		this.setSettings({ ...this.settings });
+	}
+
+	/**
+	 * The one write path for settings from the UI. Mutate the canonical object in
+	 * `mutate`, then persist + republish so every subscriber updates live. Prefer
+	 * this over touching `settings` directly followed by `saveSettings`.
+	 */
+	async updateSettings(mutate: (s: KairosSettings) => void) {
+		mutate(this.settings);
+		await this.saveSettings();
 	}
 }

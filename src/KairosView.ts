@@ -3,6 +3,7 @@ import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import DayView from "./ui/timeline/DayView.svelte";
 import type Kairos from "./main";
+import type { KairosSettings } from "./settings";
 
 export const KAIROS_VIEW_TYPE = "kairos-day-view";
 
@@ -39,8 +40,9 @@ export class KairosView extends ItemView {
 			props: {
 				app: this.app,
 				index: this.plugin.indexAdapter.index,
-				settings: this.plugin.settings,
-				saveSettings: () => void this.plugin.saveSettings(),
+				settings$: this.plugin.settings$,
+				updateSettings: (mutate: (s: KairosSettings) => void) =>
+					void this.plugin.updateSettings(mutate),
 			},
 		});
 	}

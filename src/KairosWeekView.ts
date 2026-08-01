@@ -3,6 +3,7 @@ import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import WeekView from "./ui/timeline/WeekView.svelte";
 import type Kairos from "./main";
+import type { KairosSettings } from "./settings";
 
 export const KAIROS_WEEK_VIEW_TYPE = "kairos-week-view";
 
@@ -40,8 +41,9 @@ export class KairosWeekView extends ItemView {
 			props: {
 				app: this.app,
 				index: this.plugin.indexAdapter.index,
-				settings: this.plugin.settings,
-				saveSettings: () => void this.plugin.saveSettings(),
+				settings$: this.plugin.settings$,
+				updateSettings: (mutate: (s: KairosSettings) => void) =>
+					void this.plugin.updateSettings(mutate),
 			},
 		});
 	}
