@@ -26,10 +26,10 @@ import type {
   TaskStatus,
   TimeRange,
 } from "./types";
+import { DEFAULT_HEADING, headingMatcher } from "./section";
 
 // ─── configuration ─────────────────────────────────────────────
 
-const SCHEDULE_HEADING = /^#{1,6}\s+Schedule\s*$/;
 const UNSCHEDULED_TITLE = /^unscheduled$/i;
 
 // A list item, capturing indentation, optional checkbox, and the remainder.
@@ -56,10 +56,14 @@ const TRAILING_PAREN = /\s*\(([^)]*)\)\s*$/;
  * @param path      note path, recorded in every SourceRef
  * @returns         the blocks in document order (empty if no Schedule section)
  */
-function parseSchedule(markdown: string, path: string): Block[] {
+function parseSchedule(
+  markdown: string,
+  path: string,
+  heading: string = DEFAULT_HEADING,
+): Block[] {
   const lines = markdown.split(/\r?\n/);
 
-  const start = findScheduleStart(lines);
+  const start = findScheduleStart(lines, heading);
   if (start === -1) return [];
 
   const blocks: Block[] = [];
@@ -252,9 +256,10 @@ function toMinutes(h: string | undefined, min: string | undefined): number | und
 
 // ─── helpers ───────────────────────────────────────────────────
 
-function findScheduleStart(lines: string[]): number {
+function findScheduleStart(lines: string[], heading: string): number {
+  const matcher = headingMatcher(heading);
   for (let i = 0; i < lines.length; i++) {
-    if (SCHEDULE_HEADING.test(lines[i] ?? "")) return i + 1;
+    if (matcher.test(lines[i] ?? "")) return i + 1;
   }
   return -1;
 }

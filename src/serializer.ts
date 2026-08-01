@@ -25,10 +25,10 @@
 // paper over; such titles are emitted verbatim.
 
 import type { Association, Block, Task, TaskStatus } from "./types";
+import { DEFAULT_HEADING, normalizeHeading } from "./section";
 
 // ─── configuration ─────────────────────────────────────────────
 
-const SCHEDULE_HEADING = "## Schedule";
 const INDENT = "\t"; // one nesting step for tasks under a block
 
 // ─── public API ────────────────────────────────────────────────
@@ -36,11 +36,12 @@ const INDENT = "\t"; // one nesting step for tasks under a block
 /**
  * Serialize blocks into a full Schedule section, heading included.
  *
- * @param blocks  blocks in document order
- * @returns       markdown text ending with a trailing newline
+ * @param blocks   blocks in document order
+ * @param heading  the section heading with hashtags (default "## Schedule")
+ * @returns        markdown text ending with a trailing newline
  */
-function serialize(blocks: Block[]): string {
-  const lines: string[] = [SCHEDULE_HEADING, ""];
+function serialize(blocks: Block[], heading: string = DEFAULT_HEADING): string {
+  const lines: string[] = [normalizeHeading(heading), ""];
   for (const block of blocks) {
     for (const line of serializeBlock(block)) lines.push(line);
   }

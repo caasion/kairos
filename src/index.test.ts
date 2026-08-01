@@ -27,6 +27,7 @@ const PATHS: IndexPaths = {
 	projectsFolder: "Projects",
 	domainsFolder: "Domains",
 	backlogPath: "Backlog.md",
+	scheduleHeading: "## Schedule",
 };
 
 const dayPath = (date: string) => `Daily/${date}.md`;
@@ -237,7 +238,7 @@ describe("KairosIndex", () => {
 		expect(writes).toHaveLength(0);
 	});
 
-	it("debounces the file write after applyDayEdit", () => {
+	it("debounces the file write after applyDayEdit", async () => {
 		const idx = new KairosIndex(deps);
 		idx.seed([]);
 		const path = dayPath("2026-07-31");
@@ -251,11 +252,46 @@ describe("KairosIndex", () => {
 			path,
 			parseSchedule(note("- 09:00 - 10:00 B"), path),
 		);
-		vi.advanceTimersByTime(500);
+		// The write now reads-then-splices, so it settles a microtask after the
+		// debounce fires; let that async work flush before asserting.
+		await vi.advanceTimersByTimeAsync(500);
 		// Coalesced into one write of the latest content.
 		expect(writes).toHaveLength(1);
 		expect(writes[0]?.content).toContain("B");
 		expect(writes[0]?.content).not.toContain("- 09:00 - 10:00 A\n");
+	});
+
+	it("splices the section on write, preserving other note content", async () => {
+		// A note with frontmatter + prose + a trailing Notes section around the
+		// Schedule. The write must touch only the Schedule section.
+		const existing =
+			"---\ntags: [daily]\n---\n\n## Schedule\n\n- 08:00 - 09:00 Old\n\n## Notes\n\nkeep me\n";
+		let file = existing;
+		const spliceDeps: IndexDeps = {
+			read: async () => file,
+			write: async (_path, content) => {
+				file = content;
+			},
+			now: () => 1000,
+			settings: PATHS,
+			writeDebounceMs: 500,
+		};
+		const idx = new KairosIndex(spliceDeps);
+		const path = dayPath("2026-07-31");
+		idx.seed([{ path, content: existing, mtime: 1 }]);
+
+		idx.applyDayEdit(
+			"2026-07-31",
+			path,
+			parseSchedule(note("- 09:00 - 10:00 New"), path),
+		);
+		await vi.advanceTimersByTimeAsync(500);
+
+		expect(file).toContain("tags: [daily]");
+		expect(file).toContain("- 09:00 - 10:00 New");
+		expect(file).not.toContain("Old");
+		expect(file).toContain("## Notes");
+		expect(file).toContain("keep me");
 	});
 
 	it("drops an echo: a modify matching the schedule notifies no one", () => {

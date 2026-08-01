@@ -53,6 +53,7 @@ export class IndexAdapter {
 					projectsFolder: s.projectsFolder,
 					domainsFolder: s.domainsFolder,
 					backlogPath: s.backlogPath,
+					scheduleHeading: s.scheduleHeading,
 				};
 			},
 			writeDebounceMs: 500,

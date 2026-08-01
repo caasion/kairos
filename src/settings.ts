@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import Kairos from './main';
+import { DEFAULT_HEADING, normalizeHeading } from './section';
 
 export interface KairosSettings {
 	/** First hour shown in the Day timeline (0–23). */
@@ -15,6 +16,13 @@ export interface KairosSettings {
 	domainsFolder: string;
 	/** Vault path to the single global backlog file. */
 	backlogPath: string;
+
+	/**
+	 * The daily-note section heading Kairos reads and writes, given verbatim with
+	 * its hashtags so the user controls both the title and the heading level
+	 * (e.g. "## Schedule", "# My Day", "### Plan").
+	 */
+	scheduleHeading: string;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -24,6 +32,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	projectsFolder: 'Projects',
 	domainsFolder: 'Domains',
 	backlogPath: 'Backlog.md',
+	scheduleHeading: '## Schedule',
 };
 
 export class KairosSettingTab extends PluginSettingTab {
@@ -89,6 +98,27 @@ export class KairosSettingTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.timelineHourHeight = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl).setName('Daily notes').setHeading();
+
+		new Setting(containerEl)
+			.setName('Schedule section heading')
+			.setDesc(
+				'The daily-note heading Kairos reads and writes. Include the ' +
+					'hashtags so you control the heading level (e.g. "## Schedule").',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_HEADING)
+					.setValue(this.plugin.settings.scheduleHeading)
+					.onChange(async (value) => {
+						// Store the canonical form; an empty/invalid entry falls back
+						// to the default so the engine always has a usable heading.
+						this.plugin.settings.scheduleHeading =
+							normalizeHeading(value);
 						await this.plugin.saveSettings();
 					}),
 			);

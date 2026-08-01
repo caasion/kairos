@@ -8,10 +8,10 @@
 // correct — there is exactly one code path from `Block[]` to disk, shared by
 // move, resize, create, and delete.
 //
-// Boundaries mirror the parser exactly (see `parser.ts`):
-//   - the section starts on the line after the first `#{1,6} Schedule` heading
-//   - it ends at the next heading line (`#{1,6} …`), or end-of-file
-// so the range this module replaces is the same range the parser reads.
+// Boundaries mirror the parser exactly: both the splice (in `section.ts`) and
+// the parser locate the section by the configured heading and end it at the
+// next heading (or EOF), so the range this module replaces is the same range
+// the parser reads.
 //
 // Blocks are kept ordered by time on every write, matching spec §4.1 ("move
 // rewrites the file so that entries stay ordered by time"). Untimed blocks
@@ -19,12 +19,8 @@
 
 import type { TFile, Vault } from "obsidian";
 import { serialize } from "./serializer";
+import { DEFAULT_HEADING, spliceSection } from "./section";
 import type { Block, SourceRef, Task, TaskStatus, TimeRange } from "./types";
-
-// Matches the parser's heading regexes. `SCHEDULE_HEADING` finds the section;
-// `ANY_HEADING` finds where it ends.
-const SCHEDULE_HEADING = /^#{1,6}\s+Schedule\s*$/;
-const ANY_HEADING = /^#{1,6}\s/;
 
 const DEFAULT_BLOCK_TITLE = "New block";
 
@@ -55,13 +51,14 @@ export async function writeSchedule(
   vault: Vault,
   file: TFile,
   blocks: Block[],
+  heading: string = DEFAULT_HEADING,
 ): Promise<WriteResult> {
   const ordered = sortForWrite(blocks);
-  const section = serialize(ordered); // includes the "## Schedule" heading
+  const section = serialize(ordered, heading); // the heading block, trailing \n
 
   let written = "";
   await vault.process(file, (text) => {
-    written = spliceSection(text, section);
+    written = spliceSection(text, section, heading);
     return written;
   });
 
@@ -283,71 +280,7 @@ export function makeBlock(
   };
 }
 
-// ─── section splicing ──────────────────────────────────────────
-
-/**
- * Replace the Schedule section of `text` with `section` (which is itself a
- * complete "## Schedule …" block with a trailing newline). If there is no
- * Schedule section, append one after a blank-line separator.
- *
- * Returns the full new file text.
- */
-function spliceSection(text: string, section: string): string {
-  const lines = text.split(/\r?\n/);
-  const bounds = sectionBounds(lines);
-
-  if (!bounds) {
-    // No section yet: append, keeping a blank line between existing content and
-    // the new heading (unless the file is empty).
-    const trimmed = text.replace(/\s*$/, "");
-    const prefix = trimmed.length > 0 ? trimmed + "\n\n" : "";
-    return prefix + section;
-  }
-
-  const before = lines.slice(0, bounds.headingLine);
-  const after = lines.slice(bounds.end);
-
-  // `section` ends with a newline; splitting it drops the trailing empty entry.
-  const sectionLines = section.replace(/\n$/, "").split("\n");
-
-  // Keep a single blank line between the section and whatever heading follows,
-  // so the rewrite doesn't butt the section straight up against the next "##".
-  if (after.length > 0 && ANY_HEADING.test(after[0] ?? "")) {
-    sectionLines.push("");
-  }
-
-  return [...before, ...sectionLines, ...after].join("\n");
-}
-
-interface SectionBounds {
-  headingLine: number; // index of the "## Schedule" line
-  end: number; // index one past the last line of the section
-}
-
-/**
- * Find the Schedule section's line range: from its heading through the line
- * before the next heading (or EOF).
- */
-function sectionBounds(lines: string[]): SectionBounds | undefined {
-  let headingLine = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (SCHEDULE_HEADING.test(lines[i] ?? "")) {
-      headingLine = i;
-      break;
-    }
-  }
-  if (headingLine === -1) return undefined;
-
-  let end = lines.length;
-  for (let i = headingLine + 1; i < lines.length; i++) {
-    if (ANY_HEADING.test(lines[i] ?? "")) {
-      end = i;
-      break;
-    }
-  }
-
-  return { headingLine, end };
-}
+// Section splicing lives in section.ts (shared with the index write path).
 
 // ─── ordering ──────────────────────────────────────────────────
 

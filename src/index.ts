@@ -36,6 +36,7 @@ import type {
 } from "./types";
 import { parseSchedule } from "./parser";
 import { serialize } from "./serializer";
+import { DEFAULT_HEADING, spliceSection } from "./section";
 import { resolveBlocks } from "./resolver";
 import { parseDomain, parseProject } from "./projectFile";
 import { resolveAssociation } from "./association";
@@ -48,11 +49,13 @@ export type Resolver = (assoc: Association) => ResolvedAssociation;
 
 // ─── file routing ──────────────────────────────────────────────
 
-/** Folders/paths that route non-day files. */
+/** Folders/paths that route non-day files, plus the schedule-section heading. */
 export interface IndexPaths {
 	projectsFolder: string;
 	domainsFolder: string;
 	backlogPath: string;
+	/** The daily-note section heading Kairos reads/writes, e.g. "## Schedule". */
+	scheduleHeading: string;
 }
 
 export type FileKind =
@@ -140,12 +143,13 @@ export function reindexDay(
 	date: ISODate,
 	content: string,
 	mtime: number,
+	heading: string = DEFAULT_HEADING,
 ): IndexState {
 	const day: Day = {
 		date,
 		path,
 		mtime,
-		blocks: parseSchedule(content, path),
+		blocks: parseSchedule(content, path, heading),
 	};
 	const days = new Map(state.days);
 	days.set(date, day);
@@ -315,7 +319,14 @@ export class KairosIndex {
 			const what = classify(f.path, this.deps.settings);
 			switch (what.kind) {
 				case "day":
-					state = reindexDay(state, f.path, what.date, f.content, f.mtime);
+					state = reindexDay(
+						state,
+						f.path,
+						what.date,
+						f.content,
+						f.mtime,
+						this.deps.settings.scheduleHeading,
+					);
 					break;
 				case "project":
 					state = reindexProject(state, f.path, f.content);
@@ -401,14 +412,15 @@ export class KairosIndex {
 		// mtime gate: ignore stale echoes older than what we already hold.
 		if (prev && mtime !== 0 && prev.mtime > mtime) return;
 
-		const nextBlocks = parseSchedule(content, path);
+		const heading = this.deps.settings.scheduleHeading;
+		const nextBlocks = parseSchedule(content, path, heading);
 		// Echo-dedup: identical schedule ⇒ nothing the UI cares about changed.
 		if (prev && daySignature(prev.blocks) === daySignature(nextBlocks)) {
 			if (mtime !== 0) prev.mtime = mtime; // keep gating accurate
 			return;
 		}
 
-		this.state = reindexDay(this.state, path, date, content, mtime);
+		this.state = reindexDay(this.state, path, date, content, mtime, heading);
 		this.publishDay(date);
 		// A day's tasks feed project/domain views, so refresh those too.
 		this.publishProjectsAndDomains();
@@ -464,13 +476,34 @@ export class KairosIndex {
 
 		const timer = setTimeout(() => {
 			this.writeTimers.delete(date);
-			// Serialize the *latest* blocks for this date, not a stale closure.
-			const latest = this.state.days.get(date);
-			if (!latest) return;
-			void this.deps.write(path, serialize(latest.blocks));
+			void this.writeDay(date, path);
 		}, this.deps.writeDebounceMs);
 
 		this.writeTimers.set(date, timer);
+	}
+
+	/**
+	 * Persist a day by splicing its Schedule section into the note's existing
+	 * text, leaving frontmatter, prose, and other headings untouched. Reads the
+	 * current file first (empty string if it doesn't exist yet, so a brand-new
+	 * note gets just the section). Serializes the *latest* blocks, not a stale
+	 * closure, so a burst of edits collapses to one correct write.
+	 */
+	private async writeDay(date: ISODate, path: string): Promise<void> {
+		const latest = this.state.days.get(date);
+		if (!latest) return;
+		const heading = this.deps.settings.scheduleHeading;
+		const section = serialize(latest.blocks, heading);
+
+		let current = "";
+		try {
+			current = await this.deps.read(path);
+		} catch {
+			// No file yet — splice into empty text yields just the section, which
+			// the adapter's write creates.
+		}
+
+		await this.deps.write(path, spliceSection(current, section, heading));
 	}
 
 	/** Cancel timers so unload/stop leaks nothing. */
