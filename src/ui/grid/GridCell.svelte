@@ -97,7 +97,6 @@
 
 <div class="grid-cell" class:drag-active={dragActive} data-grid-date={date}>
 	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
-		{@const r = task.owner ? resolve(task.owner) : undefined}
 		{#if dropIndex === i}
 			<div class="grid-drop-line"></div>
 		{/if}
@@ -109,22 +108,28 @@
 			<Task_
 				{task}
 				{color}
-				association={task.owner}
-				inherited={task.assoc === undefined && task.owner !== undefined}
-				resolved={r}
-				onNavigate={() => task.owner && onNavigate(task.owner)}
-				onEditAssoc={(rect) => onEditAssoc(task, rect)}
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
-				onGrab={onTaskGrab ? (e) => grabOf(task, e) : undefined}
+				onGrab={onTaskGrab && !task.colocated ? (e) => grabOf(task, e) : undefined}
 			/>
 
-			{#if isNested(task)}
-				<!-- Block badge: what block this task borrows time from. Click jumps
-				     to the Day view. A genuine nested task can be unnested; a
-				     colocated task (a checkable block's own line) cannot — it IS a
-				     block, removed by deleting the block in the timeline. -->
+			{#if task.colocated}
+				<!-- Colocated = a checkable block. Show a clock-badge with the block
+				     time so it's clear this item is anchored to a scheduled block.
+				     Not draggable — move the block from the timeline instead. -->
+				<div class="grid-cell-badge-row">
+					<button
+						class="grid-cell-badge grid-cell-badge-block"
+						title="Open in Day view"
+						onclick={() => onReveal(task)}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+						<span class="grid-cell-badge-label">{badgeLabel(task)}</span>
+					</button>
+				</div>
+			{:else if isNested(task)}
+				<!-- Nested task: show the block time badge + unnest button. -->
 				<div class="grid-cell-badge-row">
 					<button
 						class="grid-cell-badge"
@@ -134,16 +139,14 @@
 						<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
 						<span class="grid-cell-badge-label">{badgeLabel(task)}</span>
 					</button>
-					{#if !task.colocated}
-						<button
-							class="grid-cell-unnest"
-							title="Unnest — move to Unscheduled"
-							aria-label="Unnest task"
-							onclick={() => onUnnest(task)}
-						>
-							<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-						</button>
-					{/if}
+					<button
+						class="grid-cell-unnest"
+						title="Unnest — move to Unscheduled"
+						aria-label="Unnest task"
+						onclick={() => onUnnest(task)}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+					</button>
 				</div>
 			{/if}
 		</div>
@@ -270,6 +273,23 @@
 	.grid-cell-badge:hover {
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+	}
+
+	/* Colocated block badge gets a slightly warmer tint to distinguish it
+	   from a plain nested-task time badge. */
+	.grid-cell-badge-block {
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 12%,
+			var(--background-modifier-border)
+		);
+	}
+	.grid-cell-badge-block:hover {
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 20%,
+			var(--background-modifier-border)
+		);
 	}
 	.grid-cell-badge svg {
 		flex-shrink: 0;

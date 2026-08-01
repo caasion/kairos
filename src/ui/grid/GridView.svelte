@@ -3,15 +3,14 @@
 	//
 	// Layout: rows = associations (projects, then domains, then unassigned),
 	// columns = the visible days, cells = the tasks associated with that row on
-	// that day. A domain row can be expanded into one row per child project plus
-	// a "direct" row for tasks tagged straight at the domain.
+	// that day. Domains are always fully expanded — every child project and the
+	// domain-direct row are always visible, no collapse state.
 	//
 	// Data comes from the index's reactive `grid(dates)` feed; the row model
 	// (buildRows / cellTasks) is pure and lives in gridModel.ts. This component
-	// owns the day window, the expand state, the association picker, and the
-	// edit → index write routing. Every task write rebuilds the affected day's
-	// blocks with a pure writer transform and commits via `applyDayEdit`, exactly
-	// like the timeline views — one write path from blocks to disk.
+	// owns the day window, the association picker, and the edit → index write
+	// routing. Every task write rebuilds the affected day's blocks with a pure
+	// writer transform and commits via `applyDayEdit`, exactly like the timeline.
 
 	import type { App } from "obsidian";
 	import { onMount } from "svelte";
@@ -136,30 +135,8 @@
 
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
-	// ── Expand-domains ──
-	// A global toggle seeds every domain as expanded; individual domains can then
-	// be collapsed/expanded from their row. `expanded` holds the domain ids that
-	// are currently open.
-	let expandAll = $state(false);
-	let expanded = $state<Set<string>>(new Set());
-
-	function toggleExpandAll() {
-		expandAll = !expandAll;
-		if (expandAll && snapshot) {
-			expanded = new Set([...snapshot.domains.values()].map((d) => d.id));
-		} else {
-			expanded = new Set();
-		}
-	}
-	function toggleDomain(domainId: string) {
-		const next = new Set(expanded);
-		if (next.has(domainId)) next.delete(domainId);
-		else next.add(domainId);
-		expanded = next;
-	}
-
 	const rows = $derived<GridRow[]>(
-		snapshot ? buildRows(snapshot, expanded) : [],
+		snapshot ? buildRows(snapshot) : [],
 	);
 
 	function tasksFor(row: GridRow, day: GridDay): ResolvedTask[] {
@@ -494,19 +471,6 @@
 
 		<span class="grid-header-spacer"></span>
 
-		<button
-			class="toggle-btn"
-			class:active={expandAll}
-			title="Expand domains into their projects"
-			onclick={(e) => {
-				e.stopPropagation();
-				toggleExpandAll();
-			}}
-		>
-			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-			<span>Expand domains</span>
-		</button>
-
 		<div class="controls-wrap" bind:this={controlsRef}>
 			<button
 				class="icon-btn"
@@ -559,19 +523,6 @@
 					class:domain={row.kind === "domain"}
 					class:unassigned={row.kind === "unassigned"}
 				>
-					{#if row.kind === "domain"}
-						<button
-							class="expand-caret"
-							class:open={row.expanded}
-							aria-label={row.expanded ? "Collapse" : "Expand"}
-							onclick={(e) => {
-								e.stopPropagation();
-								toggleDomain(row.domainId);
-							}}
-						>
-							<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-						</button>
-					{/if}
 					{#if row.kind !== "unassigned"}
 						<span
 							class="row-accent"
@@ -580,7 +531,8 @@
 					{/if}
 					<span class="row-name" title={row.name}>{row.name}</span>
 					{#if row.kind === "domain"}
-						<span class="row-tag">domain</span>
+						<!-- Domain icon — matches the association tag icon in task rows. -->
+						<svg class="row-kind-icon" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
 					{/if}
 				</div>
 
@@ -593,7 +545,7 @@
 								{resolve}
 								{date}
 								color={"color" in row ? row.color : undefined}
-								allowCreate={row.kind !== "unassigned" && row.kind !== "domain" ? true : row.kind === "domain" && !row.expanded}
+								allowCreate={row.kind !== "unassigned" && row.kind !== "domain"}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
 								onDelete={onDelete}
@@ -711,35 +663,6 @@
 
 	.grid-header-spacer {
 		flex: 1;
-	}
-
-	.toggle-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 12px;
-		color: var(--text-muted);
-		background: var(--background-primary-alt);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		padding: 4px 8px;
-		cursor: pointer;
-	}
-	.toggle-btn:hover {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-	}
-	.toggle-btn.active {
-		color: var(--text-on-accent);
-		background: var(--interactive-accent);
-		border-color: var(--interactive-accent);
-	}
-	.toggle-btn svg {
-		flex-shrink: 0;
-		transition: transform 0.12s;
-	}
-	.toggle-btn.active svg {
-		transform: rotate(180deg);
 	}
 
 	.controls-wrap {
@@ -880,29 +803,6 @@
 		font-style: italic;
 	}
 
-	.expand-caret {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 16px;
-		height: 16px;
-		padding: 0;
-		border: none;
-		background: transparent;
-		color: var(--text-muted);
-		cursor: pointer;
-		flex-shrink: 0;
-	}
-	.expand-caret svg {
-		transition: transform 0.12s;
-	}
-	.expand-caret.open svg {
-		transform: rotate(90deg);
-	}
-	.expand-caret:hover {
-		color: var(--text-normal);
-	}
-
 	.row-accent {
 		width: 3px;
 		height: 16px;
@@ -921,12 +821,9 @@
 		text-overflow: ellipsis;
 	}
 
-	.row-tag {
-		font-size: 9px;
-		text-transform: uppercase;
-		letter-spacing: 0.4px;
-		color: var(--text-faint);
+	.row-kind-icon {
 		flex-shrink: 0;
+		color: var(--text-faint);
 	}
 
 	.grid-datacell {

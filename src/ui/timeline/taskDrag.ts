@@ -118,7 +118,7 @@ export interface GridDropSlot {
 export function hitTestGridCell(event: PointerEvent): GridDropSlot | null {
   const el = document.elementFromPoint(event.clientX, event.clientY);
   if (!el) return null;
-
+  
   const cell = el.closest<HTMLElement>("[data-grid-date]");
   if (!cell) return null;
   const date = cell.dataset.gridDate;
