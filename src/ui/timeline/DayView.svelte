@@ -43,17 +43,27 @@
 		visibleHours,
 	} from "./layout";
 
+	// A request to reveal a block, pushed by the Grid's block badge. Kept minimal
+	// and local to avoid importing from main.ts (which imports this view).
+	interface RevealRequest {
+		date: ISODate;
+		blockLine: number;
+		nonce: number;
+	}
+
 	interface Props {
 		app: App;
 		index: KairosIndex;
 		// Reactive settings store: the plugin republishes it on every write, so a
 		// change from here, the Week view, or the settings tab reaches us live.
 		settings$: Readable<KairosSettings>;
+		// Cross-view reveal channel (Grid badge → jump + scroll to a block).
+		reveal$: Readable<RevealRequest | null>;
 		// The one write path back to the plugin; it persists and republishes.
 		updateSettings: (mutate: (s: KairosSettings) => void) => void;
 	}
 
-	let { app, index, settings$, updateSettings }: Props = $props();
+	let { app, index, settings$, reveal$, updateSettings }: Props = $props();
 
 	// Local reactive view of the settings. `$store` auto-subscribes, so every
 	// derived below recomputes the instant the plugin republishes.
@@ -187,6 +197,34 @@
 
 	function goToday() {
 		goToDate(todayISO());
+	}
+
+	// ── Cross-view reveal (Grid block badge → here) ──────────────────
+	// A request navigates to its date (if different) and scrolls the block into
+	// view + flashes it. Nonce-guarded so a repeat click on the same block still
+	// fires. The scroll waits a frame so the block DOM exists after a date change.
+	let lastRevealNonce = -1;
+	let scrollEl = $state<HTMLDivElement>();
+
+	function handleReveal(req: RevealRequest | null) {
+		if (!req || req.nonce === lastRevealNonce) return;
+		lastRevealNonce = req.nonce;
+		if (req.date !== date) goToDate(req.date);
+		const line = req.blockLine;
+		// Two rAFs: one for the date-change render, one for layout to settle.
+		requestAnimationFrame(() =>
+			requestAnimationFrame(() => scrollToBlock(line)),
+		);
+	}
+
+	function scrollToBlock(line: number) {
+		const el = scrollEl?.querySelector<HTMLElement>(
+			`[data-block-line="${line}"]`,
+		);
+		if (!el) return;
+		el.scrollIntoView({ behavior: "smooth", block: "center" });
+		el.classList.add("reveal-flash");
+		window.setTimeout(() => el.classList.remove("reveal-flash"), 1200);
 	}
 
 	function stepDay(delta: number) {
@@ -688,6 +726,9 @@
 			resolve = r;
 		});
 
+		// React to Grid block-badge clicks: jump to the date + scroll to the block.
+		const unsubscribeReveal = reveal$.subscribe((req) => handleReveal(req));
+
 		// The Day view no longer follows the active file — it owns its own date
 		// (defaulting to today, navigable via the header). Genuine external edits
 		// to the shown day arrive through the day store's subscription (adoptDay).
@@ -705,6 +746,7 @@
 		return () => {
 			unsubscribeDay?.();
 			unsubscribeResolver();
+			unsubscribeReveal();
 			window.clearInterval(tick);
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
@@ -840,7 +882,7 @@
 
 	<!-- The timeline always renders, even for a day with no note yet: creating a
 	     block on an empty day lazily creates the daily note (see writeToDisk). -->
-	<div class="day-scroll">
+	<div class="day-scroll" bind:this={scrollEl}>
 		<div class="day-body" style={`height: ${bodyHeight}px;`}>
 				<!-- Hour gutter -->
 				<div class="day-gutter">
@@ -968,6 +1010,21 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+	}
+
+	/* A brief highlight on a block revealed from the Grid's badge click. `:global`
+	   because the class is toggled on a TimelineBlock's root (a child component). */
+	:global(.tl-block.reveal-flash) {
+		animation: reveal-flash 1.2s ease-out;
+	}
+	@keyframes reveal-flash {
+		0%,
+		40% {
+			box-shadow: 0 0 0 2px var(--interactive-accent);
+		}
+		100% {
+			box-shadow: 0 0 0 0 transparent;
+		}
 	}
 
 	.day-header {

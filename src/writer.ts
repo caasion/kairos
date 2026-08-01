@@ -20,7 +20,14 @@
 import type { TFile, Vault } from "obsidian";
 import { serialize } from "./serializer";
 import { DEFAULT_HEADING, spliceSection } from "./section";
-import type { Block, SourceRef, Task, TaskStatus, TimeRange } from "./types";
+import type {
+  Association,
+  Block,
+  SourceRef,
+  Task,
+  TaskStatus,
+  TimeRange,
+} from "./types";
 
 const DEFAULT_BLOCK_TITLE = "New block";
 

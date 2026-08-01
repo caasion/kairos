@@ -304,6 +304,7 @@
   class="tl-block"
   class:selected
   class:dragging
+  data-block-line={block.source.line}
   bind:this={blockEl}
   style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}

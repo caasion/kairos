@@ -1,6 +1,6 @@
 import { MarkdownView, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
 import { writable } from 'svelte/store';
-import type { Readable } from 'svelte/store';
+import type { Readable, Writable } from 'svelte/store';
 import { DEFAULT_SETTINGS, KairosSettingTab } from './settings';
 import type { KairosSettings } from './settings';
 import { parseSchedule } from './parser';
@@ -8,6 +8,7 @@ import { resolveBlocks } from './resolver';
 import type { ISODate } from './types';
 import { KAIROS_VIEW_TYPE, KairosView } from './KairosView';
 import { KAIROS_WEEK_VIEW_TYPE, KairosWeekView } from './KairosWeekView';
+import { KAIROS_GRID_VIEW_TYPE, KairosGridView } from './KairosGridView';
 import { IndexAdapter } from './indexAdapter';
 
 // Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
@@ -15,6 +16,19 @@ import { IndexAdapter } from './indexAdapter';
 function dateFromBasename(basename: string): ISODate {
 	const m = /(\d{4}-\d{2}-\d{2})/.exec(basename);
 	return m?.[1] ?? basename;
+}
+
+/**
+ * A request to reveal a specific block in the Day view. Pushed by the Grid view
+ * when a scheduled task's block badge is clicked; consumed by the Day view,
+ * which navigates to `date` and scrolls the block (identified by its source
+ * `line`) into view. `nonce` makes two requests for the same target distinct,
+ * so a repeat click still notifies subscribers.
+ */
+export interface RevealRequest {
+	date: ISODate;
+	blockLine: number;
+	nonce: number;
 }
 
 export default class Kairos extends Plugin {
@@ -36,9 +50,23 @@ export default class Kairos extends Plugin {
 	private setSettings!: (s: KairosSettings) => void;
 	/** The live index. Views read from `plugin.index.index`. */
 	indexAdapter!: IndexAdapter;
+	/**
+	 * Cross-view reveal channel. The Grid pushes a `RevealRequest` here (via
+	 * `revealInDayView`); the Day view subscribes and jumps + scrolls to the
+	 * block. A store keeps the two leaves decoupled — the Grid never holds a
+	 * handle to the Day view instance.
+	 */
+	reveal$!: Readable<RevealRequest | null>;
+	private pushReveal!: (r: RevealRequest | null) => void;
+	private revealNonce = 0;
 
 	async onload() {
 		await this.loadSettings();
+
+		// The cross-view reveal channel (Grid badge → Day view jump/scroll).
+		const revealStore: Writable<RevealRequest | null> = writable(null);
+		this.reveal$ = { subscribe: revealStore.subscribe };
+		this.pushReveal = revealStore.set;
 
 		// Build the index now; cold-start it once the vault is fully loaded so
 		// the seed sees every file (and doesn't race Obsidian's own indexing).
@@ -157,6 +185,36 @@ export default class Kairos extends Plugin {
 			leaf = workspace.getLeaf('tab');
 			await leaf.setViewState({
 				type: KAIROS_WEEK_VIEW_TYPE,
+				active: true,
+			});
+		}
+
+		if (leaf) void workspace.revealLeaf(leaf);
+	}
+
+	/**
+	 * Open the Day view and ask it to reveal a block — the Grid's block badge
+	 * click lands here. Activating the view first guarantees a subscriber exists;
+	 * the request is pushed after so a freshly-opened Day view (which subscribes
+	 * on mount) still receives it.
+	 */
+	async revealInDayView(date: ISODate, blockLine: number) {
+		await this.activateView();
+		this.pushReveal({ date, blockLine, nonce: ++this.revealNonce });
+	}
+
+	// Reveal the Grid view in a main (center) leaf, reusing one if already open.
+	async activateGridView() {
+		const { workspace } = this.app;
+
+		const existing = workspace.getLeavesOfType(KAIROS_GRID_VIEW_TYPE);
+		let leaf: WorkspaceLeaf | null =
+			existing.length > 0 ? existing[0] ?? null : null;
+
+		if (!leaf) {
+			leaf = workspace.getLeaf('tab');
+			await leaf.setViewState({
+				type: KAIROS_GRID_VIEW_TYPE,
 				active: true,
 			});
 		}

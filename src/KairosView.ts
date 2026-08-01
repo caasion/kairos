@@ -41,6 +41,7 @@ export class KairosView extends ItemView {
 				app: this.app,
 				index: this.plugin.indexAdapter.index,
 				settings$: this.plugin.settings$,
+				reveal$: this.plugin.reveal$,
 				updateSettings: (mutate: (s: KairosSettings) => void) =>
 					void this.plugin.updateSettings(mutate),
 			},
