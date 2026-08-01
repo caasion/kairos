@@ -27,11 +27,14 @@
 	import {
 		addTaskToUnscheduled,
 		deleteTask,
+		moveTaskAcrossDays,
+		nestTaskUnderBlock,
 		setTaskStatus,
 		setTaskText,
 		unnestTask,
 	} from "../../writer";
 	import type { GridDay, GridSnapshot, KairosIndex, Resolver } from "../../index";
+	import { hitTestGridCell, type GridDropSlot, type TaskDragState } from "../timeline/taskDrag";
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		buildRows,
@@ -230,6 +233,93 @@
 		);
 	}
 
+	// ── Task drag-to-reschedule (grid DnD) ──
+	// Long-press on a task body starts a drag. The ghost follows the pointer; the
+	// hovered cell's date is tracked as the live drop target. On release:
+	//   • Same day → reorder within that day's blocks via nestTaskUnderBlock.
+	//   • Different day → cross-day move via moveTaskAcrossDays.
+	let taskDrag = $state<TaskDragState | null>(null);
+	let taskDrop = $state<GridDropSlot | null>(null);
+
+	function onTaskGrab(task: ResolvedTask, event: PointerEvent) {
+		taskDrag = {
+			owner: task.block,
+			task,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			label: task.text,
+		};
+		taskDrop = hitTestGridCell(event);
+	}
+
+	function onTaskDragMove(event: PointerEvent) {
+		if (!taskDrag) return;
+		taskDrag = { ...taskDrag, ghostX: event.clientX, ghostY: event.clientY };
+		taskDrop = hitTestGridCell(event);
+	}
+
+	async function onTaskDragUp() {
+		if (!taskDrag) return;
+		const drag = taskDrag;
+		const drop = taskDrop;
+		taskDrag = null;
+		taskDrop = null;
+		if (!drop) return;
+
+		const sourceDay = dayOf(drag.task.date);
+		if (!sourceDay || sourceDay.path === null) return;
+
+		if (drop.date === drag.task.date) {
+			// Same day: reorder within the day's blocks.
+			const next = nestTaskUnderBlock(
+				sourceDay.blocks,
+				drag.owner,
+				drag.task,
+				drag.owner,
+				drop.index,
+			);
+			if (next !== sourceDay.blocks) commit(drag.task.date, sourceDay.path, next);
+			return;
+		}
+
+		// Cross-day move: remove from source, append to target day's Unscheduled.
+		const targetDay = dayOf(drop.date as ISODate);
+		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+		const targetBlocks = targetDay?.blocks ?? [];
+		const { from, to } = moveTaskAcrossDays(
+			sourceDay.blocks,
+			targetBlocks,
+			drag.owner,
+			drag.task,
+			targetPath,
+			nextDraftLine--,
+		);
+		index.applyCrossDayMove(
+			drag.task.date,
+			sourceDay.path,
+			from,
+			drop.date as ISODate,
+			targetPath,
+			to,
+		);
+	}
+
+	function cancelTaskDrag() {
+		taskDrag = null;
+		taskDrop = null;
+	}
+
+	// The drop index for a given cell date (undefined when drag is to a different date).
+	function dropIndexFor(date: ISODate): number | undefined {
+		if (!taskDrop || taskDrop.date !== date) return undefined;
+		return taskDrop.index;
+	}
+
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy() { node.remove(); } };
+	}
+
 	// ── Association picker (parent-owned so it isn't clipped by a cell) ──
 	let pickerTask = $state<ResolvedTask | null>(null);
 	let pickerAnchor = $state<DOMRect | null>(null);
@@ -325,20 +415,35 @@
 		`180px repeat(${windowSize}, minmax(0, 1fr))`,
 	);
 
+	function onKeyDown(event: KeyboardEvent) {
+		if (event.key === "Escape" && taskDrag) {
+			event.preventDefault();
+			cancelTaskDrag();
+		}
+	}
+
 	onMount(() => {
 		const unsub = index.resolver().subscribe((r) => {
 			resolve = r;
 		});
+
+		const move = (e: PointerEvent) => { if (taskDrag) onTaskDragMove(e); };
+		const up = () => { if (taskDrag) void onTaskDragUp(); };
+		window.addEventListener("pointermove", move);
+		window.addEventListener("pointerup", up);
+
 		return () => {
 			unsub();
 			unsubscribeGrid?.();
+			window.removeEventListener("pointermove", move);
+			window.removeEventListener("pointerup", up);
 		};
 	});
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="grid-view" onclick={handleClickOutside}>
+<div class="grid-view" onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
 	<div class="grid-header">
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
@@ -486,6 +591,7 @@
 							<GridCell
 								tasks={tasksFor(row, day)}
 								{resolve}
+								{date}
 								color={"color" in row ? row.color : undefined}
 								allowCreate={row.kind !== "unassigned" && row.kind !== "domain" ? true : row.kind === "domain" && !row.expanded}
 								onSetStatus={onSetStatus}
@@ -496,6 +602,10 @@
 								{onReveal}
 								{onUnnest}
 								onCreate={() => void onCreate(row, date)}
+								onTaskGrab={onTaskGrab}
+								dragTaskLine={taskDrag?.task.source.line}
+								dropIndex={dropIndexFor(date)}
+								dragActive={taskDrag !== null}
 							/>
 						{:else}
 							<div class="grid-datacell-empty"></div>
@@ -521,6 +631,16 @@
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}
 	/>
+{/if}
+
+{#if taskDrag}
+	<div
+		class="task-ghost"
+		use:portal
+		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
+	>
+		{taskDrag.label}
+	</div>
 {/if}
 
 <style>

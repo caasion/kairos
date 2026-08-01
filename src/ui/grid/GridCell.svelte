@@ -13,6 +13,8 @@
 	interface Props {
 		tasks: ResolvedTask[];
 		resolve: Resolver;
+		/** The ISO date this cell represents — stamped as data-grid-date for hit-testing. */
+		date: string;
 		/** Row tint, applied to task checkboxes for a domain-colored accent. */
 		color?: string;
 		/** True on the Unassigned row, where "+" would have no association. */
@@ -27,11 +29,20 @@
 		onReveal: (task: ResolvedTask) => void;
 		// Unnest: move this task out of its timed block into Unscheduled.
 		onUnnest: (task: ResolvedTask) => void;
+		// A long-press on a task began a grid drag-to-reschedule. The parent takes over.
+		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
+		// While a task drag is live: the source task's line (to dim it) and the
+		// live insertion slot for this cell (to show a drop indicator).
+		dragTaskLine?: number;
+		dropIndex?: number;
+		// True while ANY task drag is active — shows the drop zone even when empty.
+		dragActive?: boolean;
 	}
 
 	let {
 		tasks,
 		resolve,
+		date,
 		color,
 		allowCreate,
 		onSetStatus,
@@ -42,6 +53,10 @@
 		onCreate,
 		onReveal,
 		onUnnest,
+		onTaskGrab,
+		dragTaskLine,
+		dropIndex,
+		dragActive = false,
 	}: Props = $props();
 
 	// A scheduled task shows a badge = its block's time + title. "Scheduled" here
@@ -75,12 +90,22 @@
 	function deleteOf(task: Task) {
 		onDelete(task as ResolvedTask);
 	}
+	function grabOf(task: Task, event: PointerEvent) {
+		if (onTaskGrab) onTaskGrab(task as ResolvedTask, event);
+	}
 </script>
 
-<div class="grid-cell">
-	{#each tasks as task (task.source.path + ":" + task.source.line)}
+<div class="grid-cell" class:drag-active={dragActive} data-grid-date={date}>
+	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
 		{@const r = task.owner ? resolve(task.owner) : undefined}
-		<div class="grid-cell-item">
+		{#if dropIndex === i}
+			<div class="grid-drop-line"></div>
+		{/if}
+		<div
+			class="grid-cell-item"
+			class:dragging-origin={dragTaskLine === task.source.line}
+			data-task-index={i}
+		>
 			<Task_
 				{task}
 				{color}
@@ -92,6 +117,7 @@
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
+				onGrab={onTaskGrab ? (e) => grabOf(task, e) : undefined}
 			/>
 
 			{#if isNested(task)}
@@ -123,6 +149,15 @@
 		</div>
 	{/each}
 
+	<!-- Trailing drop zone: append indicator after the last task row. -->
+	{#if dragActive}
+		<div class="grid-drop-tail">
+			{#if dropIndex !== undefined && dropIndex >= tasks.length}
+				<div class="grid-drop-line"></div>
+			{/if}
+		</div>
+	{/if}
+
 	{#if allowCreate}
 		<button class="grid-cell-add" title="Add task" onclick={onCreate}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -139,6 +174,33 @@
 		padding: 4px;
 		gap: 1px;
 		min-width: 0;
+	}
+
+	/* Drop target highlight while any task drag is live over this cell. */
+	.grid-cell.drag-active {
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 6%,
+			transparent
+		);
+	}
+
+	/* Insertion indicator between task rows (or at the list ends). */
+	.grid-drop-line {
+		height: 0;
+		border-top: 2px solid var(--interactive-accent);
+		margin: -1px 0;
+	}
+
+	/* Trailing drop zone: padded home for the append indicator. */
+	.grid-drop-tail {
+		min-height: 6px;
+		flex-shrink: 0;
+	}
+
+	/* Dim the row whose task is being dragged. */
+	.grid-cell-item.dragging-origin {
+		opacity: 0.35;
 	}
 
 	/* The add affordance stays quiet until the cell is hovered, so a dense grid

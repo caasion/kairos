@@ -454,6 +454,60 @@ export function nestTaskUnderBlock(
   });
 }
 
+// ─── cross-day task move ───────────────────────────────────────
+
+export interface CrossDayTaskMove {
+  /** The source day's blocks, with the task removed from its owner. */
+  from: Block[];
+  /** The target day's blocks, with the task appended to Unscheduled. */
+  to: Block[];
+}
+
+/**
+ * Move a task from one day's blocks into another day's Unscheduled block.
+ * Used by the Grid drag-to-reschedule gesture. Same materialize-on-move rule
+ * as `unnestTask`: the inherited or explicit association is stamped onto the
+ * task so it stays in the same grid row after the move.
+ *
+ * Colocated tasks (a checkable block's own line) are a no-op — they are blocks,
+ * not liftable tasks. Pure; caller persists both days via `applyCrossDayMove`.
+ */
+export function moveTaskAcrossDays(
+  fromBlocks: Block[],
+  toBlocks: Block[],
+  sourceOwner: Block,
+  target: Task,
+  toPath: string,
+  toInboxLine: number,
+): CrossDayTaskMove {
+  const source = fromBlocks.find((b) => isOwner(b, sourceOwner));
+  if (!source) return { from: fromBlocks, to: toBlocks };
+
+  // Colocated task = the block's own checkbox line; not liftable.
+  if (source.status !== undefined && sameSource(source.source, target.source)) {
+    return { from: fromBlocks, to: toBlocks };
+  }
+
+  const nested = source.tasks.find((t) => sameSource(t.source, target.source));
+  if (!nested) return { from: fromBlocks, to: toBlocks };
+
+  // Materialize-on-move: pin explicit or inherited association.
+  const assoc = nested.assoc ?? source.assoc;
+  const moved: Task = {
+    ...nested,
+    source: { path: toPath, line: toInboxLine },
+    ...(assoc ? { assoc } : {}),
+  };
+
+  const from = fromBlocks.map((b) =>
+    isOwner(b, source)
+      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      : b,
+  );
+  const to = insertIntoUnscheduled(toBlocks, moved, toPath, toInboxLine - 1);
+  return { from, to };
+}
+
 // ─── cross-day block move ──────────────────────────────────────
 //
 // CORE LOGIC — flagged for review. Moving a block from one daily note to

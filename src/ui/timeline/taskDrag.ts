@@ -99,3 +99,39 @@ export function hitTestDropSlot(
 // append, and the block's drop indicator reads `index >= chips.length` → shows
 // the trailing marker.
 export const APPEND_INDEX = Number.MAX_SAFE_INTEGER;
+
+/**
+ * The DOM contract for grid cells, emitted by GridCell:
+ *   • the cell wrapper carries `data-grid-date="<ISO date>"`,
+ *   • each task row carries `data-task-index="<i>"`.
+ */
+export interface GridDropSlot {
+  date: string;
+  /** Insertion index among the cell's tasks (clamped by the caller). */
+  index: number;
+}
+
+/**
+ * From a pointer event during a grid task drag, find the cell and insertion
+ * index under the pointer. Returns null when the pointer isn't over any cell.
+ */
+export function hitTestGridCell(event: PointerEvent): GridDropSlot | null {
+  const el = document.elementFromPoint(event.clientX, event.clientY);
+  if (!el) return null;
+
+  const cell = el.closest<HTMLElement>("[data-grid-date]");
+  if (!cell) return null;
+  const date = cell.dataset.gridDate;
+  if (!date) return null;
+
+  const rows = Array.from(cell.querySelectorAll<HTMLElement>("[data-task-index]"));
+  let index = rows.length;
+  for (let i = 0; i < rows.length; i++) {
+    const rect = rows[i]!.getBoundingClientRect();
+    if (event.clientY < rect.top + rect.height / 2) {
+      index = i;
+      break;
+    }
+  }
+  return { date, index };
+}
