@@ -1,8 +1,8 @@
 {
 	"id": "kairos",
 	"name": "Kairos",
-	"version": "0.0.1",
-	"minAppVersion": "1.0.0",
+	"version": "0.1.0",
+	"minAppVersion": "1.1.0",
 	"description": "Seize the moment. Get things done.",
 	"author": "Obsidian",
 	"authorUrl": "https://obsidian.md",
