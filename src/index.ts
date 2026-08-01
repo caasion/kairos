@@ -23,6 +23,7 @@ import { writable } from "svelte/store";
 import type { Readable, Writable } from "svelte/store";
 import { getDateFromPath } from "obsidian-daily-notes-interface";
 import type {
+	Association,
 	BacklogEntry,
 	Block,
 	Day,
@@ -37,6 +38,11 @@ import { parseSchedule } from "./parser";
 import { serialize } from "./serializer";
 import { resolveBlocks } from "./resolver";
 import { parseDomain, parseProject } from "./projectFile";
+import { resolveAssociation } from "./association";
+import type { ResolvedAssociation } from "./association";
+
+/** A snapshot-time association resolver, handed to views for rendering. */
+export type Resolver = (assoc: Association) => ResolvedAssociation;
 
 // ─── file routing ──────────────────────────────────────────────
 
@@ -283,9 +289,22 @@ export class KairosIndex {
 	private projectStores = new Map<string, Writable<ProjectView | undefined>>();
 	private domainStores = new Map<string, Writable<DomainView | undefined>>();
 	private backlogStore: Writable<BacklogEntry[]> = writable([]);
+	// A resolver store: yields a fresh `(assoc) => ResolvedAssociation` whenever
+	// the project/domain maps change, so views re-tint live on a file edit.
+	private resolverStore: Writable<Resolver> = writable(() => ({
+		displayName: "",
+		resolved: false,
+	}));
 	private writeTimers = new Map<ISODate, ReturnType<typeof setTimeout>>();
 
-	constructor(private deps: IndexDeps) {}
+	constructor(private deps: IndexDeps) {
+		this.resolverStore.set(this.makeResolver());
+	}
+
+	private makeResolver(): Resolver {
+		const { projects, domains } = this.state;
+		return (assoc) => resolveAssociation(assoc, projects, domains);
+	}
 
 	/** Seed the index from an initial batch of files (cold start). */
 	seed(files: { path: string; content: string; mtime: number }[]): void {
@@ -323,6 +342,15 @@ export class KairosIndex {
 
 	backlog(): Readable<BacklogEntry[]> {
 		return this.backlogStore;
+	}
+
+	/**
+	 * A live association resolver. Subscribe to re-render when project/domain
+	 * files change; the yielded function maps a raw `Association` to its display
+	 * name, domain color, and navigation target.
+	 */
+	resolver(): Readable<Resolver> {
+		return this.resolverStore;
 	}
 
 	/** A live store of a project and its resolved tasks (undefined if unknown). */
@@ -503,6 +531,9 @@ export class KairosIndex {
 		for (const [name, store] of this.domainStores) {
 			store.set(this.domainView(name));
 		}
+		// The resolver closes over the project/domain maps, so a change here must
+		// hand views a fresh function to trigger a re-tint.
+		this.resolverStore.set(this.makeResolver());
 	}
 
 	private publishAll(): void {
