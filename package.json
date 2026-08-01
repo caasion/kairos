@@ -1,6 +1,6 @@
 {
 	"name": "kairos",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "Seize the moment. Get things done. Obsidian Plugin.",
 	"main": "main.js",
 	"type": "module",
