@@ -92,7 +92,7 @@
 	}
 </script>
 
-<div class="grid-cell" class:drag-active={dragActive}>
+<div class="grid-cell">
 	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
 		{#if dropIndex === i}
 			<div class="grid-drop-line"></div>
@@ -174,15 +174,6 @@
 		padding: 4px;
 		gap: 1px;
 		min-width: 0;
-	}
-
-	/* Drop target highlight while any task drag is live over this cell. */
-	.grid-cell.drag-active {
-		background: color-mix(
-			in srgb,
-			var(--interactive-accent) 6%,
-			transparent
-		);
 	}
 
 	/* Insertion indicator between task rows (or at the list ends). */
