@@ -475,7 +475,11 @@
 		const path = notePath ?? (await ensureNoteForDate(forDate));
 		if (date !== forDate) return;
 		notePath = path;
-		const block = makeBlock(range, path);
+		// A unique negative line so two blocks created before the reparse don't
+		// collide on the source line the keyed `{#each}` renders by (a duplicate
+		// key freezes reconciliation). Shares the task draft-line counter so no
+		// unsaved block and task collide either.
+		const block = makeBlock(range, path, undefined, nextDraftLine--);
 		blocks = [...blocks, block];
 		writeToDisk();
 	}

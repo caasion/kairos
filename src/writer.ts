@@ -322,15 +322,20 @@ export function deleteBlocks(
  * ordering (which `writeSchedule` normalizes anyway).
  *
  * `source` is a throwaway handle; the parser re-derives the real line on the
- * next read. It only needs to be unique enough for keyed rendering until then.
+ * next read. It only needs to be unique enough for keyed rendering until then —
+ * so the caller passes a distinct negative `line` per unsaved block. Two blocks
+ * created before the reparse must NOT share a line, or the keyed `{#each}` that
+ * renders them collides and stops reconciling (a frozen timeline). Defaults to
+ * -1 for the common single-create case.
  */
 export function makeBlock(
   time: TimeRange,
   path: string,
   title = DEFAULT_BLOCK_TITLE,
+  line = -1,
 ): Block {
   return {
-    source: { path, line: -1 },
+    source: { path, line },
     title,
     tasks: [],
     scheduled: true,
