@@ -46,7 +46,6 @@ function task(
 		text: "t",
 		status: " ",
 		date: "2026-08-01",
-		// The real block is irrelevant to grouping; a minimal stand-in suffices.
 		block: {
 			source: { path: "2026-08-01.md", line: -1 },
 			title: "Unscheduled",
@@ -94,32 +93,22 @@ const dom = (id: string): Association => ({ kind: "domain", id });
 // ─── rows ──────────────────────────────────────────────────────
 
 describe("buildRows", () => {
-	it("emits top-level projects, then domains, in order", () => {
+	it("emits top-level projects, then domains (always expanded), in order", () => {
 		const s = snap([project({ name: "Alpha" })], [domain()], []);
-		const rows = buildRows(s, new Set());
-		expect(rows.map((r) => r.kind)).toEqual(["project", "domain"]);
+		const rows = buildRows(s);
+		// Alpha (top-level project), Health (domain header), Health (direct)
+		expect(rows.map((r) => r.kind)).toEqual(["project", "domain", "domain-direct"]);
 		expect(rows[0]!.name).toBe("Alpha");
 		expect(rows[1]!.name).toBe("Health");
 	});
 
-	it("hides a project that belongs to a domain when collapsed", () => {
+	it("always expands a domain into child project rows + a direct row", () => {
 		const s = snap(
 			[project({ name: "Alpha", domain: "d-health" })],
 			[domain()],
 			[],
 		);
-		const rows = buildRows(s, new Set());
-		// Only the domain row — the child project rolls up into it.
-		expect(rows.map((r) => r.name)).toEqual(["Health"]);
-	});
-
-	it("splits a domain into child project rows + a direct row when expanded", () => {
-		const s = snap(
-			[project({ name: "Alpha", domain: "d-health" })],
-			[domain()],
-			[],
-		);
-		const rows = buildRows(s, new Set(["d-health"]));
+		const rows = buildRows(s);
 		expect(rows.map((r) => [r.kind, r.name])).toEqual([
 			["domain", "Health"],
 			["project", "Alpha"],
@@ -129,12 +118,10 @@ describe("buildRows", () => {
 
 	it("adds an Unassigned row only when an unowned task exists", () => {
 		const withNone = snap([], [], [task({})]);
-		expect(buildRows(withNone, new Set()).at(-1)?.kind).toBe("unassigned");
+		expect(buildRows(withNone).at(-1)?.kind).toBe("unassigned");
 
 		const owned = snap([project()], [], [task({ owner: proj("Alpha") })]);
-		expect(buildRows(owned, new Set()).some((r) => r.kind === "unassigned")).toBe(
-			false,
-		);
+		expect(buildRows(owned).some((r) => r.kind === "unassigned")).toBe(false);
 	});
 
 	it("omits archived projects and domains", () => {
@@ -143,7 +130,7 @@ describe("buildRows", () => {
 			[domain({ name: "Gone", archived: true })],
 			[],
 		);
-		expect(buildRows(s, new Set())).toHaveLength(0);
+		expect(buildRows(s)).toHaveLength(0);
 	});
 });
 
@@ -153,11 +140,11 @@ describe("cellTasks", () => {
 	it("routes a task to its project row", () => {
 		const t = task({ owner: proj("Alpha") });
 		const s = snap([project({ name: "Alpha" })], [], [t]);
-		const projRow = buildRows(s, new Set())[0]!;
+		const projRow = buildRows(s)[0]!;
 		expect(cellTasks(projRow, s.days[0]!.tasks, s)).toEqual([t]);
 	});
 
-	it("a collapsed domain absorbs its children's and its own direct tasks", () => {
+	it("domain row shows nothing; children carry the tasks", () => {
 		const child = task({ owner: proj("Alpha") });
 		const direct = task({ owner: dom("Health") });
 		const s = snap(
@@ -165,19 +152,7 @@ describe("cellTasks", () => {
 			[domain()],
 			[child, direct],
 		);
-		const domRow = buildRows(s, new Set()).find((r) => r.kind === "domain")!;
-		expect(cellTasks(domRow, s.days[0]!.tasks, s)).toEqual([child, direct]);
-	});
-
-	it("an expanded domain row shows nothing; children carry the tasks", () => {
-		const child = task({ owner: proj("Alpha") });
-		const direct = task({ owner: dom("Health") });
-		const s = snap(
-			[project({ name: "Alpha", domain: "d-health" })],
-			[domain()],
-			[child, direct],
-		);
-		const rows = buildRows(s, new Set(["d-health"]));
+		const rows = buildRows(s);
 		const domRow = rows.find((r) => r.kind === "domain")!;
 		const projRow = rows.find((r) => r.kind === "project")!;
 		const directRow = rows.find((r) => r.kind === "domain-direct")!;
@@ -189,7 +164,7 @@ describe("cellTasks", () => {
 	it("matches by canonical name so an aliased tag lands in the right row", () => {
 		const t = task({ owner: proj("OldAlpha") });
 		const s = snap([project({ name: "Alpha", aliases: ["OldAlpha"] })], [], [t]);
-		const projRow = buildRows(s, new Set())[0]!;
+		const projRow = buildRows(s)[0]!;
 		expect(cellTasks(projRow, s.days[0]!.tasks, s)).toEqual([t]);
 	});
 });
@@ -201,7 +176,7 @@ describe("rowAssociation", () => {
 			[domain()],
 			[task({})],
 		);
-		const rows = buildRows(s, new Set(["d-health"]));
+		const rows = buildRows(s);
 		const byKind = Object.fromEntries(
 			rows.map((r) => [r.kind, rowAssociation(r)]),
 		);
