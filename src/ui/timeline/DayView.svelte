@@ -2,18 +2,22 @@
 	import { TFile } from "obsidian";
 	import type { App } from "obsidian";
 	import { onMount } from "svelte";
-	import { parseSchedule } from "../../parser";
+	import type { Unsubscriber } from "svelte/store";
 	import { resolveBlocks } from "../../resolver";
 	import type { KairosSettings } from "../../settings";
 	import type {
 		Block,
+		Day,
 		ISODate,
 		ResolvedTask,
 		Task,
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock, writeSchedule } from "../../writer";
+	import { makeBlock } from "../../writer";
+	import { daySignature, type KairosIndex, type Resolver } from "../../index";
+	import type { Association } from "../../types";
+	import { navigateToAssociation } from "../../navigate";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import {
 		type Gesture,
@@ -31,11 +35,22 @@
 
 	interface Props {
 		app: App;
+		index: KairosIndex;
 		settings: KairosSettings;
 		saveSettings: () => void;
 	}
 
-	let { app, settings, saveSettings }: Props = $props();
+	let { app, index, settings, saveSettings }: Props = $props();
+
+	// Live association resolver: re-tints tags when a project/domain file changes.
+	// Starts as a pass-through so the first render before subscription is neutral.
+	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
+
+	// Ctrl-click an association tag → open its project/domain in a new tab. A tag
+	// that doesn't resolve to a real file is inert (navigateToAssociation no-ops).
+	function onNavigate(assoc: Association) {
+		navigateToAssociation(app, resolve(assoc));
+	}
 
 	// Geometry follows the persisted hour-range / zoom settings, live.
 	const geo = $derived(geometryFromSettings(settings));
@@ -96,31 +111,43 @@
 		return m?.[1] ?? file.basename;
 	}
 
-	async function refresh() {
+	// Subscription to the active day's store. Rebuilt whenever the active file
+	// changes; adopting the store's blocks is guarded (see `adoptDay`).
+	let unsubscribeDay: Unsubscriber | null = null;
+
+	// Point the view at the active file: resolve its date, subscribe to that
+	// day's store, and seed local `blocks` from whatever the index holds.
+	function retarget() {
 		const file = app.workspace.getActiveFile();
+		unsubscribeDay?.();
+		unsubscribeDay = null;
+
 		if (!file) {
 			blocks = [];
 			notePath = null;
+			date = "";
 			return;
 		}
-		const markdown = await app.vault.read(file);
 		notePath = file.path;
 		date = dateOf(file);
-		blocks = parseSchedule(markdown, file.path);
+
+		unsubscribeDay = index.day(date).subscribe((day) => adoptDay(day));
 	}
 
-	// A `modify` on the active note is either the echo of our own optimistic
-	// write (skip — local state already matches) or an external edit (reparse).
-	// We tell them apart by content: our last write cached its exact text.
-	// `lastWrittenText` stays set so a double-fired echo is also absorbed; it's
-	// only cleared when an external edit lands (below) or replaced by a new
-	// write. The theoretical case of an external edit reproducing our exact text
-	// byte-for-byte just skips one harmless refresh.
-	async function handleModify(file: TFile) {
-		const markdown = await app.vault.cachedRead(file);
-		if (markdown === lastWrittenText) return;
-		lastWrittenText = null;
-		void refresh();
+	// Adopt the index's version of the day into local `blocks`. This is the read
+	// side of the optimistic loop: the index pushes here on cold-load and on
+	// genuine external edits, but NOT on the echo of our own write (the index
+	// drops those via daySignature). Two guards keep an incoming push from
+	// clobbering an in-progress edit:
+	//   1. never adopt mid-gesture (a drag owns the blocks until it commits),
+	//   2. skip if the incoming schedule already matches ours (nothing to do).
+	// Together these preserve the in-place editing model below — the store is
+	// the source and sink, not a live re-render feed during interaction.
+	function adoptDay(day: Day | undefined) {
+		if (gesture) return;
+		const incoming = day?.blocks ?? [];
+		if (daySignature(incoming) === daySignature(blocks)) return;
+		blocks = incoming;
 	}
 
 	function handleBlockDelete(blockToDelete: Block) {
@@ -161,18 +188,13 @@
 		return owner.tasks.find((t) => t.source.line === target.source.line);
 	}
 
-	// Echo suppression: cache the text we wrote so `handleModify` can skip the
-	// `modify` event our own write triggers, while still reparsing genuinely
-	// external edits. Content compare, so it's timing-independent.
-	let lastWrittenText: string | null = null;
-
-	// Serialize the current `blocks` to disk. Fire-and-forget: the view is
-	// already correct (we mutated it in place), so we adopt nothing back.
-	async function writeToDisk() {
-		const file = app.workspace.getActiveFile();
-		if (!file) return;
-		const result = await writeSchedule(app.vault, file, blocks);
-		lastWrittenText = result.text;
+	// Push the current `blocks` to the index. Optimistic: the index updates its
+	// own memory immediately and debounces the file write; echo suppression is
+	// the index's job (via daySignature), so there's nothing to track here. The
+	// view is already correct — we mutated it in place — so we adopt nothing back.
+	function writeToDisk() {
+		if (notePath === null) return;
+		index.applyDayEdit(date, notePath, blocks);
 	}
 
 	function handleSetTaskStatus(owner: Block, task: Task, status: TaskStatus) {
@@ -452,13 +474,17 @@
 	}
 
 	onMount(() => {
-		void refresh();
+		retarget();
 
-		const onOpen = app.workspace.on("file-open", () => void refresh());
-		const onModify = app.vault.on("modify", (f) => {
-			if (f.path !== notePath || !(f instanceof TFile)) return;
-			void handleModify(f);
+		// Track the live resolver so tags re-tint when project/domain files change.
+		const unsubscribeResolver = index.resolver().subscribe((r) => {
+			resolve = r;
 		});
+
+		// Re-point at the newly active note. The index owns `modify` events now,
+		// so there's no vault listener here — genuine external edits arrive
+		// through the day store's subscription (see `adoptDay`).
+		const onOpen = app.workspace.on("file-open", () => retarget());
 		const tick = window.setInterval(() => {
 			nowMinutes = currentMinutes();
 		}, 60_000);
@@ -472,7 +498,8 @@
 
 		return () => {
 			app.workspace.offref(onOpen);
-			app.vault.offref(onModify);
+			unsubscribeDay?.();
+			unsubscribeResolver();
 			window.clearInterval(tick);
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
@@ -596,6 +623,8 @@
 							lanes={p.lanes}
 							selected={isSelected(p.block)}
 							dragging={gesture !== null && isSelected(p.block)}
+							{resolve}
+							{onNavigate}
 							onGestureStart={onBlockGestureStart}
 							onDelete={handleBlockDelete}
 							onSetTaskStatus={handleSetTaskStatus}
@@ -623,6 +652,7 @@
 						<div class="us-block">
 							<div class="us-title">{block.title}</div>
 							{#each tasks.filter((t) => !t.colocated) as task (task.source.line)}
+								{@const r = task.owner ? resolve(task.owner) : undefined}
 								<div
 									class="us-task"
 									class:done={task.status === "x"}
@@ -630,13 +660,23 @@
 								>
 									<span class="us-dot" class:half={task.status === "/"}></span>
 									<span class="us-text">{task.text}</span>
-									{#if task.owner}
+									{#if task.owner && r}
 										<span
 											class="us-assoc"
 											class:domain={task.owner.kind === "domain"}
 											class:inherited={task.assoc === undefined}
+											class:linked={r.resolved}
+											title={r.resolved
+												? "Ctrl+click to open"
+												: undefined}
+											onclick={(e) => {
+												if (e.ctrlKey || e.metaKey) {
+													e.stopPropagation();
+													onNavigate(task.owner!);
+												}
+											}}
 										>
-											{task.owner.id}
+											{r.displayName}
 										</span>
 									{/if}
 								</div>
@@ -902,5 +942,13 @@
 	.us-assoc.inherited {
 		opacity: 0.6;
 		font-style: italic;
+	}
+
+	.us-assoc.linked {
+		cursor: pointer;
+	}
+
+	.us-assoc.linked:hover {
+		text-decoration: underline;
 	}
 </style>

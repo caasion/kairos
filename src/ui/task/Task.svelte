@@ -15,12 +15,13 @@
 
 	import { Menu, Notice } from "obsidian";
 	import type { Association, Task, TaskStatus } from "../../types";
+	import type { ResolvedAssociation } from "../../association";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
 
 	interface Props {
 		task: Task;
-		// Accent color for the checkbox / association pill. Defaults to the theme
-		// accent; real project/domain colors arrive in a later checkpoint.
+		// Resolved domain color for the checkbox accent. Omit (undefined) to keep
+		// the theme accent — do not pass the accent variable itself (see below).
 		color?: string;
 		// When true this row represents a checkable block's colocated task, so it
 		// styles a touch heavier and never shows its own delete (deleting is a
@@ -30,6 +31,11 @@
 		// came from the block, not the task itself (spec §2.2 display-only rule).
 		association?: Association;
 		inherited?: boolean;
+		// Resolved form of `association` (display name, domain color, target). When
+		// present and resolved, the pill shows the canonical name, tints by the
+		// domain color, and becomes ctrl-clickable via `onNavigate`.
+		resolved?: ResolvedAssociation;
+		onNavigate?: () => void;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -37,14 +43,24 @@
 
 	let {
 		task,
-		color = "var(--interactive-accent)",
+		// A resolved domain color, or undefined to keep the theme accent. Passing
+		// the accent variable here would make TaskCheckbox emit a self-referential
+		// `--interactive-accent: var(--interactive-accent)` (→ black), so leave it
+		// undefined and let the checkbox fall through to the theme.
+		color,
 		checkable = false,
 		association,
 		inherited = false,
+		resolved,
+		onNavigate,
 		onSetStatus,
 		onSetText,
 		onDelete,
 	}: Props = $props();
+
+	// Label prefers the resolved canonical name (never an alias); falls back to
+	// the raw tag id when no resolution was supplied or it didn't resolve.
+	const assocLabel = $derived(resolved?.displayName ?? association?.id ?? "");
 
 	// ── Status / checkbox ───────────────────────────────────────────
 	// Behaviour matches Holos (see TaskCheckbox): click cycles
@@ -212,7 +228,7 @@
 	</div>
 
 	<div class="k-task-row">
-		<TaskCheckbox status={task.status} onToggle={cycleStatus} onCancel={cancelStatus} />
+		<TaskCheckbox status={task.status} {color} onToggle={cycleStatus} onCancel={cancelStatus} />
 
 		{#if editing}
 			<input
@@ -232,9 +248,27 @@
 	</div>
 
 	{#if association}
-		<div class="k-task-assoc" class:inherited class:domain={association.kind === "domain"}>
-			<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-			<span class="k-task-assoc-label">{association.id}</span>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="k-task-assoc"
+			class:inherited
+			class:domain={association.kind === "domain"}
+			class:linked={resolved?.resolved}
+			title={resolved?.resolved ? "Ctrl+click to open" : undefined}
+			onclick={(e) => {
+				if ((e.ctrlKey || e.metaKey) && onNavigate) {
+					e.stopPropagation();
+					onNavigate();
+				}
+			}}
+		>
+			{#if association.kind === "domain"}
+				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+			{:else}
+				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+			{/if}
+			<span class="k-task-assoc-label">{assocLabel}</span>
 		</div>
 	{/if}
 </div>
@@ -368,12 +402,15 @@
 	}
 
 	.k-task-assoc.inherited {
-		opacity: 0.6;
 		font-style: italic;
 	}
 
-	.k-task-assoc.domain {
-		color: var(--text-accent);
+	.k-task-assoc.linked {
+		cursor: pointer;
+	}
+
+	.k-task-assoc.linked:hover .k-task-assoc-label {
+		text-decoration: underline;
 	}
 
 	.k-task-assoc svg {

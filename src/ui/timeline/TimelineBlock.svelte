@@ -8,6 +8,7 @@
     TimeRange,
   } from "../../types";
   import { isCheckable } from "../../types";
+  import type { Resolver } from "../../index";
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
 
@@ -20,6 +21,10 @@
     lanes: number;
     selected?: boolean;
     dragging?: boolean;
+    // Resolves an association to its display name, domain color, and target;
+    // `onNavigate` opens that target on ctrl-click. Both come from DayView.
+    resolve: Resolver;
+    onNavigate: (assoc: Association) => void;
     // Emitted when a pointer press starts a gesture on this block. The parent
     // (DayView) owns the canvas-level pointer tracking and decides what the
     // gesture becomes; this component only reports where it began.
@@ -49,6 +54,8 @@
     lanes,
     selected = false,
     dragging = false,
+    resolve,
+    onNavigate,
     onGestureStart,
 		onDelete,
 		onSetTaskStatus,
@@ -69,12 +76,16 @@
     block.time ? `${fmt(block.time.start)}–${fmt(block.time.end)}` : "",
   );
 
-  function assocLabel(assoc: Association): string {
-    return assoc.id;
-  }
-
   const checkable = $derived(isCheckable(block));
   const blockChecked = $derived(block.status === "x");
+
+  // Domain color for the block's accent — the left border and the colocated
+  // checkbox. Undefined when the association is a project with no domain, or
+  // unresolved; the accent then falls back to the theme. The association *tag*
+  // stays plain; only the accent carries the color.
+  const accentColor = $derived(
+    block.assoc ? resolve(block.assoc).color : undefined,
+  );
 
   // The colocated task is represented by the block header itself, so it is not
   // repeated in the chip list.
@@ -237,6 +248,7 @@
     class="tl-content"
     class:compact
     class:checked={blockChecked}
+    style={accentColor ? `border-left-color:${accentColor};` : ""}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="tl-block-header">
@@ -246,6 +258,7 @@
         <span class="tl-check-wrap" onpointerdown={(e) => e.stopPropagation()}>
           <TaskCheckbox
             status={block.status ?? " "}
+            color={accentColor}
             onToggle={cycleBlockStatus}
             onCancel={cancelBlockStatus}
           />
@@ -271,11 +284,6 @@
           onpointerdown={(e) => e.stopPropagation()}
           onclick={beginTitleEdit}
         >{block.title}</span>
-      {/if}
-      {#if block.assoc}
-        <span class="tl-assoc" class:domain={block.assoc.kind === "domain"}>
-          {assocLabel(block.assoc)}
-        </span>
       {/if}
     </div>
 
@@ -306,14 +314,51 @@
           />
         </div>
       {:else}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <span
-          class="tl-time"
-          role="button"
-          tabindex="0"
-          onpointerdown={(e) => e.stopPropagation()}
-          onclick={beginTimeEdit}
-        >{timeLabel}</span>
+        <!-- Time and the association share one line, separated by a dot. -->
+        <div class="tl-meta">
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <span
+            class="tl-time"
+            role="button"
+            tabindex="0"
+            onpointerdown={(e) => e.stopPropagation()}
+            onclick={beginTimeEdit}
+          >{timeLabel}</span>
+          {#if block.assoc}
+            {@const r = resolve(block.assoc)}
+            <!-- An SVG dot separator: fixed-size so it can't affect line-height
+                 or row height the way a text glyph would. -->
+            <svg
+              class="tl-meta-dot"
+              width="3"
+              height="3"
+              viewBox="0 0 3 3"
+              aria-hidden="true"
+            ><circle cx="1.5" cy="1.5" r="1.5" fill="currentColor" /></svg>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <span
+              class="tl-assoc"
+              class:domain={block.assoc.kind === "domain"}
+              class:linked={r.resolved}
+              title={r.resolved ? "Ctrl+click to open" : undefined}
+              onpointerdown={(e) => e.stopPropagation()}
+              onclick={(e) => {
+                if (e.ctrlKey || e.metaKey) {
+                  e.stopPropagation();
+                  onNavigate(block.assoc!);
+                }
+              }}
+            >
+              {#if block.assoc.kind === "domain"}
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+              {/if}
+              <span class="tl-assoc-label">{r.displayName}</span>
+            </span>
+          {/if}
+        </div>
       {/if}
       {#if chips.length > 0}
         <!-- Editable tasks. A press here must not start a block move/resize, so
@@ -321,10 +366,14 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="tl-tasks" onpointerdown={(e) => e.stopPropagation()}>
           {#each chips as task (task.source.line)}
+            {@const tr = task.owner ? resolve(task.owner) : undefined}
             <TaskComponent
               {task}
               association={task.owner}
               inherited={task.assoc === undefined}
+              resolved={tr}
+              color={tr?.color}
+              onNavigate={() => task.owner && onNavigate(task.owner)}
               onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
               onSetText={(t, text) => onSetTaskText(block, t, text)}
               onDelete={(t) => onDeleteTask(block, t)}
@@ -532,18 +581,47 @@
     outline: none;
   }
 
-  .tl-assoc {
-    flex-shrink: 0;
-    font-size: 9px;
-    padding: 0 5px;
-    border-radius: 7px;
-    background: var(--background-modifier-border);
-    color: var(--text-muted);
-    white-space: nowrap;
+  /* Time + association on one row, dot-separated. */
+  .tl-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
   }
 
-  .tl-assoc.domain {
-    background: var(--background-modifier-success);
+  /* SVG dot: fixed box, so it never perturbs the row's height. */
+  .tl-meta-dot {
+    flex-shrink: 0;
+    color: var(--text-faint);
+  }
+
+  /* Same visual language as a task's association (icon + label, plain color —
+     projects and domains render identically; the icon carries the distinction). */
+  .tl-assoc {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 0;
+  }
+
+  .tl-assoc.linked {
+    cursor: pointer;
+  }
+
+  .tl-assoc.linked:hover .tl-assoc-label {
+    text-decoration: underline;
+  }
+
+  .tl-assoc svg {
+    flex-shrink: 0;
+  }
+
+  .tl-assoc-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .tl-time {

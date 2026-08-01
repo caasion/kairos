@@ -15,11 +15,15 @@
 
 	interface Props {
 		status: TaskStatus;
+		// Optional accent override (a resolved domain color). When set, it locally
+		// overrides `--interactive-accent`, so the border and fills all tint from
+		// one place without touching each rule.
+		color?: string;
 		onToggle: () => void;
 		onCancel: () => void;
 	}
 
-	let { status, onToggle, onCancel }: Props = $props();
+	let { status, color, onToggle, onCancel }: Props = $props();
 
 	// Unique clip-path id per instance so multiple half-done checkboxes don't
 	// share (and clobber) one another's SVG clip.
@@ -54,6 +58,9 @@
 	class:partial={status === "/"}
 	class:checked={status === "x"}
 	class:cancelled={status === "-"}
+	style={color
+		? `--interactive-accent:${color};--checkbox-border-color:${color};`
+		: ""}
 	onclick={onToggle}
 	use:longpress={500}
 	{title}
