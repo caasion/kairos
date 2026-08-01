@@ -764,13 +764,10 @@
 
 	/* Cross-day drag affordances. */
 	.week-col.drop-target {
-		background: var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
 		box-shadow: inset 0 0 0 2px var(--interactive-accent);
 	}
 	.week-col.drop-target :global(.col-canvas) {
 		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
-	}
-	.week-col.drag-source {
-		background: var(--background-modifier-hover);
 	}
 </style>
