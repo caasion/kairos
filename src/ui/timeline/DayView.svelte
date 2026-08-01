@@ -14,7 +14,8 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock } from "../../writer";
+	import { makeBlock, nestTaskUnderBlock } from "../../writer";
+	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import type { Association } from "../../types";
 	import { navigateToAssociation } from "../../navigate";
@@ -28,6 +29,7 @@
 	} from "../../dayNote";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import {
 		type Gesture,
@@ -447,6 +449,54 @@
 			else delete t.assoc;
 		}
 		void writeToDisk();
+	}
+
+	// Nest a task under `destination` at `index`. Unlike the in-place edits above,
+	// the nest is a whole-array transform (materialize-on-move lives in the
+	// writer), so we reassign `blocks` from its result and persist. A no-op result
+	// (same array) simply writes nothing new.
+	function handleNestTask(
+		owner: Block,
+		task: Task,
+		destination: Block,
+		index?: number,
+	) {
+		const next = nestTaskUnderBlock(blocks, owner, task, destination, index);
+		if (next === blocks) return;
+		blocks = next;
+		void writeToDisk();
+	}
+
+	// ── Block picker (nest-under-block) ──────────────────────────────
+	// The task menu / action opens this; picking a block nests the task under it
+	// (appending to that block's tasks). Owned here (like the assoc picker) so it
+	// escapes the canvas clip.
+	let blockPickerTarget = $state<{ owner: Block; task: Task } | null>(null);
+	let blockPickerAnchor = $state<DOMRect | null>(null);
+
+	// Offer every block except the task's current owner (nesting where it already
+	// lives is a no-op the picker shouldn't advertise).
+	const blockPickerOptions = $derived.by<BlockOption[]>(() =>
+		blockPickerTarget
+			? blockOptions(blocks, blockPickerTarget.owner.source.line)
+			: [],
+	);
+
+	function openBlockPicker(owner: Block, task: Task, anchor: DOMRect) {
+		blockPickerTarget = { owner, task };
+		blockPickerAnchor = anchor;
+	}
+
+	function closeBlockPicker() {
+		blockPickerTarget = null;
+		blockPickerAnchor = null;
+	}
+
+	function onPickBlock(option: BlockOption) {
+		if (blockPickerTarget) {
+			handleNestTask(blockPickerTarget.owner, blockPickerTarget.task, option.block);
+		}
+		closeBlockPicker();
 	}
 
 	// ── Association picker ───────────────────────────────────────────
@@ -940,6 +990,7 @@
 							onAddTask={handleAddTask}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
+							onNestTask={openBlockPicker}
 						/>
 					{/each}
 
@@ -1002,6 +1053,15 @@
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}
+	/>
+{/if}
+
+{#if blockPickerTarget && blockPickerAnchor}
+	<BlockPicker
+		options={blockPickerOptions}
+		anchor={blockPickerAnchor}
+		onPick={onPickBlock}
+		onClose={closeBlockPicker}
 	/>
 {/if}
 

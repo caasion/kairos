@@ -42,6 +42,9 @@
 		onDeleteTask: (owner: Block, task: Task) => void;
 		// Open the association picker for a nested task, anchored at `rect`.
 		onEditTaskAssoc: (owner: Block, task: Task, rect: DOMRect) => void;
+		// Open the block picker to nest a task under another block, anchored at
+		// `rect`. The owning block travels along so the writer can locate the task.
+		onNestTask: (owner: Block, task: Task, rect: DOMRect) => void;
 		// Block field write-back.
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
@@ -71,6 +74,7 @@
 		onSetTaskText,
 		onDeleteTask,
 		onEditTaskAssoc,
+		onNestTask,
 		onSetBlockTitle,
 		onSetBlockTime,
 		onSetBlockStatus,
@@ -481,6 +485,7 @@
               color={tr?.color}
               onNavigate={() => task.owner && onNavigate(task.owner)}
               onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
+              onNest={(rect) => onNestTask(block, task, rect)}
               onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
               onSetText={(t, text) => onSetTaskText(block, t, text)}
               onDelete={(t) => onDeleteTask(block, t)}

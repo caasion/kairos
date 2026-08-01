@@ -14,7 +14,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock } from "../../writer";
+	import { makeBlock, nestTaskUnderBlock } from "../../writer";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
 	import {
@@ -61,6 +61,14 @@
 			task: Task,
 			anchor: DOMRect,
 		) => void;
+		// Forward a nest-under-block request up to the week-level block picker
+		// (which escapes the column clip). The date routes the pick back here.
+		onNestTask: (
+			date: ISODate,
+			owner: Block,
+			task: Task,
+			anchor: DOMRect,
+		) => void;
 		// A block move gesture began on this column. The parent begins tracking
 		// the pointer's X to detect a cross-day drop; it calls back into
 		// `takeBlock`/`isDropTarget` as needed. Returns nothing — the column keeps
@@ -76,6 +84,7 @@
 		resolve,
 		onEditAssoc,
 		onEditTaskAssoc,
+		onNestTask,
 		onCrossDayGrab,
 	}: Props = $props();
 
@@ -245,6 +254,37 @@
 	}
 	function openTaskAssocPicker(block: Block, task: Task, anchor: DOMRect) {
 		onEditTaskAssoc(date, block, task, anchor);
+	}
+	function openBlockPicker(owner: Block, task: Task, anchor: DOMRect) {
+		onNestTask(date, owner, task, anchor);
+	}
+
+	// Nest a task under `destination` at `index` (materialize-on-move lives in the
+	// writer). Reassigns `blocks` from the whole-array transform, then persists.
+	// Reached from drag-drop here and from the week-level block picker (which
+	// routes back via the exported `applyNest`).
+	function handleNestTask(
+		owner: Block,
+		task: Task,
+		destination: Block,
+		index?: number,
+	) {
+		const next = nestTaskUnderBlock(blocks, owner, task, destination, index);
+		if (next === blocks) return;
+		blocks = next;
+		writeToDisk();
+	}
+
+	// The week-level block picker calls this after a pick (it holds the picker,
+	// like applyBlockAssoc). Appends the task to the chosen block.
+	export function applyNest(owner: Block, task: Task, destination: Block) {
+		handleNestTask(owner, task, destination);
+	}
+
+	// Snapshot of this column's blocks as picker options, excluding an owner line.
+	// Exported so the week view can build its block picker for our date.
+	export function currentBlocksArray(): Block[] {
+		return blocks;
 	}
 
 	// The parent applies association edits back through these (it holds the
@@ -574,6 +614,7 @@
 				onAddTask={handleAddTask}
 				onEditAssoc={openAssocPicker}
 				onEditTaskAssoc={openTaskAssocPicker}
+				onNestTask={openBlockPicker}
 			/>
 		{/each}
 

@@ -38,6 +38,10 @@
 		onNavigate?: () => void;
 		// Open the association picker for this task, anchored at `rect`.
 		onEditAssoc?: (rect: DOMRect) => void;
+		// Open the block picker to nest this task under another block, anchored at
+		// `rect`. Omitted for a colocated (checkable-block) task, which can't be
+		// lifted off its line — the parent leaves it undefined there.
+		onNest?: (rect: DOMRect) => void;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -56,6 +60,7 @@
 		resolved,
 		onNavigate,
 		onEditAssoc,
+		onNest,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -148,6 +153,13 @@
 		notImplemented("Metadata");
 	}
 
+	// Ask the parent to open the block picker anchored at this row, to nest the
+	// task under another block. Only wired for genuine nested tasks.
+	function requestNest() {
+		const rect = rowEl?.getBoundingClientRect();
+		if (rect && onNest) onNest(rect);
+	}
+
 	function del() {
 		onDelete(task);
 	}
@@ -168,6 +180,15 @@
 				.setIcon("tag")
 				.onClick(() => requestMetadata()),
 		);
+
+		if (onNest) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Nest under block")
+					.setIcon("between-vertical-start")
+					.onClick(() => requestNest()),
+			);
+		}
 
 		menu.addSeparator();
 
@@ -224,6 +245,16 @@
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
 		</button>
+		{#if onNest}
+			<button
+				class="k-task-action"
+				title="Nest under block"
+				aria-label="Nest under block"
+				onclick={requestNest}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 12H9"/><path d="m9 12 3-3"/><path d="m9 12 3 3"/></svg>
+			</button>
+		{/if}
 		{#if !checkable}
 			<button
 				class="k-task-action k-task-action-danger"
