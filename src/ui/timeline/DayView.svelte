@@ -343,6 +343,40 @@
 		void writeToDisk();
 	}
 
+	// Convert a plain block into a checkable one (a colocated task) or back. The
+	// colocated task shares the block's line, so "becoming a task" is just adding
+	// a status; "becoming a plain block again" drops the status and any metadata
+	// that rode on that line (mirroring handleDeleteTask's colocated branch).
+	function handleToggleBlockCheckable(block: Block) {
+		const real = ownerFor(block);
+		if (!real) return;
+		if (real.status === undefined) {
+			real.status = " ";
+		} else {
+			delete real.status;
+			delete real.metadata;
+		}
+		void writeToDisk();
+	}
+
+	// A monotonically-decreasing line number for tasks created in-session, so two
+	// fresh tasks don't collide on the source line the render keys on before the
+	// write's reparse re-derives real lines. Any negative is a safe placeholder
+	// (real lines are >= 0).
+	let nextDraftLine = -2;
+
+	function handleAddTask(block: Block) {
+		const real = ownerFor(block);
+		if (!real) return;
+		const task: Task = {
+			source: { path: real.source.path, line: nextDraftLine-- },
+			text: "New task",
+			status: " ",
+		};
+		real.tasks = [...real.tasks, task];
+		void writeToDisk();
+	}
+
 	function handleSetBlockAssoc(block: Block, assoc: Association | null) {
 		const real = ownerFor(block);
 		if (!real) return;
@@ -846,6 +880,8 @@
 							onSetBlockTitle={handleSetBlockTitle}
 							onSetBlockTime={handleSetBlockTime}
 							onSetBlockStatus={handleSetBlockStatus}
+							onToggleCheckable={handleToggleBlockCheckable}
+							onAddTask={handleAddTask}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
 						/>

@@ -46,6 +46,10 @@
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
 		onSetBlockStatus: (block: Block, status: TaskStatus) => void;
+		// Toggle whether the block is a checkable task (adds/removes its checkbox).
+		onToggleCheckable: (block: Block) => void;
+		// Create a new child task inside this block.
+		onAddTask: (block: Block) => void;
 		// Open the association picker for this block, anchored at `rect`.
 		onEditAssoc: (block: Block, rect: DOMRect) => void;
   }
@@ -70,6 +74,8 @@
 		onSetBlockTitle,
 		onSetBlockTime,
 		onSetBlockStatus,
+		onToggleCheckable,
+		onAddTask,
 		onEditAssoc,
   }: Props = $props();
 
@@ -236,10 +242,49 @@
 
     menu.addItem((item) =>
       item
+        .setTitle("Add task")
+        .setIcon("list-plus")
+        .onClick(() => onAddTask(block)),
+    );
+
+    menu.addItem((item) =>
+      item
         .setTitle(block.assoc ? "Edit association" : "Add association")
         .setIcon("folder-symlink")
         .onClick(() => requestEditAssoc()),
     );
+
+    menu.addSeparator();
+
+    // Convert the block to/from a checkable task. When it's already checkable,
+    // offer the same status changes a task's context menu does.
+    menu.addItem((item) =>
+      item
+        .setTitle(checkable ? "Convert to block" : "Convert to task")
+        .setIcon(checkable ? "square" : "check-square")
+        .onClick(() => onToggleCheckable(block)),
+    );
+
+    if (checkable) {
+      menu.addItem((item) =>
+        item
+          .setTitle(blockChecked ? "Mark open" : "Mark done")
+          .setIcon("check")
+          .onClick(() => onSetBlockStatus(block, blockChecked ? " " : "x")),
+      );
+      menu.addItem((item) =>
+        item
+          .setTitle("Mark half-done")
+          .setIcon("clock")
+          .onClick(() => onSetBlockStatus(block, "/")),
+      );
+      menu.addItem((item) =>
+        item
+          .setTitle("Mark cancelled")
+          .setIcon("x")
+          .onClick(() => onSetBlockStatus(block, "-")),
+      );
+    }
 
     menu.addSeparator();
 
@@ -273,19 +318,35 @@
     }}
   ></div>
 
-	<!-- Delete button. Placed on the top right corner, appearing on hover. -->
-	<button
-		type="button"
-		class="tl-delete-btn"
-		title="Delete block"
-		onpointerdown={(e) => e.stopPropagation()}
-		onclick={(e) => {
-			e.stopPropagation();
-			onDelete(block);
-		}}
-	>
-    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-  </button>
+	<!-- Hover action bar: add-task + delete, top-right corner. -->
+	<div class="tl-actions">
+		<button
+			type="button"
+			class="tl-action-btn"
+			title="Add task"
+			aria-label="Add task"
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={(e) => {
+				e.stopPropagation();
+				onAddTask(block);
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
+		</button>
+		<button
+			type="button"
+			class="tl-action-btn tl-action-danger"
+			title="Delete block"
+			aria-label="Delete block"
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={(e) => {
+				e.stopPropagation();
+				onDelete(block);
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+		</button>
+	</div>
 
   <!-- Inner visual container -->
   <div
@@ -538,13 +599,29 @@
     bottom: 2px;
   }
 
-	/* Delete button */
-	.tl-delete-btn {
+	/* Hover action bar (add-task + delete), top-right corner. */
+	.tl-actions {
 		position: absolute;
 		top: 4px;
 		right: 4px;
-		z-index: 10; /* Keep it above content and handles */
+		z-index: 10; /* Above content and resize handles. */
 
+		display: flex;
+		gap: 2px;
+		background: var(--background-secondary);
+
+		/* Revealed on block hover. */
+		opacity: 0;
+		pointer-events: none; /* Avoid clicks landing while invisible. */
+		transition: opacity 0.1s;
+	}
+
+	.tl-block:hover .tl-actions {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.tl-action-btn {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -556,21 +633,22 @@
 		background: transparent;
 		color: var(--text-muted);
 		cursor: pointer;
-
-		/* Revealed on block hover. */
-		opacity: 0;
-		pointer-events: none; /* Prevents accidental clicks when invisible */
-		transition: opacity 0.1s;
 	}
 
-	.tl-block:hover .tl-delete-btn {
-		opacity: 1;
-		pointer-events: auto; /* Re-enable pointer events on hover */
-	}
-
-	.tl-delete-btn:hover {
-		color: var(--text-error);
+	.tl-action-btn:hover {
+		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+	}
+
+	.tl-action-danger:hover {
+		color: var(--text-error);
+	}
+
+	/* Pin the action-bar icons so a theme's svg reset can't collapse them. */
+	.tl-action-btn svg {
+		width: 13px;
+		height: 13px;
+		flex-shrink: 0;
 	}
 
 /* Block contents */
