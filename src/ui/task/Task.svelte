@@ -17,6 +17,7 @@
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
+	import { longpress } from "../actions/longpress";
 
 	interface Props {
 		task: Task;
@@ -42,6 +43,10 @@
 		// `rect`. Omitted for a colocated (checkable-block) task, which can't be
 		// lifted off its line — the parent leaves it undefined there.
 		onNest?: (rect: DOMRect) => void;
+		// A long-press on the task body (never the checkbox) began a drag-to-nest.
+		// The parent takes over from here. Omitted where dragging isn't supported
+		// (e.g. a colocated task, or the grid) — then the body is just static.
+		onGrab?: (event: PointerEvent) => void;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -61,6 +66,7 @@
 		onNavigate,
 		onEditAssoc,
 		onNest,
+		onGrab,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -163,6 +169,34 @@
 	function del() {
 		onDelete(task);
 	}
+
+	// ── Drag-to-nest (long-press the body) ───────────────────────────
+	// The long-press action fires a bare CustomEvent, so we stash the pointerdown
+	// that started the press and hand it to the parent when the press matures.
+	// The press is armed only on the text body — never the checkbox — so a hold
+	// on the checkbox still cancels the status (see TaskCheckbox), and a plain
+	// click on the body still edits.
+	let pressEvent: PointerEvent | undefined;
+	let textEl = $state<HTMLSpanElement>();
+
+	function armGrab(event: PointerEvent) {
+		if (event.button !== 0) return; // primary button only
+		pressEvent = event;
+	}
+
+	// The longpress action dispatches a bare `longpress` CustomEvent; listen for
+	// it directly (as TaskCheckbox does) rather than via an `on<name>` attribute,
+	// which Svelte's typed DOM attributes don't cover for custom events.
+	$effect(() => {
+		const el = textEl;
+		if (!el || !onGrab) return;
+		const handler = () => {
+			if (pressEvent) onGrab(pressEvent);
+			pressEvent = undefined;
+		};
+		el.addEventListener("longpress", handler);
+		return () => el.removeEventListener("longpress", handler);
+	});
 
 	function openContextMenu(event: MouseEvent) {
 		event.preventDefault();
@@ -281,7 +315,19 @@
 			/>
 		{:else}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<span class="k-task-text" role="textbox" tabindex="0" onclick={beginEdit}>
+			<!-- Long-press here grabs the task to drag it between blocks; a plain
+			     click still edits. The checkbox is a separate element, so its own
+			     press/long-press (status cycle / cancel) is untouched. -->
+			<span
+				class="k-task-text"
+				class:grabbable={onGrab !== undefined}
+				role="textbox"
+				tabindex="0"
+				bind:this={textEl}
+				onclick={beginEdit}
+				onpointerdown={onGrab ? armGrab : undefined}
+				use:longpress={400}
+			>
 				{task.text}
 			</span>
 		{/if}
@@ -392,6 +438,13 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		/* No text selection so a long-press-to-drag doesn't paint a selection. */
+		user-select: none;
+		touch-action: none;
+	}
+
+	.k-task-text.grabbable {
+		cursor: grab;
 	}
 
 	.k-task.done .k-task-text,

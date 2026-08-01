@@ -394,6 +394,8 @@
 			event.preventDefault();
 			columns[date].deleteSelection();
 		} else if (key === "escape") {
+			// Cancel any live task drag first, then clear selections.
+			for (const date of dates) columns[date]?.cancelTaskDrag();
 			for (const date of dates) columns[date]?.clearSelection();
 		}
 	}
