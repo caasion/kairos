@@ -33,6 +33,8 @@
 		"vitest": "^4.1.10"
 	},
 	"dependencies": {
-		"obsidian-daily-notes-interface": "^0.9.5"
+		"date-fns": "^3.6.0",
+		"obsidian-daily-notes-interface": "^0.9.5",
+		"yaml": "^2.9.0"
 	}
 }
