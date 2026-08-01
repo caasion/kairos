@@ -21,13 +21,13 @@
 		Block,
 		ISODate,
 		ResolvedTask,
+		Task,
 		TaskStatus,
 	} from "../../types";
 	import {
 		addTaskToUnscheduled,
 		deleteTask,
 		moveTaskAcrossDays,
-		nestTaskUnderBlock,
 		setTaskStatus,
 		setTaskText,
 		unnestTask,
@@ -246,20 +246,31 @@
 		const sourceDay = dayOf(drag.task.date);
 		if (!sourceDay || sourceDay.path === null) return;
 
+		// Resolve the target row's association from the drop's row key.
+		const targetRow = rows.find((r) => r.key === drop.rowKey);
+		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
+		// Convert RowAssociation → Association (or null to clear).
+		const newAssoc: Association | null | undefined = targetAssoc
+			? { kind: targetAssoc.kind, id: targetAssoc.id }
+			: targetAssoc === undefined
+				? undefined  // no target row found — preserve existing assoc
+				: null;      // unassigned row — clear assoc
+
 		if (drop.date === drag.task.date) {
-			// Same day: reorder within the day's blocks.
-			const next = nestTaskUnderBlock(
-				sourceDay.blocks,
-				drag.owner,
-				drag.task,
-				drag.owner,
-				drop.index,
-			);
+			// Same day: move to Unscheduled of that day with the new association.
+			// (We always go through unnest + re-associate rather than reorder,
+			// because the drop could be onto a different row on the same day.)
+			let next = unnestTask(sourceDay.blocks, drag.owner, drag.task, sourceDay.path);
+			// Apply association change if needed.
+			if (next !== sourceDay.blocks && newAssoc !== undefined) {
+				next = applyAssocToTask(next, drag.task, newAssoc);
+			}
 			if (next !== sourceDay.blocks) commit(drag.task.date, sourceDay.path, next);
 			return;
 		}
 
-		// Cross-day move: remove from source, append to target day's Unscheduled.
+		// Cross-day move: remove from source, append to target day's Unscheduled
+		// with the target row's association applied.
 		const targetDay = dayOf(drop.date as ISODate);
 		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
 		const targetBlocks = targetDay?.blocks ?? [];
@@ -270,6 +281,7 @@
 			drag.task,
 			targetPath,
 			nextDraftLine--,
+			newAssoc,
 		);
 		index.applyCrossDayMove(
 			drag.task.date,
@@ -281,14 +293,29 @@
 		);
 	}
 
+	// Patch the association on a task that has just been moved into Unscheduled.
+	// Walks the blocks to find the task by source line and updates its assoc field.
+	function applyAssocToTask(blocks: Block[], task: Task, assoc: Association | null): Block[] {
+		return blocks.map((b) => ({
+			...b,
+			tasks: b.tasks.map((t) => {
+				if (t.source.line !== task.source.line) return t;
+				if (assoc) return { ...t, assoc };
+				const { assoc: _drop, ...rest } = t;
+				return rest;
+			}),
+		}));
+	}
+
 	function cancelTaskDrag() {
 		taskDrag = null;
 		taskDrop = null;
 	}
 
-	// The drop index for a given cell date (undefined when drag is to a different date).
-	function dropIndexFor(date: ISODate): number | undefined {
-		if (!taskDrop || taskDrop.date !== date) return undefined;
+	// The drop index for a given cell (date + row). Undefined when the live drop
+	// is targeting a different cell — only that cell renders the indicator.
+	function dropIndexFor(date: ISODate, rowKey: string): number | undefined {
+		if (!taskDrop || taskDrop.date !== date || taskDrop.rowKey !== rowKey) return undefined;
 		return taskDrop.index;
 	}
 
@@ -538,14 +565,17 @@
 
 				{#each dates as date (date)}
 					{@const day = dayOf(date)}
-					<div class="grid-datacell">
+					<div
+						class="grid-datacell"
+						data-grid-date={date}
+						data-grid-row-key={row.key}
+					>
 						{#if day}
 							<GridCell
 								tasks={tasksFor(row, day)}
 								{resolve}
-								{date}
 								color={"color" in row ? row.color : undefined}
-								allowCreate={row.kind !== "unassigned"}
+								allowCreate={row.kind !== "unassigned" && row.kind !== "domain"}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
 								onDelete={onDelete}
@@ -556,7 +586,7 @@
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
 								dragTaskLine={taskDrag?.task.source.line}
-								dropIndex={dropIndexFor(date)}
+								dropIndex={dropIndexFor(date, row.key)}
 								dragActive={taskDrag !== null}
 							/>
 						{:else}

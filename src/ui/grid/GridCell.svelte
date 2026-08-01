@@ -13,8 +13,6 @@
 	interface Props {
 		tasks: ResolvedTask[];
 		resolve: Resolver;
-		/** The ISO date this cell represents — stamped as data-grid-date for hit-testing. */
-		date: string;
 		/** Row tint, applied to task checkboxes for a domain-colored accent. */
 		color?: string;
 		/** True on the Unassigned row, where "+" would have no association. */
@@ -42,7 +40,6 @@
 	let {
 		tasks,
 		resolve,
-		date,
 		color,
 		allowCreate,
 		onSetStatus,
@@ -95,7 +92,7 @@
 	}
 </script>
 
-<div class="grid-cell" class:drag-active={dragActive} data-grid-date={date}>
+<div class="grid-cell" class:drag-active={dragActive}>
 	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
 		{#if dropIndex === i}
 			<div class="grid-drop-line"></div>

@@ -101,12 +101,15 @@ export function hitTestDropSlot(
 export const APPEND_INDEX = Number.MAX_SAFE_INTEGER;
 
 /**
- * The DOM contract for grid cells, emitted by GridCell:
- *   • the cell wrapper carries `data-grid-date="<ISO date>"`,
+ * The DOM contract for grid cells, emitted by GridView:
+ *   • the datacell wrapper carries `data-grid-date="<ISO date>"` and
+ *     `data-grid-row-key="<row.key>"`,
  *   • each task row carries `data-task-index="<i>"`.
  */
 export interface GridDropSlot {
   date: string;
+  /** The row key — used by GridView to look up the row's association. */
+  rowKey: string;
   /** Insertion index among the cell's tasks (clamped by the caller). */
   index: number;
 }
@@ -118,20 +121,21 @@ export interface GridDropSlot {
 export function hitTestGridCell(event: PointerEvent): GridDropSlot | null {
   const el = document.elementFromPoint(event.clientX, event.clientY);
   if (!el) return null;
-  
+
   const cell = el.closest<HTMLElement>("[data-grid-date]");
   if (!cell) return null;
   const date = cell.dataset.gridDate;
-  if (!date) return null;
+  const rowKey = cell.dataset.gridRowKey;
+  if (!date || !rowKey) return null;
 
-  const rows = Array.from(cell.querySelectorAll<HTMLElement>("[data-task-index]"));
-  let index = rows.length;
-  for (let i = 0; i < rows.length; i++) {
-    const rect = rows[i]!.getBoundingClientRect();
+  const taskRows = Array.from(cell.querySelectorAll<HTMLElement>("[data-task-index]"));
+  let index = taskRows.length;
+  for (let i = 0; i < taskRows.length; i++) {
+    const rect = taskRows[i]!.getBoundingClientRect();
     if (event.clientY < rect.top + rect.height / 2) {
       index = i;
       break;
     }
   }
-  return { date, index };
+  return { date, rowKey, index };
 }
