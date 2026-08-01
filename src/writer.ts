@@ -248,6 +248,124 @@ export function deleteBlock(blocks: Block[], target: Block): Block[] {
   return blocks.filter((b) => !isOwner(b, target));
 }
 
+// ─── unscheduled inbox ─────────────────────────────────────────
+//
+// The Grid view creates tasks that are associated but NOT scheduled (spec §5:
+// "Tasks will not be automatically scheduled — moved to Unscheduled"). A new
+// task therefore lands in the day's reserved Unscheduled block, and the row's
+// association is written *explicitly* onto the task line (materialize-on-move,
+// §4.3 / §2.2: an association is display-only only while inherited; a task the
+// user files under a project/domain in the grid carries it literally).
+
+const UNSCHEDULED_TITLE = "Unscheduled";
+
+/** The day's Unscheduled inbox block, if it has one. */
+function findUnscheduled(blocks: Block[]): Block | undefined {
+  return blocks.find(
+    (b) => b.time === undefined && b.title === UNSCHEDULED_TITLE,
+  );
+}
+
+/**
+ * Append a new task to the day's Unscheduled block, creating that block if the
+ * day doesn't have one yet. `assoc` (the grid row's owner) is written onto the
+ * task explicitly so the plain text stays literally true — a grid-filed task is
+ * never merely inheriting.
+ *
+ * Pure: returns a fresh `Block[]`; the caller persists via `applyDayEdit`.
+ * `line` is a throwaway negative handle (like `makeBlock`), unique per unsaved
+ * task so keyed rendering doesn't collide before the reparse re-derives lines.
+ */
+export function addTaskToUnscheduled(
+  blocks: Block[],
+  path: string,
+  text: string,
+  assoc: Association | undefined,
+  line = -1,
+): Block[] {
+  const task: Task = {
+    source: { path, line },
+    text,
+    status: " ",
+    ...(assoc ? { assoc } : {}),
+  };
+  return insertIntoUnscheduled(blocks, task, path, line - 1);
+}
+
+/**
+ * Append `task` to the day's Unscheduled block, creating that block if absent.
+ * `inboxLine` is the throwaway negative line for a freshly-created inbox block
+ * (only used when no inbox exists yet). Shared by `addTaskToUnscheduled` (new
+ * task) and `unnestTask` (moved task).
+ */
+function insertIntoUnscheduled(
+  blocks: Block[],
+  task: Task,
+  path: string,
+  inboxLine: number,
+): Block[] {
+  const existing = findUnscheduled(blocks);
+  if (existing) {
+    return blocks.map((b) =>
+      isOwner(b, existing) ? { ...b, tasks: [...b.tasks, task] } : b,
+    );
+  }
+
+  // No inbox yet: create one and drop the task in. `sortForWrite` pins untimed
+  // blocks to the end, so its position in the array here doesn't matter.
+  const inbox: Block = {
+    source: { path, line: inboxLine },
+    title: UNSCHEDULED_TITLE,
+    tasks: [task],
+    scheduled: false,
+  };
+  return [...blocks, inbox];
+}
+
+/**
+ * Unnest a task: move it out of its (timed) block into the day's Unscheduled
+ * block. This is the Grid view's one time-dimension write — you *schedule*
+ * blocks, not tasks, so a task loses its time by leaving the block, never by a
+ * time edit of its own.
+ *
+ * Materialize-on-move (spec §4.3): a task that was only *inheriting* its block's
+ * association would become genuinely Unassociated once it leaves the block (an
+ * Unscheduled block has no association to inherit). To keep the plain text
+ * literally true and the task in the same grid row, the inherited association is
+ * written explicitly onto the moved task. A task with its own explicit
+ * association keeps it unchanged.
+ *
+ * No-op unless `owner` is a real timed block holding `target` as a nested task:
+ * a colocated task (the block's own checkbox) is part of a *block*, which is not
+ * unnestable — remove the block in the timeline instead. Pure; caller persists.
+ */
+export function unnestTask(
+  blocks: Block[],
+  owner: Block,
+  target: Task,
+  path: string,
+): Block[] {
+  const source = blocks.find((b) => isOwner(b, owner));
+  if (!source) return blocks;
+
+  // Only a genuinely nested task can unnest. A colocated task shares the block's
+  // own line (it *is* the block's checkbox), so bail if the target is that.
+  const nested = source.tasks.find((t) => sameSource(t.source, target.source));
+  if (!nested) return blocks;
+
+  // Materialize: keep an explicit assoc; otherwise inherit the block's onto it.
+  const assoc = nested.assoc ?? source.assoc;
+  const moved: Task = { ...nested, ...(assoc ? { assoc } : {}) };
+
+  // Remove from the source block, then insert into Unscheduled.
+  const without = blocks.map((b) =>
+    isOwner(b, source)
+      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      : b,
+  );
+  return insertIntoUnscheduled(without, moved, path, target.source.line - 1);
+}
+
 // ─── cross-day block move ──────────────────────────────────────
 //
 // CORE LOGIC — flagged for review. Moving a block from one daily note to

@@ -19,7 +19,7 @@
 // TODO seams (filled once the data shapes land): project/domain/backlog parsing
 // and the alias resolution folded into `ownerKey`.
 
-import { writable } from "svelte/store";
+import { derived, writable } from "svelte/store";
 import type { Readable, Writable } from "svelte/store";
 import { getDateFromPath } from "obsidian-daily-notes-interface";
 import type {
@@ -39,7 +39,7 @@ import { serialize } from "./serializer";
 import { DEFAULT_HEADING, spliceSection } from "./section";
 import { resolveBlocks } from "./resolver";
 import { parseDomain, parseProject } from "./projectFile";
-import { resolveAssociation } from "./association";
+import { domainProjects, resolveAssociation } from "./association";
 import type { ResolvedAssociation } from "./association";
 import { associationOptions } from "./associationOptions";
 import type { AssociationOption } from "./associationOptions";
@@ -98,6 +98,7 @@ export function emptyState(): IndexState {
 		backlog: [],
 		byProject: new Map(),
 		byDomain: new Map(),
+		byDomainProjects: new Map(),
 	};
 }
 
@@ -125,7 +126,15 @@ export function deriveLookups(state: IndexState): IndexState {
 		}
 	}
 
-	return { ...state, byProject, byDomain };
+	// Child projects per domain (by the domain's stable id), for the Grid view's
+	// expand-domains toggle. Cheap to recompute alongside the task rollups since
+	// both run on any project/domain/day change.
+	const byDomainProjects = new Map<string, Project[]>();
+	for (const domain of state.domains.values()) {
+		byDomainProjects.set(domain.id, domainProjects(domain.id, state.projects));
+	}
+
+	return { ...state, byProject, byDomain, byDomainProjects };
 }
 
 /** Canonicalize an association id. TODO: fold in alias → current-name mapping. */
@@ -284,6 +293,32 @@ export interface DomainView {
 }
 
 /**
+ * One visible day in the Grid view: the calendar date, the note path (null when
+ * no note exists yet — a cell edit creates it), the day's raw blocks (the write
+ * surface a cell edit rebuilds), and its resolved tasks (what a cell renders).
+ */
+export interface GridDay {
+	date: ISODate;
+	path: string | null;
+	blocks: Block[];
+	tasks: ResolvedTask[];
+}
+
+/**
+ * Everything the Grid view needs, recomputed reactively. `days` carries the
+ * visible columns; `projects`/`domains`/`byDomainProjects` carry the row axis
+ * (and the expand-domains children). A live resolver is bundled so cells tint
+ * without a second subscription.
+ */
+export interface GridSnapshot {
+	days: GridDay[];
+	projects: Map<string, Project>;
+	domains: Map<string, Domain>;
+	byDomainProjects: Map<string, Project[]>;
+	resolve: Resolver;
+}
+
+/**
  * Wraps the pure state in Svelte stores and the optimistic write path. The
  * vault watcher calls `onFileChanged` / `onFileDeleted`; the UI calls `day(date)`
  * to subscribe and `applyDayEdit` to mutate.
@@ -301,6 +336,10 @@ export class KairosIndex {
 		displayName: "",
 		resolved: false,
 	}));
+	// A monotonic counter bumped whenever the project/domain maps change. The Grid
+	// view's derived store folds this in so a project/domain edit (which changes
+	// row set, names, or colors) re-derives the grid even when no day changed.
+	private structureVersion: Writable<number> = writable(0);
 	private writeTimers = new Map<ISODate, ReturnType<typeof setTimeout>>();
 
 	constructor(private deps: IndexDeps) {
@@ -360,6 +399,45 @@ export class KairosIndex {
 
 	backlog(): Readable<BacklogEntry[]> {
 		return this.backlogStore;
+	}
+
+	/**
+	 * A live grid feed for a set of dates (the visible columns). Re-derives when
+	 * any of those days change (its own edit or an external one) or when the
+	 * project/domain structure changes (`structureVersion`). The row axis is
+	 * carried as the current project/domain maps so the view groups tasks by
+	 * owner and splits domains into child projects on demand.
+	 *
+	 * A cold `grid([...])` for dates never seen registers their day stores, so a
+	 * later file event on those days flows straight through.
+	 */
+	grid(dates: ISODate[]): Readable<GridSnapshot> {
+		const dayStores = dates.map((date) => this.ensureDayStore(date));
+		const inputs: [Readable<number>, ...Readable<Day | undefined>[]] = [
+			this.structureVersion,
+			...dayStores,
+		];
+
+		return derived(inputs, ([, ...days]) => {
+			const gridDays: GridDay[] = days.map((day, i) => {
+				const date = dates[i]!;
+				const blocks = day?.blocks ?? [];
+				return {
+					date,
+					path: day?.path ?? null,
+					blocks,
+					tasks: resolveBlocks(blocks, date),
+				};
+			});
+
+			return {
+				days: gridDays,
+				projects: this.state.projects,
+				domains: this.state.domains,
+				byDomainProjects: this.state.byDomainProjects,
+				resolve: this.makeResolver(),
+			};
+		});
 	}
 
 	/**
@@ -630,6 +708,9 @@ export class KairosIndex {
 		// The resolver closes over the project/domain maps, so a change here must
 		// hand views a fresh function to trigger a re-tint.
 		this.resolverStore.set(this.makeResolver());
+		// Bump the structure version so the Grid's derived store re-derives its
+		// rows (a new/renamed/recolored project or domain changes the grid shape).
+		this.structureVersion.update((n) => n + 1);
 	}
 
 	private publishAll(): void {

@@ -126,6 +126,10 @@ interface Index {
 
   byProject: Map<string, ResolvedTask[]>;
   byDomain: Map<string, ResolvedTask[]>;
+  // Child projects of each domain, keyed by the domain's stable id (a project
+  // links to its domain by id, not name). Feeds the Grid view's expand-domains
+  // toggle. Excludes archived projects.
+  byDomainProjects: Map<string, Project[]>;
 }
 
 export type {

@@ -92,3 +92,27 @@ export function resolveAssociation(
 		resolved: true,
 	};
 }
+
+/**
+ * The projects that belong to a domain. A project links to its domain by the
+ * domain's stable `id` (its `domain_id` frontmatter), so this matches on id,
+ * not name — a domain rename never orphans its projects. Archived projects are
+ * dropped (they shouldn't get their own grid row), and the result is sorted by
+ * name so rows are stable across reindexes.
+ *
+ * Used by the Grid view's "expand domains" toggle to split a domain row into
+ * one row per child project.
+ */
+export function domainProjects(
+	domainId: string,
+	projects: Map<string, Project>,
+): Project[] {
+	const out: Project[] = [];
+	for (const project of projects.values()) {
+		if (project.archived) continue;
+		if (project.domain === domainId) out.push(project);
+	}
+	return out.sort((a, b) =>
+		a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+	);
+}
