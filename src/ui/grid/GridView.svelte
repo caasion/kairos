@@ -3,8 +3,8 @@
 	//
 	// Layout: rows = associations (projects, then domains, then unassigned),
 	// columns = the visible days, cells = the tasks associated with that row on
-	// that day. Domains are always fully expanded — every child project and the
-	// domain-direct row are always visible, no collapse state.
+	// that day. Domains are always fully expanded — every child project row is
+	// always visible, no collapse state.
 	//
 	// Data comes from the index's reactive `grid(dates)` feed; the row model
 	// (buildRows / cellTasks) is pure and lives in gridModel.ts. This component
@@ -545,7 +545,7 @@
 								{resolve}
 								{date}
 								color={"color" in row ? row.color : undefined}
-								allowCreate={row.kind !== "unassigned" && row.kind !== "domain"}
+								allowCreate={row.kind !== "unassigned"}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
 								onDelete={onDelete}

@@ -96,13 +96,12 @@ describe("buildRows", () => {
 	it("emits top-level projects, then domains (always expanded), in order", () => {
 		const s = snap([project({ name: "Alpha" })], [domain()], []);
 		const rows = buildRows(s);
-		// Alpha (top-level project), Health (domain header), Health (direct)
-		expect(rows.map((r) => r.kind)).toEqual(["project", "domain", "domain-direct"]);
+		expect(rows.map((r) => r.kind)).toEqual(["project", "domain"]);
 		expect(rows[0]!.name).toBe("Alpha");
 		expect(rows[1]!.name).toBe("Health");
 	});
 
-	it("always expands a domain into child project rows + a direct row", () => {
+	it("always expands a domain into its child project rows", () => {
 		const s = snap(
 			[project({ name: "Alpha", domain: "d-health" })],
 			[domain()],
@@ -112,7 +111,6 @@ describe("buildRows", () => {
 		expect(rows.map((r) => [r.kind, r.name])).toEqual([
 			["domain", "Health"],
 			["project", "Alpha"],
-			["domain-direct", "Health (direct)"],
 		]);
 	});
 
@@ -144,7 +142,7 @@ describe("cellTasks", () => {
 		expect(cellTasks(projRow, s.days[0]!.tasks, s)).toEqual([t]);
 	});
 
-	it("domain row shows nothing; children carry the tasks", () => {
+	it("domain row holds direct tasks; child project rows hold project tasks", () => {
 		const child = task({ owner: proj("Alpha") });
 		const direct = task({ owner: dom("Health") });
 		const s = snap(
@@ -155,10 +153,8 @@ describe("cellTasks", () => {
 		const rows = buildRows(s);
 		const domRow = rows.find((r) => r.kind === "domain")!;
 		const projRow = rows.find((r) => r.kind === "project")!;
-		const directRow = rows.find((r) => r.kind === "domain-direct")!;
-		expect(cellTasks(domRow, s.days[0]!.tasks, s)).toEqual([]);
+		expect(cellTasks(domRow, s.days[0]!.tasks, s)).toEqual([direct]);
 		expect(cellTasks(projRow, s.days[0]!.tasks, s)).toEqual([child]);
-		expect(cellTasks(directRow, s.days[0]!.tasks, s)).toEqual([direct]);
 	});
 
 	it("matches by canonical name so an aliased tag lands in the right row", () => {
@@ -182,7 +178,6 @@ describe("rowAssociation", () => {
 		);
 		expect(byKind["project"]).toEqual({ kind: "project", id: "Alpha" });
 		expect(byKind["domain"]).toEqual({ kind: "domain", id: "Health" });
-		expect(byKind["domain-direct"]).toEqual({ kind: "domain", id: "Health" });
 		expect(byKind["unassigned"]).toBeUndefined();
 	});
 });

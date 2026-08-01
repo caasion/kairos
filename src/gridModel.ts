@@ -12,8 +12,8 @@
 // Row axis, in order:
 //   1. project rows       — one per non-archived project NOT under a domain
 //   2. domain rows        — one per non-archived domain, always expanded:
+//        · the domain row itself holds tasks tagged [D:Domain] directly
 //        · a child row per project under the domain
-//        · a "direct" child row for tasks tagged [D:Domain] straight
 //   3. unassigned row     — tasks with no owner (always last, only if non-empty)
 
 import type { Project, ResolvedTask } from "./types";
@@ -41,15 +41,6 @@ export type GridRow =
 			color?: string;
 			depth: 0;
 	  }
-	| {
-			// A domain's own directly-tagged tasks, always shown as a child row.
-			kind: "domain-direct";
-			key: RowKey;
-			name: string;
-			domainName: string;
-			color?: string;
-			depth: 1;
-	  }
 	| { kind: "unassigned"; key: RowKey; name: string; depth: 0 };
 
 /** The association a create-in-cell should apply for a row (undefined = none). */
@@ -74,7 +65,7 @@ function ownerIdentity(
 
 /**
  * Build the ordered rows for the current snapshot. Domains are always fully
- * expanded — every child project and the domain-direct row are always visible.
+ * expanded — every child project row is always visible.
  */
 export function buildRows(snap: GridSnapshot): GridRow[] {
 	const rows: GridRow[] = [];
@@ -126,14 +117,6 @@ export function buildRows(snap: GridSnapshot): GridRow[] {
 				depth: 1,
 			});
 		}
-		rows.push({
-			kind: "domain-direct",
-			key: `domain-direct:${d.name}`,
-			name: `${d.name} (direct)`,
-			domainName: d.name,
-			...(d.color ? { color: d.color } : {}),
-			depth: 1,
-		});
 	}
 
 	// 3. Unassigned row, only if some day has an unowned task.
@@ -160,8 +143,7 @@ function byName(a: { name: string }, b: { name: string }): number {
 
 /**
  * The tasks belonging in a given row's cell for a given day. Matching is by the
- * task's canonical owner identity. Domain rows are headers only (no tasks) —
- * tasks appear in the child project rows or the domain-direct row.
+ * task's canonical owner identity.
  */
 export function cellTasks(
 	row: GridRow,
@@ -172,12 +154,6 @@ export function cellTasks(
 		case "unassigned":
 			return tasks.filter((t) => !t.owner);
 
-		case "domain-direct":
-			return tasks.filter((t) => {
-				const id = ownerIdentity(t, snap);
-				return id?.kind === "domain" && id.name === row.domainName;
-			});
-
 		case "project":
 			return tasks.filter((t) => {
 				const id = ownerIdentity(t, snap);
@@ -185,8 +161,10 @@ export function cellTasks(
 			});
 
 		case "domain":
-			// Domain rows are always-expanded header rows — tasks live in children.
-			return [];
+			return tasks.filter((t) => {
+				const id = ownerIdentity(t, snap);
+				return id?.kind === "domain" && id.name === row.name;
+			});
 	}
 }
 
@@ -197,8 +175,6 @@ export function rowAssociation(row: GridRow): RowAssociation {
 			return { kind: "project", id: row.name };
 		case "domain":
 			return { kind: "domain", id: row.name };
-		case "domain-direct":
-			return { kind: "domain", id: row.domainName };
 		case "unassigned":
 			return undefined;
 	}
