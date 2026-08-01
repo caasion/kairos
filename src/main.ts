@@ -57,12 +57,21 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosWeekView(leaf, this),
 		);
 
+		this.registerView(
+			KAIROS_GRID_VIEW_TYPE,
+			(leaf) => new KairosGridView(leaf, this),
+		);
+
 		this.addRibbonIcon('clock', 'Open Kairos Day view', () => {
 			void this.activateView();
 		});
 
 		this.addRibbonIcon('calendar-range', 'Open Kairos Week view', () => {
 			void this.activateWeekView();
+		});
+
+		this.addRibbonIcon('layout-grid', 'Open Kairos Grid view', () => {
+			void this.activateGridView();
 		});
 
 		this.addCommand({
@@ -75,6 +84,12 @@ export default class Kairos extends Plugin {
 			id: 'open-kairos-week-view',
 			name: 'Open Week view',
 			callback: () => void this.activateWeekView(),
+		});
+
+		this.addCommand({
+			id: 'open-kairos-grid-view',
+			name: 'Open Grid view',
+			callback: () => void this.activateGridView(),
 		});
 
 		// Dev command: parse the active note's Schedule section and log the JSON.
