@@ -5,6 +5,7 @@ import { parseSchedule } from './parser';
 import { resolveBlocks } from './resolver';
 import type { ISODate } from './types';
 import { KAIROS_VIEW_TYPE, KairosView } from './KairosView';
+import { KAIROS_WEEK_VIEW_TYPE, KairosWeekView } from './KairosWeekView';
 import { IndexAdapter } from './indexAdapter';
 
 // Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
@@ -34,14 +35,29 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosView(leaf, this),
 		);
 
+		this.registerView(
+			KAIROS_WEEK_VIEW_TYPE,
+			(leaf) => new KairosWeekView(leaf, this),
+		);
+
 		this.addRibbonIcon('clock', 'Open Kairos Day view', () => {
 			void this.activateView();
+		});
+
+		this.addRibbonIcon('calendar-range', 'Open Kairos Week view', () => {
+			void this.activateWeekView();
 		});
 
 		this.addCommand({
 			id: 'open-kairos-day-view',
 			name: 'Open Day view',
 			callback: () => void this.activateView(),
+		});
+
+		this.addCommand({
+			id: 'open-kairos-week-view',
+			name: 'Open Week view',
+			callback: () => void this.activateWeekView(),
 		});
 
 		// Dev command: parse the active note's Schedule section and log the JSON.
@@ -92,6 +108,25 @@ export default class Kairos extends Plugin {
 		if (!leaf) {
 			leaf = workspace.getRightLeaf(false);
 			await leaf?.setViewState({ type: KAIROS_VIEW_TYPE, active: true });
+		}
+
+		if (leaf) void workspace.revealLeaf(leaf);
+	}
+
+	// Reveal the Week view in a main (center) leaf, reusing one if already open.
+	async activateWeekView() {
+		const { workspace } = this.app;
+
+		const existing = workspace.getLeavesOfType(KAIROS_WEEK_VIEW_TYPE);
+		let leaf: WorkspaceLeaf | null =
+			existing.length > 0 ? existing[0] ?? null : null;
+
+		if (!leaf) {
+			leaf = workspace.getLeaf('tab');
+			await leaf.setViewState({
+				type: KAIROS_WEEK_VIEW_TYPE,
+				active: true,
+			});
 		}
 
 		if (leaf) void workspace.revealLeaf(leaf);
