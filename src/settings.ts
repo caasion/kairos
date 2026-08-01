@@ -117,9 +117,13 @@ export class KairosSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						// Store the canonical form; an empty/invalid entry falls back
 						// to the default so the engine always has a usable heading.
-						this.plugin.settings.scheduleHeading =
-							normalizeHeading(value);
+						const next = normalizeHeading(value);
+						if (next === this.plugin.settings.scheduleHeading) return;
+						this.plugin.settings.scheduleHeading = next;
 						await this.plugin.saveSettings();
+						// Days already in memory were parsed under the old heading;
+						// rebuild the index so open views re-parse under the new one.
+						await this.plugin.indexAdapter.reseed();
 					}),
 			);
 

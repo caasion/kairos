@@ -294,6 +294,40 @@ describe("KairosIndex", () => {
 		expect(file).toContain("keep me");
 	});
 
+	it("writes under the heading active at edit time, not a later change", async () => {
+		// A note whose section uses the current heading.
+		let file = "## Schedule\n\n- 08:00 - 09:00 Old\n";
+		const mutablePaths: IndexPaths = { ...PATHS, scheduleHeading: "## Schedule" };
+		const capDeps: IndexDeps = {
+			read: async () => file,
+			write: async (_path, content) => {
+				file = content;
+			},
+			now: () => 1000,
+			settings: mutablePaths,
+			writeDebounceMs: 500,
+		};
+		const idx = new KairosIndex(capDeps);
+		const path = dayPath("2026-07-31");
+		idx.seed([{ path, content: file, mtime: 1 }]);
+
+		// Edit under "## Schedule", then flip the heading before the write fires.
+		idx.applyDayEdit(
+			"2026-07-31",
+			path,
+			parseSchedule(note("- 09:00 - 10:00 New"), path),
+		);
+		mutablePaths.scheduleHeading = "# My Day";
+		await vi.advanceTimersByTimeAsync(500);
+
+		// The write replaced the existing "## Schedule" section (heading captured
+		// at edit time) rather than appending a mismatched "# My Day" one.
+		expect(file).toContain("## Schedule");
+		expect(file).toContain("- 09:00 - 10:00 New");
+		expect(file).not.toContain("# My Day");
+		expect(file).not.toContain("Old");
+	});
+
 	it("drops an echo: a modify matching the schedule notifies no one", () => {
 		const idx = new KairosIndex(deps);
 		const path = dayPath("2026-07-31");

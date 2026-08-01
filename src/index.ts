@@ -474,9 +474,14 @@ export class KairosIndex {
 		const existing = this.writeTimers.get(date);
 		if (existing) clearTimeout(existing);
 
+		// Capture the heading now, at edit time. If the user changes the
+		// schedule-heading setting during the debounce window, this write still
+		// splices against the heading the note actually has, so it replaces the
+		// existing section rather than appending a mismatched second one.
+		const heading = this.deps.settings.scheduleHeading;
 		const timer = setTimeout(() => {
 			this.writeTimers.delete(date);
-			void this.writeDay(date, path);
+			void this.writeDay(date, path, heading);
 		}, this.deps.writeDebounceMs);
 
 		this.writeTimers.set(date, timer);
@@ -489,10 +494,13 @@ export class KairosIndex {
 	 * note gets just the section). Serializes the *latest* blocks, not a stale
 	 * closure, so a burst of edits collapses to one correct write.
 	 */
-	private async writeDay(date: ISODate, path: string): Promise<void> {
+	private async writeDay(
+		date: ISODate,
+		path: string,
+		heading: string,
+	): Promise<void> {
 		const latest = this.state.days.get(date);
 		if (!latest) return;
-		const heading = this.deps.settings.scheduleHeading;
 		const section = serialize(latest.blocks, heading);
 
 		let current = "";

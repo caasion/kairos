@@ -37,6 +37,18 @@ export class IndexAdapter {
 		this.index.dispose();
 	}
 
+	/**
+	 * Re-read every file and rebuild the index from scratch. Used when a setting
+	 * that changes how files are parsed — notably the schedule-section heading —
+	 * has changed: days already in memory were parsed under the old heading and
+	 * must be re-parsed. `index.seed` republishes to every subscribed store, so
+	 * open views re-render with the freshly parsed data. Event subscriptions are
+	 * untouched (they don't depend on the heading), so there's nothing to rewire.
+	 */
+	async reseed(): Promise<void> {
+		await this.seed();
+	}
+
 	// ── dependency wiring ──
 
 	private buildDeps(): IndexDeps {
