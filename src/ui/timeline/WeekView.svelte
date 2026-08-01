@@ -36,8 +36,24 @@
 	// Live association resolver (re-tints on project/domain file changes).
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
+	// `settings` is a plain (non-reactive) object shared with the plugin, so
+	// mutating a field on it doesn't trip Svelte's reactivity. This counter,
+	// bumped by every setter, is what the settings-derived values depend on so
+	// they recompute (and the popup inputs re-read) the moment a setting changes.
+	let settingsVersion = $state(0);
+	function touchSettings() {
+		settingsVersion++;
+		saveSettings();
+	}
+	// Read `settingsVersion` so any $derived calling this re-runs when a setting
+	// changes, then hand back the (plain, non-reactive) settings object to read.
+	function liveSettings(): typeof settings {
+		void settingsVersion;
+		return settings;
+	}
+
 	// Shared vertical geometry — one time axis for the whole week.
-	const geo = $derived(geometryFromSettings(settings));
+	const geo = $derived(geometryFromSettings(liveSettings()));
 	const hours = $derived(visibleHours(geo));
 	const bodyHeight = $derived(gridHeight(geo));
 
@@ -50,8 +66,8 @@
 		return Math.max(1, Math.min(7, Math.floor(n)));
 	}
 
-	const before = $derived(clampSpan(settings.weekDaysBefore));
-	const after = $derived(clampSpan(settings.weekDaysAfter));
+	const before = $derived(clampSpan(liveSettings().weekDaysBefore));
+	const after = $derived(clampSpan(liveSettings().weekDaysAfter));
 	const windowSize = $derived(before + after + 1); // inclusive of today
 
 	// The window's first day. Initialized to the today-relative default; arrows
@@ -124,17 +140,25 @@
 		const v = Math.max(0, Math.min(23, Math.floor(value)));
 		settings.timelineStartHour = v;
 		if (settings.timelineEndHour <= v) settings.timelineEndHour = v + 1;
-		saveSettings();
+		touchSettings();
 	}
 	function setEndHour(value: number) {
 		const v = Math.max(1, Math.min(24, Math.floor(value)));
 		settings.timelineEndHour = v;
 		if (settings.timelineStartHour >= v) settings.timelineStartHour = v - 1;
-		saveSettings();
+		touchSettings();
 	}
 	function setHourHeight(value: number) {
 		settings.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
-		saveSettings();
+		touchSettings();
+	}
+	function setDaysBefore(value: number) {
+		settings.weekDaysBefore = clampSpan(value);
+		touchSettings();
+	}
+	function setDaysAfter(value: number) {
+		settings.weekDaysAfter = clampSpan(value);
+		touchSettings();
 	}
 
 	function handleClickOutside(event: MouseEvent) {
@@ -414,9 +438,9 @@
 			<button
 				class="icon-btn"
 				onclick={(e) => { e.stopPropagation(); showControls = !showControls; }}
-				aria-label="Timeline hours"
+				aria-label="Timeline settings"
 			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
 			</button>
 
 			{#if showControls}
@@ -432,6 +456,14 @@
 					<label class="controls-field">
 						<span class="controls-label">Hour height</span>
 						<input type="number" class="controls-input" min="20" max="240" step="5" value={geo.hourHeight} oninput={(e) => setHourHeight(+e.currentTarget.value)} />
+					</label>
+					<label class="controls-field">
+						<span class="controls-label">Days before today</span>
+						<input type="number" class="controls-input" min="1" max="7" value={before} oninput={(e) => setDaysBefore(+e.currentTarget.value)} />
+					</label>
+					<label class="controls-field">
+						<span class="controls-label">Days after today</span>
+						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
 					</label>
 				</div>
 			{/if}
