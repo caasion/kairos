@@ -109,6 +109,11 @@
       : undefined,
   );
 
+  // True when this block is the current drop target — highlight the whole block
+  // so dropping anywhere on it reads as "lands here" (append), not only over the
+  // task strip.
+  const isDropTarget = $derived(dropIndex !== undefined);
+
   function fmt(minutes: number): string {
     const hh = Math.floor(minutes / 60);
     const mm = minutes % 60;
@@ -384,6 +389,7 @@
     class="tl-content"
     class:compact
     class:checked={blockChecked}
+    class:drop-target={isDropTarget}
     style={accentColor ? `border-left-color:${accentColor};` : ""}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -539,12 +545,10 @@
               />
             </div>
           {/each}
-          <!-- Trailing drop zone: an always-present target for the append slot
-               (and the whole target area of an empty block). Carrying the append
-               indicator here — inside a padded, non-clipped element — keeps it
-               visible where a bare line at the list's bottom edge would be cut. -->
+          <!-- Trailing drop zone: carries the append indicator inside a padded,
+               non-clipped element so a line at the list's bottom edge isn't cut. -->
           {#if dragActive}
-            <div class="tl-drop-tail" class:empty={chips.length === 0}>
+            <div class="tl-drop-tail">
               {#if dropIndex !== undefined && dropIndex >= chips.length}
                 <div class="tl-drop-line"></div>
               {/if}
@@ -616,6 +620,16 @@
 
   .tl-content.checked {
     opacity: 0.6;
+  }
+
+  /* Whole-block drop highlight: dropping anywhere on it appends the task. */
+  .tl-content.drop-target {
+    box-shadow: inset 0 0 0 2px var(--interactive-accent);
+    background: color-mix(
+      in srgb,
+      var(--interactive-accent) 10%,
+      var(--background-secondary)
+    );
   }
 
   .tl-content.compact {
@@ -877,18 +891,12 @@
     margin: -1px 0;
   }
 
-  /* Trailing drop zone below the last row: gives the append indicator a padded,
-     non-clipped home. When the block is empty it's the whole target, so it needs
-     a visible min-height to be hittable and to hint "drop here". */
+  /* Trailing drop zone below the last row: a padded, non-clipped home for the
+     append indicator so a line at the list's bottom edge isn't cut off. The
+     whole-block highlight (.tl-content.drop-target) is the primary "lands here"
+     cue, so this stays a thin strip. */
   .tl-drop-tail {
     min-height: 6px;
     flex-shrink: 0;
-  }
-
-  .tl-drop-tail.empty {
-    min-height: 22px;
-    margin: 2px 0;
-    border: 1px dashed var(--background-modifier-border);
-    border-radius: 4px;
   }
 </style>
