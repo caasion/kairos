@@ -36,6 +36,8 @@
 		// domain color, and becomes ctrl-clickable via `onNavigate`.
 		resolved?: ResolvedAssociation;
 		onNavigate?: () => void;
+		// Open the association picker for this task, anchored at `rect`.
+		onEditAssoc?: (rect: DOMRect) => void;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -53,6 +55,7 @@
 		inherited = false,
 		resolved,
 		onNavigate,
+		onEditAssoc,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -131,9 +134,14 @@
 		new Notice(`${what}: not yet implemented`);
 	}
 
+	let rowEl = $state<HTMLDivElement>();
+
+	// Open the association picker anchored at this task row. The parent (which
+	// owns the picker) decides what a pick does.
 	function requestAssociation() {
-		// Skeleton: no projects/domains exist yet to pick from.
-		notImplemented("Association");
+		const rect = rowEl?.getBoundingClientRect();
+		if (rect && onEditAssoc) onEditAssoc(rect);
+		else notImplemented("Association");
 	}
 
 	function requestMetadata() {
@@ -203,6 +211,7 @@
 	class:done
 	class:half
 	class:cancelled
+	bind:this={rowEl}
 	oncontextmenu={openContextMenu}
 >
 	<!-- Hover action bar, floating top-right over the row. -->

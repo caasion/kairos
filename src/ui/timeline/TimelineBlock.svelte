@@ -9,6 +9,7 @@
   } from "../../types";
   import { isCheckable } from "../../types";
   import type { Resolver } from "../../index";
+  import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
 
@@ -39,10 +40,14 @@
 		onSetTaskStatus: (owner: Block, task: Task, status: TaskStatus) => void;
 		onSetTaskText: (owner: Block, task: Task, text: string) => void;
 		onDeleteTask: (owner: Block, task: Task) => void;
+		// Open the association picker for a nested task, anchored at `rect`.
+		onEditTaskAssoc: (owner: Block, task: Task, rect: DOMRect) => void;
 		// Block field write-back.
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
 		onSetBlockStatus: (block: Block, status: TaskStatus) => void;
+		// Open the association picker for this block, anchored at `rect`.
+		onEditAssoc: (block: Block, rect: DOMRect) => void;
   }
 
   let {
@@ -61,9 +66,11 @@
 		onSetTaskStatus,
 		onSetTaskText,
 		onDeleteTask,
+		onEditTaskAssoc,
 		onSetBlockTitle,
 		onSetBlockTime,
 		onSetBlockStatus,
+		onEditAssoc,
   }: Props = $props();
 
   function fmt(minutes: number): string {
@@ -210,6 +217,41 @@
     if (block.status === undefined) return;
     onSetBlockStatus(block, "-");
   }
+
+  // ── Block context menu ───────────────────────────────────────────
+
+  let blockEl = $state<HTMLDivElement>();
+  let metaEl = $state<HTMLDivElement>();
+
+  // Open the picker anchored under the meta (time · association) line, so it
+  // drops right below that line — even if it overlaps the tasks beneath.
+  function requestEditAssoc() {
+    const rect = metaEl?.getBoundingClientRect() ?? blockEl?.getBoundingClientRect();
+    if (rect) onEditAssoc(block, rect);
+  }
+
+  function openContextMenu(event: MouseEvent) {
+    event.preventDefault();
+    const menu = new Menu();
+
+    menu.addItem((item) =>
+      item
+        .setTitle(block.assoc ? "Edit association" : "Add association")
+        .setIcon("folder-symlink")
+        .onClick(() => requestEditAssoc()),
+    );
+
+    menu.addSeparator();
+
+    menu.addItem((item) =>
+      item
+        .setTitle("Delete block")
+        .setIcon("trash")
+        .onClick(() => onDelete(block)),
+    );
+
+    menu.showAtMouseEvent(event);
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -217,8 +259,10 @@
   class="tl-block"
   class:selected
   class:dragging
+  bind:this={blockEl}
   style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}
+  oncontextmenu={openContextMenu}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
   <div
@@ -315,7 +359,7 @@
         </div>
       {:else}
         <!-- Time and the association share one line, separated by a dot. -->
-        <div class="tl-meta">
+        <div class="tl-meta" bind:this={metaEl}>
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <span
             class="tl-time"
@@ -374,6 +418,7 @@
               resolved={tr}
               color={tr?.color}
               onNavigate={() => task.owner && onNavigate(task.owner)}
+              onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
               onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
               onSetText={(t, text) => onSetTaskText(block, t, text)}
               onDelete={(t) => onDeleteTask(block, t)}

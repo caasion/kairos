@@ -19,6 +19,7 @@
 	import type { Association } from "../../types";
 	import { navigateToAssociation } from "../../navigate";
 	import TimelineBlock from "./TimelineBlock.svelte";
+	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import {
 		type Gesture,
 		beginBlockGesture,
@@ -257,6 +258,73 @@
 		if (real?.status === undefined) return;
 		real.status = status;
 		void writeToDisk();
+	}
+
+	function handleSetBlockAssoc(block: Block, assoc: Association | null) {
+		const real = ownerFor(block);
+		if (!real) return;
+		if (assoc) real.assoc = assoc;
+		else delete real.assoc;
+		void writeToDisk();
+	}
+
+	function handleSetTaskAssoc(owner: Block, task: Task, assoc: Association | null) {
+		const real = ownerFor(owner);
+		if (!real) return;
+		// A colocated task is the block itself; associate the block instead.
+		if (real.status !== undefined && real.source.line === task.source.line) {
+			if (assoc) real.assoc = assoc;
+			else delete real.assoc;
+		} else {
+			const t = realTask(real, task);
+			if (!t) return;
+			if (assoc) t.assoc = assoc;
+			else delete t.assoc;
+		}
+		void writeToDisk();
+	}
+
+	// ── Association picker ───────────────────────────────────────────
+	// A single floating picker, opened from a block's or task's context menu /
+	// action. DayView owns it (not the block) so it isn't clipped by the canvas.
+	// The target is either a block or a (block, task) pair.
+	type PickerTarget =
+		| { kind: "block"; block: Block }
+		| { kind: "task"; block: Block; task: Task };
+
+	let pickerTarget = $state<PickerTarget | null>(null);
+	let pickerAnchor = $state<DOMRect | null>(null);
+
+	// The association currently on the target, to preselect / offer "Clear".
+	const pickerCurrent = $derived.by(() => {
+		if (!pickerTarget) return undefined;
+		return pickerTarget.kind === "block"
+			? pickerTarget.block.assoc
+			: pickerTarget.task.assoc;
+	});
+
+	function openAssocPicker(block: Block, anchor: DOMRect) {
+		pickerTarget = { kind: "block", block };
+		pickerAnchor = anchor;
+	}
+
+	function openTaskAssocPicker(block: Block, task: Task, anchor: DOMRect) {
+		pickerTarget = { kind: "task", block, task };
+		pickerAnchor = anchor;
+	}
+
+	function closeAssocPicker() {
+		pickerTarget = null;
+		pickerAnchor = null;
+	}
+
+	function onPickAssoc(assoc: Association | null) {
+		if (pickerTarget?.kind === "block") {
+			handleSetBlockAssoc(pickerTarget.block, assoc);
+		} else if (pickerTarget?.kind === "task") {
+			handleSetTaskAssoc(pickerTarget.block, pickerTarget.task, assoc);
+		}
+		closeAssocPicker();
 	}
 
 	// Tasks keyed by their block's source line, so lookups survive the preview
@@ -633,6 +701,8 @@
 							onSetBlockTitle={handleSetBlockTitle}
 							onSetBlockTime={handleSetBlockTime}
 							onSetBlockStatus={handleSetBlockStatus}
+							onEditAssoc={openAssocPicker}
+							onEditTaskAssoc={openTaskAssocPicker}
 						/>
 					{/each}
 
@@ -688,6 +758,16 @@
 		</div>
 	{/if}
 </div>
+
+{#if pickerTarget && pickerAnchor}
+	<AssociationPicker
+		options={index.associationOptions()}
+		current={pickerCurrent}
+		anchor={pickerAnchor}
+		onPick={onPickAssoc}
+		onClose={closeAssocPicker}
+	/>
+{/if}
 
 <style>
 	.day-view {
