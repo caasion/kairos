@@ -14,7 +14,8 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock } from "../../writer";
+	import { makeBlock, nestTaskUnderBlock } from "../../writer";
+	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import type { Association } from "../../types";
 	import { navigateToAssociation } from "../../navigate";
@@ -28,7 +29,13 @@
 	} from "../../dayNote";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import {
+		hitTestDropSlot,
+		type DropSlot,
+		type TaskDragState,
+	} from "./taskDrag";
 	import {
 		type Gesture,
 		beginBlockGesture,
@@ -449,6 +456,54 @@
 		void writeToDisk();
 	}
 
+	// Nest a task under `destination` at `index`. Unlike the in-place edits above,
+	// the nest is a whole-array transform (materialize-on-move lives in the
+	// writer), so we reassign `blocks` from its result and persist. A no-op result
+	// (same array) simply writes nothing new.
+	function handleNestTask(
+		owner: Block,
+		task: Task,
+		destination: Block,
+		index?: number,
+	) {
+		const next = nestTaskUnderBlock(blocks, owner, task, destination, index);
+		if (next === blocks) return;
+		blocks = next;
+		void writeToDisk();
+	}
+
+	// ── Block picker (nest-under-block) ──────────────────────────────
+	// The task menu / action opens this; picking a block nests the task under it
+	// (appending to that block's tasks). Owned here (like the assoc picker) so it
+	// escapes the canvas clip.
+	let blockPickerTarget = $state<{ owner: Block; task: Task } | null>(null);
+	let blockPickerAnchor = $state<DOMRect | null>(null);
+
+	// Offer every block except the task's current owner (nesting where it already
+	// lives is a no-op the picker shouldn't advertise).
+	const blockPickerOptions = $derived.by<BlockOption[]>(() =>
+		blockPickerTarget
+			? blockOptions(blocks, blockPickerTarget.owner.source.line)
+			: [],
+	);
+
+	function openBlockPicker(owner: Block, task: Task, anchor: DOMRect) {
+		blockPickerTarget = { owner, task };
+		blockPickerAnchor = anchor;
+	}
+
+	function closeBlockPicker() {
+		blockPickerTarget = null;
+		blockPickerAnchor = null;
+	}
+
+	function onPickBlock(option: BlockOption) {
+		if (blockPickerTarget) {
+			handleNestTask(blockPickerTarget.owner, blockPickerTarget.task, option.block);
+		}
+		closeBlockPicker();
+	}
+
 	// ── Association picker ───────────────────────────────────────────
 	// A single floating picker, opened from a block's or task's context menu /
 	// action. DayView owns it (not the block) so it isn't clipped by the canvas.
@@ -513,6 +568,14 @@
 	// A create gesture's sketched range, positioned but not yet a real block.
 	let draft = $state<TimeRange | null>(null);
 	let canvasEl = $state<HTMLDivElement>();
+
+	// ── Task drag-to-nest state ─────────────────────────────────────
+	// A separate gesture from block move/resize: a task grabbed by long-press,
+	// dragged over blocks, and dropped into one. Tracked here (the canvas owner)
+	// because the drop target is a sibling block the task can't see. `taskDrop` is
+	// the live insertion slot passed down so the hovered block draws an indicator.
+	let taskDrag = $state<TaskDragState | null>(null);
+	let taskDrop = $state<DropSlot | null>(null);
 
 	// Blocks with the live preview applied, so layout math sees the dragged
 	// position. Untimed blocks pass through untouched.
@@ -685,6 +748,65 @@
 		await writeToDisk();
 	}
 
+	// ── Task drag-to-nest lifecycle ─────────────────────────────────
+	// Long-press on a task body fires this. We enter a drag: block gestures are
+	// suppressed for its duration, the window move/up listeners route to the drag
+	// (see onMount), and a ghost follows the pointer. Dropping over a block nests
+	// the task there; dropping elsewhere (or Escape) cancels.
+
+	function onTaskGrab(owner: Block, task: Task, event: PointerEvent) {
+		// A grabbed task shouldn't also be starting a block move; clear any gesture
+		// the underlying press may have armed.
+		gesture = null;
+		preview = new Map();
+		draft = null;
+		selection = new Set();
+		taskDrag = {
+			owner,
+			task,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			label: task.text,
+		};
+		taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+	}
+
+	function onTaskDragMove(event: PointerEvent) {
+		if (!taskDrag) return;
+		taskDrag = { ...taskDrag, ghostX: event.clientX, ghostY: event.clientY };
+		taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+	}
+
+	function onTaskDragUp() {
+		if (!taskDrag) return;
+		const drag = taskDrag;
+		const drop = taskDrop;
+		taskDrag = null;
+		taskDrop = null;
+		if (!drop) return; // released off any block — cancel
+
+		const destination = blocks.find((b) => b.source.line === drop.blockLine);
+		if (!destination) return;
+		handleNestTask(drag.owner, drag.task, destination, drop.index);
+	}
+
+	function cancelTaskDrag() {
+		taskDrag = null;
+		taskDrop = null;
+	}
+
+	// Portal the drag ghost to <body> so `position: fixed` resolves against the
+	// viewport, not a transformed leaf-container ancestor (same reason the pickers
+	// portal — see AssociationPicker).
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			},
+		};
+	}
+
 	async function deleteSelected() {
 		if (selection.size === 0) return;
 		const doomed = new Set([...selection].map((b) => b.source.line));
@@ -707,8 +829,15 @@
 		// Don't hijack keys while the user is typing in a textbox/editor.
 		if (isEditableTarget(event.target)) return;
 
-		// X (or Delete/Backspace) removes the current selection.
+		// Escape cancels a live task drag first (before clearing selection).
 		const key = event.key.toLowerCase();
+		if (key === "escape" && taskDrag) {
+			event.preventDefault();
+			cancelTaskDrag();
+			return;
+		}
+
+		// X (or Delete/Backspace) removes the current selection.
 		if (key === "x" || key === "delete" || key === "backspace") {
 			if (selection.size === 0) return;
 			event.preventDefault();
@@ -737,9 +866,17 @@
 		}, 60_000);
 
 		// Window-level so a drag keeps tracking even when the pointer leaves a
-		// block or the canvas entirely.
-		const move = (e: PointerEvent) => onPointerMove(e);
-		const up = () => void onPointerUp();
+		// block or the canvas entirely. A live task drag takes precedence over a
+		// block gesture (the two can't run at once — grabbing a task clears any
+		// block gesture), so route to it first.
+		const move = (e: PointerEvent) => {
+			if (taskDrag) onTaskDragMove(e);
+			else onPointerMove(e);
+		};
+		const up = () => {
+			if (taskDrag) onTaskDragUp();
+			else void onPointerUp();
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
 
@@ -940,6 +1077,11 @@
 							onAddTask={handleAddTask}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
+							onNestTask={openBlockPicker}
+							onTaskGrab={onTaskGrab}
+							dragTaskLine={taskDrag?.task.source.line}
+							dropSlot={taskDrop ?? undefined}
+							dragActive={taskDrag !== null}
 						/>
 					{/each}
 
@@ -1005,7 +1147,47 @@
 	/>
 {/if}
 
+{#if blockPickerTarget && blockPickerAnchor}
+	<BlockPicker
+		options={blockPickerOptions}
+		anchor={blockPickerAnchor}
+		onPick={onPickBlock}
+		onClose={closeBlockPicker}
+	/>
+{/if}
+
+{#if taskDrag}
+	<!-- The floating ghost that follows the pointer during a task drag. -->
+	<div
+		class="task-ghost"
+		use:portal
+		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
+	>
+		{taskDrag.label}
+	</div>
+{/if}
+
 <style>
+	/* The drag ghost is portaled to <body>, so it needs a global selector to be
+	   styled (component-scoped rules wouldn't reach it there). */
+	:global(.task-ghost) {
+		position: fixed;
+		z-index: 1000;
+		pointer-events: none;
+		max-width: 220px;
+		padding: 3px 8px;
+		font-size: 12px;
+		color: var(--text-normal);
+		background: var(--background-primary);
+		border: 1px solid var(--interactive-accent);
+		border-radius: 5px;
+		box-shadow: var(--shadow-s);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		opacity: 0.95;
+	}
+
 	.day-view {
 		display: flex;
 		flex-direction: column;

@@ -14,9 +14,14 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock } from "../../writer";
+	import { makeBlock, nestTaskUnderBlock } from "../../writer";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
+	import {
+		hitTestDropSlot,
+		type DropSlot,
+		type TaskDragState,
+	} from "./taskDrag";
 	import {
 		dateFromISO,
 		ensureNoteForDate,
@@ -61,6 +66,14 @@
 			task: Task,
 			anchor: DOMRect,
 		) => void;
+		// Forward a nest-under-block request up to the week-level block picker
+		// (which escapes the column clip). The date routes the pick back here.
+		onNestTask: (
+			date: ISODate,
+			owner: Block,
+			task: Task,
+			anchor: DOMRect,
+		) => void;
 		// A block move gesture began on this column. The parent begins tracking
 		// the pointer's X to detect a cross-day drop; it calls back into
 		// `takeBlock`/`isDropTarget` as needed. Returns nothing — the column keeps
@@ -76,6 +89,7 @@
 		resolve,
 		onEditAssoc,
 		onEditTaskAssoc,
+		onNestTask,
 		onCrossDayGrab,
 	}: Props = $props();
 
@@ -246,6 +260,37 @@
 	function openTaskAssocPicker(block: Block, task: Task, anchor: DOMRect) {
 		onEditTaskAssoc(date, block, task, anchor);
 	}
+	function openBlockPicker(owner: Block, task: Task, anchor: DOMRect) {
+		onNestTask(date, owner, task, anchor);
+	}
+
+	// Nest a task under `destination` at `index` (materialize-on-move lives in the
+	// writer). Reassigns `blocks` from the whole-array transform, then persists.
+	// Reached from drag-drop here and from the week-level block picker (which
+	// routes back via the exported `applyNest`).
+	function handleNestTask(
+		owner: Block,
+		task: Task,
+		destination: Block,
+		index?: number,
+	) {
+		const next = nestTaskUnderBlock(blocks, owner, task, destination, index);
+		if (next === blocks) return;
+		blocks = next;
+		writeToDisk();
+	}
+
+	// The week-level block picker calls this after a pick (it holds the picker,
+	// like applyBlockAssoc). Appends the task to the chosen block.
+	export function applyNest(owner: Block, task: Task, destination: Block) {
+		handleNestTask(owner, task, destination);
+	}
+
+	// Snapshot of this column's blocks as picker options, excluding an owner line.
+	// Exported so the week view can build its block picker for our date.
+	export function currentBlocksArray(): Block[] {
+		return blocks;
+	}
 
 	// The parent applies association edits back through these (it holds the
 	// picker). Exposed via the component's `takeBlock`-style API below.
@@ -289,6 +334,12 @@
 	let preview = $state<Map<Block, TimeRange>>(new Map());
 	let draft = $state<TimeRange | null>(null);
 	let canvasEl = $state<HTMLDivElement>();
+
+	// Task drag-to-nest, scoped to this column's own blocks (a week-wide task move
+	// across days is a separate, larger gesture; here a task nests among the same
+	// day's blocks). See taskDrag.ts for the hit-test contract.
+	let taskDrag = $state<TaskDragState | null>(null);
+	let taskDrop = $state<DropSlot | null>(null);
 
 	const displayBlocks = $derived.by(() => {
 		if (preview.size === 0) return blocks;
@@ -382,9 +433,40 @@
 		gestureMoved = false;
 	}
 
+	// ── Task drag-to-nest ──
+	// Long-press on a task body starts it. Clears any block gesture so the two
+	// can't run at once. Move/up are driven by the parent's window listeners
+	// (via handlePointerMove/handlePointerUp), which route to the drag first.
+	function onTaskGrab(owner: Block, task: Task, event: PointerEvent) {
+		gesture = null;
+		preview = new Map();
+		draft = null;
+		selection = new Set();
+		taskDrag = {
+			owner,
+			task,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			label: task.text,
+		};
+		taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+	}
+
+	export function cancelTaskDrag() {
+		taskDrag = null;
+		taskDrop = null;
+	}
+
 	// Parent forwards window pointer moves so a drag keeps tracking across
 	// columns. Returns whether this column is handling a live gesture.
 	export function handlePointerMove(event: PointerEvent): boolean {
+		// A live task drag takes precedence over a block gesture (grabbing a task
+		// clears any block gesture, so only one is ever live here).
+		if (taskDrag) {
+			taskDrag = { ...taskDrag, ghostX: event.clientX, ghostY: event.clientY };
+			taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+			return true;
+		}
 		if (!gesture) return false;
 		if (
 			!gestureMoved &&
@@ -406,6 +488,23 @@
 		block: Block;
 		time: TimeRange;
 	} | null {
+		// Resolve a task drag first: it and a block gesture can't be live together.
+		if (taskDrag) {
+			const drag = taskDrag;
+			const drop = taskDrop;
+			taskDrag = null;
+			taskDrop = null;
+			if (drop) {
+				const destination = blocks.find(
+					(b) => b.source.line === drop.blockLine,
+				);
+				if (destination) {
+					handleNestTask(drag.owner, drag.task, destination, drop.index);
+				}
+			}
+			return null;
+		}
+
 		if (!gesture) return null;
 		const g = gesture;
 		const committedPreview = preview;
@@ -523,6 +622,17 @@
 		void openDayNote();
 	}
 
+	// Portal the drag ghost to <body> so `position: fixed` escapes any transformed
+	// leaf-container ancestor (same reason the pickers portal).
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			},
+		};
+	}
+
 	onMount(() => {
 		lastDate = date;
 		retarget(date);
@@ -574,6 +684,11 @@
 				onAddTask={handleAddTask}
 				onEditAssoc={openAssocPicker}
 				onEditTaskAssoc={openTaskAssocPicker}
+				onNestTask={openBlockPicker}
+				onTaskGrab={onTaskGrab}
+				dragTaskLine={taskDrag?.task.source.line}
+				dropSlot={taskDrop ?? undefined}
+				dragActive={taskDrag !== null}
 			/>
 		{/each}
 
@@ -585,6 +700,17 @@
 		{/if}
 	</div>
 </div>
+
+{#if taskDrag}
+	<!-- Drag ghost, portaled to body so fixed positioning matches the viewport. -->
+	<div
+		class="task-ghost"
+		use:portal
+		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
+	>
+		{taskDrag.label}
+	</div>
+{/if}
 
 {#if unscheduled.length > 0}
 	<div class="col-unscheduled">
@@ -628,6 +754,25 @@
 {/if}
 
 <style>
+	/* Portaled drag ghost — global so it's styled outside the component subtree. */
+	:global(.task-ghost) {
+		position: fixed;
+		z-index: 1000;
+		pointer-events: none;
+		max-width: 220px;
+		padding: 3px 8px;
+		font-size: 12px;
+		color: var(--text-normal);
+		background: var(--background-primary);
+		border: 1px solid var(--interactive-accent);
+		border-radius: 5px;
+		box-shadow: var(--shadow-s);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		opacity: 0.95;
+	}
+
 	.col-canvas-wrap {
 		position: relative;
 	}

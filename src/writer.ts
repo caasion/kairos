@@ -373,6 +373,87 @@ export function unnestTask(
   return insertIntoUnscheduled(without, moved, path, target.source.line - 1);
 }
 
+// ─── nest a task under a block ─────────────────────────────────
+//
+// CORE LOGIC — flagged for review. Re-parent a task from wherever it lives now
+// (a timed block, the Unscheduled inbox, or a checkable block viewed as its own
+// colocated task) into `target` block, optionally at a chosen slot among that
+// block's existing tasks. This is the timeline's "nest" gesture — the inverse
+// of `unnestTask` — reached from the task's menu, its context-menu picker, and
+// drag-and-drop between blocks. It is a pure `Block[]` transform so the timeline
+// can commit it the same optimistic way every other edit does.
+//
+// Materialize-on-move (spec §4.3 / §2.2): a task's *inherited* association is
+// display-only. The moment it changes owners it would silently re-inherit the
+// destination block's association (or none), so we pin the association it had —
+// its explicit one, or the one inherited from its old owner — onto the task line
+// before it moves. A task with its own explicit association keeps it verbatim.
+// Result: nesting never changes a task's owner unless the user meant it to.
+//
+// Two source shapes are handled:
+//   • a genuine nested task, removed from its old block's `tasks`;
+//   • a colocated task (a checkable block's own line). That task *is* a block,
+//     so it can't be lifted off its line — nesting it is a no-op. Convert the
+//     block first (or move the block), then nest.
+// Nesting into the same block it already lives in is allowed: it becomes a pure
+// reorder (remove then re-insert at `index`).
+
+/**
+ * Move `target` (currently owned by `sourceOwner`) into `destination` block,
+ * inserting at `index` among the destination's existing tasks (clamped; omit or
+ * pass a large value to append). Returns a fresh `Block[]`; the caller persists.
+ *
+ * The inherited-or-explicit association is materialized onto the task so its
+ * owner survives the move (see the block comment above). No-op if the source
+ * task is a colocated block line, or either block can't be found.
+ */
+export function nestTaskUnderBlock(
+  blocks: Block[],
+  sourceOwner: Block,
+  target: Task,
+  destination: Block,
+  index = Number.MAX_SAFE_INTEGER,
+): Block[] {
+  const source = blocks.find((b) => isOwner(b, sourceOwner));
+  const dest = blocks.find((b) => isOwner(b, destination));
+  if (!source || !dest) return blocks;
+
+  // A colocated task is the block's own checkbox line — it isn't a liftable
+  // nested task, so there is nothing to re-parent.
+  if (source.status !== undefined && sameSource(source.source, target.source)) {
+    return blocks;
+  }
+
+  const nested = source.tasks.find((t) => sameSource(t.source, target.source));
+  if (!nested) return blocks;
+
+  // Materialize: keep an explicit assoc, else inherit the *source* block's onto
+  // the task so its owner doesn't change by moving under a different block.
+  const assoc = nested.assoc ?? source.assoc;
+  const moved: Task = { ...nested, ...(assoc ? { assoc } : {}) };
+
+  const sameBlock = isOwner(source, dest);
+
+  return blocks.map((b) => {
+    // Remove from the source block first (in the same-block case this drains the
+    // slot the task used to occupy, so `index` counts against the remainder).
+    if (isOwner(b, source)) {
+      const remaining = b.tasks.filter(
+        (t) => !sameSource(t.source, target.source),
+      );
+      if (!sameBlock) return { ...b, tasks: remaining };
+      // Same block: insert into the freshly-drained list at the clamped slot.
+      const at = Math.max(0, Math.min(index, remaining.length));
+      return { ...b, tasks: [...remaining.slice(0, at), moved, ...remaining.slice(at)] };
+    }
+    if (isOwner(b, dest)) {
+      const at = Math.max(0, Math.min(index, b.tasks.length));
+      return { ...b, tasks: [...b.tasks.slice(0, at), moved, ...b.tasks.slice(at)] };
+    }
+    return b;
+  });
+}
+
 // ─── cross-day block move ──────────────────────────────────────
 //
 // CORE LOGIC — flagged for review. Moving a block from one daily note to

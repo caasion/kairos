@@ -6,6 +6,7 @@
 	import type { Association, Block, ISODate, Task } from "../../types";
 	import type { TimeRange } from "../../types";
 	import { moveBlockAcrossDays } from "../../writer";
+	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import type { KairosIndex, Resolver } from "../../index";
 	import {
 		dateFromISO,
@@ -17,6 +18,7 @@
 	} from "../../dayNote";
 	import DayColumn from "./DayColumn.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import {
 		geometryFromSettings,
@@ -82,12 +84,14 @@
 		atDefault = false;
 		anchor = shiftISO(anchor, deltaDays);
 		closeAssocPicker();
+		closeBlockPicker();
 	}
 
 	function goToday() {
 		atDefault = true;
 		anchor = shiftISO(todayISO(), -before);
 		closeAssocPicker();
+		closeBlockPicker();
 	}
 
 	function jumpTo(date: ISODate) {
@@ -96,6 +100,7 @@
 		anchor = shiftISO(date, -before);
 		showCalendar = false;
 		closeAssocPicker();
+		closeBlockPicker();
 	}
 
 	const rangeLabel = $derived.by(() => {
@@ -329,6 +334,51 @@
 		closeAssocPicker();
 	}
 
+	// ── Block picker (nest-under-block), shared/week-level ──
+	// A column forwards a nest request here so the picker escapes its clip. The
+	// pick routes back to the owning column's `applyNest`.
+	let blockPickerTarget = $state<{
+		date: ISODate;
+		owner: Block;
+		task: Task;
+	} | null>(null);
+	let blockPickerAnchor = $state<DOMRect | null>(null);
+
+	// Options are the target column's blocks, minus the task's current owner.
+	const blockPickerOptions = $derived.by<BlockOption[]>(() => {
+		if (!blockPickerTarget) return [];
+		const col = columns[blockPickerTarget.date];
+		if (!col) return [];
+		return blockOptions(
+			col.currentBlocksArray(),
+			blockPickerTarget.owner.source.line,
+		);
+	});
+
+	function openBlockPicker(
+		date: ISODate,
+		owner: Block,
+		task: Task,
+		anchor: DOMRect,
+	) {
+		blockPickerTarget = { date, owner, task };
+		blockPickerAnchor = anchor;
+	}
+	function closeBlockPicker() {
+		blockPickerTarget = null;
+		blockPickerAnchor = null;
+	}
+	function onPickBlock(option: BlockOption) {
+		if (blockPickerTarget) {
+			columns[blockPickerTarget.date]?.applyNest(
+				blockPickerTarget.owner,
+				blockPickerTarget.task,
+				option.block,
+			);
+		}
+		closeBlockPicker();
+	}
+
 	// ── Keyboard: delete the focused column's selection ──
 	function isEditableTarget(target: EventTarget | null): boolean {
 		if (!(target instanceof HTMLElement)) return false;
@@ -344,6 +394,8 @@
 			event.preventDefault();
 			columns[date].deleteSelection();
 		} else if (key === "escape") {
+			// Cancel any live task drag first, then clear selections.
+			for (const date of dates) columns[date]?.cancelTaskDrag();
 			for (const date of dates) columns[date]?.clearSelection();
 		}
 	}
@@ -522,6 +574,7 @@
 							{resolve}
 							onEditAssoc={openBlockAssoc}
 							onEditTaskAssoc={openTaskAssoc}
+							onNestTask={openBlockPicker}
 							{onCrossDayGrab}
 						/>
 					</div>
@@ -538,6 +591,15 @@
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}
+	/>
+{/if}
+
+{#if blockPickerTarget && blockPickerAnchor}
+	<BlockPicker
+		options={blockPickerOptions}
+		anchor={blockPickerAnchor}
+		onPick={onPickBlock}
+		onClose={closeBlockPicker}
 	/>
 {/if}
 

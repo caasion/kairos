@@ -42,6 +42,23 @@
 		onDeleteTask: (owner: Block, task: Task) => void;
 		// Open the association picker for a nested task, anchored at `rect`.
 		onEditTaskAssoc: (owner: Block, task: Task, rect: DOMRect) => void;
+		// Open the block picker to nest a task under another block, anchored at
+		// `rect`. The owning block travels along so the writer can locate the task.
+		onNestTask: (owner: Block, task: Task, rect: DOMRect) => void;
+		// A long-press on a task body began a drag-to-nest gesture. The parent (the
+		// canvas owner) takes over window pointer tracking, previews a drop slot,
+		// and commits the nest on release. Reports the source block + task + press.
+		onTaskGrab: (owner: Block, task: Task, event: PointerEvent) => void;
+		// While a task drag is live, the parent sets this to the source line of the
+		// task being dragged so its origin row can dim, and to the insertion slot
+		// (target block line + index) so this block can render a drop indicator.
+		dragTaskLine?: number;
+		dropSlot?: { blockLine: number; index: number };
+		// True while ANY task drag is in progress. Every block renders its drop
+		// zone then (even an empty one), so the parent's hit-test can find a block
+		// with no tasks — otherwise that block would have no `data-drop-block`
+		// element to target and could never receive a dropped task.
+		dragActive?: boolean;
 		// Block field write-back.
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
@@ -71,6 +88,11 @@
 		onSetTaskText,
 		onDeleteTask,
 		onEditTaskAssoc,
+		onNestTask,
+		onTaskGrab,
+		dragTaskLine,
+		dropSlot,
+		dragActive = false,
 		onSetBlockTitle,
 		onSetBlockTime,
 		onSetBlockStatus,
@@ -78,6 +100,19 @@
 		onAddTask,
 		onEditAssoc,
   }: Props = $props();
+
+  // The drop indicator's index within this block, when the live task drag is
+  // hovering here. Undefined when the drag targets another block (or none).
+  const dropIndex = $derived(
+    dropSlot && dropSlot.blockLine === block.source.line
+      ? dropSlot.index
+      : undefined,
+  );
+
+  // True when this block is the current drop target — highlight the whole block
+  // so dropping anywhere on it reads as "lands here" (append), not only over the
+  // task strip.
+  const isDropTarget = $derived(dropIndex !== undefined);
 
   function fmt(minutes: number): string {
     const hh = Math.floor(minutes / 60);
@@ -354,6 +389,7 @@
     class="tl-content"
     class:compact
     class:checked={blockChecked}
+    class:drop-target={isDropTarget}
     style={accentColor ? `border-left-color:${accentColor};` : ""}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -466,26 +502,58 @@
           {/if}
         </div>
       {/if}
-      {#if chips.length > 0}
+      {#if chips.length > 0 || dragActive}
         <!-- Editable tasks. A press here must not start a block move/resize, so
-             the container swallows pointerdown before it reaches the block. -->
+             the container swallows pointerdown before it reaches the block.
+             `data-drop-block` lets the parent's drag hit-test find this list —
+             rendered for every block during a drag (via `dragActive`) so even an
+             empty block is a droppable target. `drag-active` lifts the overflow
+             clip so a drop line at the list's edge isn't cut off. -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="tl-tasks" onpointerdown={(e) => e.stopPropagation()}>
-          {#each chips as task (task.source.line)}
+        <div
+          class="tl-tasks"
+          class:drag-active={dragActive}
+          data-drop-block={block.source.line}
+          onpointerdown={(e) => e.stopPropagation()}
+        >
+          {#each chips as task, i (task.source.line)}
             {@const tr = task.owner ? resolve(task.owner) : undefined}
-            <TaskComponent
-              {task}
-              association={task.owner}
-              inherited={task.assoc === undefined}
-              resolved={tr}
-              color={tr?.color}
-              onNavigate={() => task.owner && onNavigate(task.owner)}
-              onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
-              onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
-              onSetText={(t, text) => onSetTaskText(block, t, text)}
-              onDelete={(t) => onDeleteTask(block, t)}
-            />
+            <!-- Drop indicator before this row when the drag targets slot `i`. -->
+            {#if dropIndex === i}
+              <div class="tl-drop-line"></div>
+            {/if}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="tl-task-wrap"
+              class:dragging-origin={dragTaskLine === task.source.line}
+              data-task-line={task.source.line}
+              data-task-index={i}
+            >
+              <TaskComponent
+                {task}
+                association={task.owner}
+                inherited={task.assoc === undefined}
+                resolved={tr}
+                color={tr?.color}
+                onNavigate={() => task.owner && onNavigate(task.owner)}
+                onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
+                onNest={(rect) => onNestTask(block, task, rect)}
+                onGrab={(e) => onTaskGrab(block, task, e)}
+                onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
+                onSetText={(t, text) => onSetTaskText(block, t, text)}
+                onDelete={(t) => onDeleteTask(block, t)}
+              />
+            </div>
           {/each}
+          <!-- Trailing drop zone: carries the append indicator inside a padded,
+               non-clipped element so a line at the list's bottom edge isn't cut. -->
+          {#if dragActive}
+            <div class="tl-drop-tail">
+              {#if dropIndex !== undefined && dropIndex >= chips.length}
+                <div class="tl-drop-line"></div>
+              {/if}
+            </div>
+          {/if}
         </div>
       {/if}
     {/if}
@@ -552,6 +620,16 @@
 
   .tl-content.checked {
     opacity: 0.6;
+  }
+
+  /* Whole-block drop highlight: dropping anywhere on it appends the task. */
+  .tl-content.drop-target {
+    box-shadow: inset 0 0 0 2px var(--interactive-accent);
+    background: color-mix(
+      in srgb,
+      var(--interactive-accent) 10%,
+      var(--background-secondary)
+    );
   }
 
   .tl-content.compact {
@@ -788,5 +866,37 @@
     gap: 0;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  /* During a drag, stop clipping so a drop line at the list's edge shows, and
+     reserve a little room below the last row for the append indicator. */
+  .tl-tasks.drag-active {
+    overflow: visible;
+  }
+
+  /* ── Task drag-to-nest ── */
+  .tl-task-wrap {
+    min-width: 0;
+  }
+
+  /* The origin row dims while its task is being dragged elsewhere. */
+  .tl-task-wrap.dragging-origin {
+    opacity: 0.35;
+  }
+
+  /* Insertion indicator between task rows (or at the list ends). */
+  .tl-drop-line {
+    height: 0;
+    border-top: 2px solid var(--interactive-accent);
+    margin: -1px 0;
+  }
+
+  /* Trailing drop zone below the last row: a padded, non-clipped home for the
+     append indicator so a line at the list's bottom edge isn't cut off. The
+     whole-block highlight (.tl-content.drop-target) is the primary "lands here"
+     cue, so this stays a thin strip. */
+  .tl-drop-tail {
+    min-height: 6px;
+    flex-shrink: 0;
   }
 </style>

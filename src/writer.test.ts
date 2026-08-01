@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moveBlockAcrossDays, unnestTask } from "./writer";
+import { moveBlockAcrossDays, nestTaskUnderBlock, unnestTask } from "./writer";
 import type { Block, Task } from "./types";
 
 // A timed block with an explicit project association and two child tasks: one
@@ -180,5 +180,151 @@ describe("unnestTask", () => {
 		unnestTask(input, block, inheritingTask("mon.md"), "mon.md");
 		expect(input).toHaveLength(1);
 		expect(input[0]!.tasks).toHaveLength(2);
+	});
+});
+
+describe("nestTaskUnderBlock", () => {
+	// The nested tasks of sampleBlock: line 4 "Design" (inherits [Kairos]),
+	// line 5 "Emails" (its own [D:Admin]).
+	const inheritingTask = (path: string): Task => sampleBlock(path).tasks[0]!;
+	const explicitTask = (path: string): Task => sampleBlock(path).tasks[1]!;
+
+	// A second timed block with its own association and one existing task, to
+	// nest into.
+	function otherBlock(path: string): Block {
+		return {
+			source: { path, line: 10 },
+			title: "Meetings",
+			assoc: { kind: "domain", id: "Work" },
+			scheduled: true,
+			time: { start: 780, end: 840 },
+			tasks: [{ source: { path, line: 11 }, text: "Standup", status: " " }],
+		};
+	}
+
+	it("moves a nested task out of its block and into the destination", () => {
+		const source = sampleBlock("mon.md");
+		const dest = otherBlock("mon.md");
+		const out = nestTaskUnderBlock(
+			[source, dest],
+			source,
+			inheritingTask("mon.md"),
+			dest,
+		);
+		const outSource = out.find((b) => b.title === "Deep work")!;
+		const outDest = out.find((b) => b.title === "Meetings")!;
+		expect(outSource.tasks.map((t) => t.text)).toEqual(["Emails"]); // Design left
+		expect(outDest.tasks.map((t) => t.text)).toEqual(["Standup", "Design"]);
+	});
+
+	it("materializes the inherited association onto the moved task", () => {
+		const source = sampleBlock("mon.md");
+		const dest = otherBlock("mon.md");
+		const out = nestTaskUnderBlock(
+			[source, dest],
+			source,
+			inheritingTask("mon.md"),
+			dest,
+		);
+		const moved = out
+			.find((b) => b.title === "Meetings")!
+			.tasks.find((t) => t.text === "Design")!;
+		// "Design" inherited [Kairos] from its old block; it now carries it
+		// explicitly, so nesting under [Work] doesn't silently re-own it.
+		expect(moved.assoc).toEqual({ kind: "project", id: "Kairos" });
+	});
+
+	it("leaves an explicitly-associated task's association unchanged", () => {
+		const source = sampleBlock("mon.md");
+		const dest = otherBlock("mon.md");
+		const out = nestTaskUnderBlock(
+			[source, dest],
+			source,
+			explicitTask("mon.md"),
+			dest,
+		);
+		const moved = out
+			.find((b) => b.title === "Meetings")!
+			.tasks.find((t) => t.text === "Emails")!;
+		expect(moved.assoc).toEqual({ kind: "domain", id: "Admin" });
+	});
+
+	it("inserts at the given index among the destination's tasks", () => {
+		const source = sampleBlock("mon.md");
+		const dest = otherBlock("mon.md");
+		const out = nestTaskUnderBlock(
+			[source, dest],
+			source,
+			inheritingTask("mon.md"),
+			dest,
+			0, // before "Standup"
+		);
+		const outDest = out.find((b) => b.title === "Meetings")!;
+		expect(outDest.tasks.map((t) => t.text)).toEqual(["Design", "Standup"]);
+	});
+
+	it("clamps an out-of-range index to an append", () => {
+		const source = sampleBlock("mon.md");
+		const dest = otherBlock("mon.md");
+		const out = nestTaskUnderBlock(
+			[source, dest],
+			source,
+			inheritingTask("mon.md"),
+			dest,
+			99,
+		);
+		const outDest = out.find((b) => b.title === "Meetings")!;
+		expect(outDest.tasks.map((t) => t.text)).toEqual(["Standup", "Design"]);
+	});
+
+	it("reorders within the same block (drain then re-insert at the slot)", () => {
+		const block = sampleBlock("mon.md"); // ["Design", "Emails"]
+		// Move "Design" (index 0) to the end of its own block.
+		const out = nestTaskUnderBlock(
+			[block],
+			block,
+			inheritingTask("mon.md"),
+			block,
+			1,
+		);
+		const outBlock = out.find((b) => b.title === "Deep work")!;
+		expect(outBlock.tasks.map((t) => t.text)).toEqual(["Emails", "Design"]);
+	});
+
+	it("is a no-op for a colocated task (a checkable block isn't liftable)", () => {
+		const block: Block = {
+			source: { path: "mon.md", line: 3 },
+			title: "Gym",
+			status: " ",
+			scheduled: true,
+			time: { start: 540, end: 600 },
+			tasks: [],
+		};
+		const dest = otherBlock("mon.md");
+		const colocated: Task = {
+			source: { path: "mon.md", line: 3 },
+			text: "Gym",
+			status: " ",
+		};
+		const input = [block, dest];
+		expect(nestTaskUnderBlock(input, block, colocated, dest)).toBe(input);
+	});
+
+	it("is a no-op when the destination block isn't in the array", () => {
+		const source = sampleBlock("mon.md");
+		const dest = otherBlock("mon.md");
+		const input = [source]; // dest absent
+		expect(
+			nestTaskUnderBlock(input, source, inheritingTask("mon.md"), dest),
+		).toBe(input);
+	});
+
+	it("does not mutate the input arrays", () => {
+		const source = sampleBlock("mon.md");
+		const dest = otherBlock("mon.md");
+		const input = [source, dest];
+		nestTaskUnderBlock(input, source, inheritingTask("mon.md"), dest);
+		expect(input[0]!.tasks).toHaveLength(2);
+		expect(input[1]!.tasks).toHaveLength(1);
 	});
 });
