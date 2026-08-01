@@ -40,6 +40,8 @@ import { resolveBlocks } from "./resolver";
 import { parseDomain, parseProject } from "./projectFile";
 import { resolveAssociation } from "./association";
 import type { ResolvedAssociation } from "./association";
+import { associationOptions } from "./associationOptions";
+import type { AssociationOption } from "./associationOptions";
 
 /** A snapshot-time association resolver, handed to views for rendering. */
 export type Resolver = (assoc: Association) => ResolvedAssociation;
@@ -331,6 +333,11 @@ export class KairosIndex {
 	/** Read-only snapshot for one-off reads outside the store flow. */
 	snapshot(): IndexState {
 		return this.state;
+	}
+
+	/** Pickable associations (non-archived projects + domains) for the picker. */
+	associationOptions(): AssociationOption[] {
+		return associationOptions(this.state.projects, this.state.domains);
 	}
 
 	// ── subscriptions ──
