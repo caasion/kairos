@@ -10,6 +10,15 @@ export interface KairosSettings {
 	/** Pixels per hour in the Day timeline. */
 	timelineHourHeight: number;
 
+	/**
+	 * Week view window, expressed as a span around today. The default window the
+	 * Week view opens on is [today − weekDaysBefore, today + weekDaysAfter],
+	 * inclusive; each side is 1–7 days. The view is still navigable past this
+	 * default (arrows shift the window; "Today" snaps back to it).
+	 */
+	weekDaysBefore: number;
+	weekDaysAfter: number;
+
 	/** Vault folder holding project files. */
 	projectsFolder: string;
 	/** Vault folder holding domain files. */
@@ -29,6 +38,8 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	timelineStartHour: 6,
 	timelineEndHour: 24,
 	timelineHourHeight: 60,
+	weekDaysBefore: 1,
+	weekDaysAfter: 5,
 	projectsFolder: 'Projects',
 	domainsFolder: 'Domains',
 	backlogPath: 'Backlog.md',
@@ -98,6 +109,40 @@ export class KairosSettingTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.timelineHourHeight = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl).setName('Week view').setHeading();
+
+		new Setting(containerEl)
+			.setName('Days before today')
+			.setDesc(
+				'How many days before today the Week view spans by default (1–7).',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(1, 7, 1)
+					.setValue(this.plugin.settings.weekDaysBefore)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.weekDaysBefore = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Days after today')
+			.setDesc(
+				'How many days after today the Week view spans by default (1–7).',
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(1, 7, 1)
+					.setValue(this.plugin.settings.weekDaysAfter)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.weekDaysAfter = value;
 						await this.plugin.saveSettings();
 					}),
 			);

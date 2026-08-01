@@ -470,6 +470,54 @@ export class KairosIndex {
 		this.scheduleWrite(date, path);
 	}
 
+	/**
+	 * CORE LOGIC — flagged for review. Apply a cross-day block move: the moved
+	 * block leaves `fromDate`'s note and lands in `toDate`'s note. Both days'
+	 * block arrays are already computed by `moveBlockAcrossDays` (the writer's
+	 * pure primitive); this method commits them optimistically as one unit —
+	 * both memory updates and notifications happen before either debounced write,
+	 * so a view never observes the block present on neither day or on both.
+	 *
+	 * `toPath` may create the target daily note on first write, exactly as
+	 * `applyDayEdit` does for an empty day. If either day is the same as the
+	 * currently-open editor, the usual echo-dedup on the later write keeps the
+	 * view from bouncing.
+	 */
+	applyCrossDayMove(
+		fromDate: ISODate,
+		fromPath: string,
+		fromBlocks: Block[],
+		toDate: ISODate,
+		toPath: string,
+		toBlocks: Block[],
+	): void {
+		const days = new Map(this.state.days);
+
+		const prevFrom = days.get(fromDate);
+		days.set(fromDate, {
+			date: fromDate,
+			path: fromPath,
+			mtime: prevFrom?.mtime ?? this.deps.now(),
+			blocks: fromBlocks,
+		});
+
+		const prevTo = days.get(toDate);
+		days.set(toDate, {
+			date: toDate,
+			path: toPath,
+			mtime: prevTo?.mtime ?? this.deps.now(),
+			blocks: toBlocks,
+		});
+
+		this.state = deriveLookups({ ...this.state, days });
+		this.publishDay(fromDate);
+		this.publishDay(toDate);
+		this.publishProjectsAndDomains();
+
+		this.scheduleWrite(fromDate, fromPath);
+		this.scheduleWrite(toDate, toPath);
+	}
+
 	private scheduleWrite(date: ISODate, path: string): void {
 		const existing = this.writeTimers.get(date);
 		if (existing) clearTimeout(existing);

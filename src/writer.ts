@@ -248,6 +248,64 @@ export function deleteBlock(blocks: Block[], target: Block): Block[] {
   return blocks.filter((b) => !isOwner(b, target));
 }
 
+// ─── cross-day block move ──────────────────────────────────────
+//
+// CORE LOGIC — flagged for review. Moving a block from one daily note to
+// another is the only write that touches two files, so it can't reuse the
+// single-array transforms above. It is expressed here as a *pure* transform
+// over both days' block arrays; the caller persists both notes atomically
+// (see KairosIndex.applyCrossDayMove).
+//
+// Materialize-on-move (spec §4.3) is about a *task* leaving the block it
+// inherits from. A whole-block move carries the block's own `assoc` and all
+// its child tasks together, so every child still inherits the same owner on
+// the other day — there is nothing to materialize. The block's association is
+// already explicit on the block line, so it survives the move verbatim.
+//
+// The moved block's `source` is repointed at the target path with a throwaway
+// line; the target note's reparse re-derives the real line, exactly like
+// `makeBlock`. Its `time` may be replaced (a drag can drop it at a new hour on
+// the destination day); pass the same range to move it to the same time.
+
+export interface CrossDayMove {
+  /** The source day's blocks, with the moved block removed. */
+  from: Block[];
+  /** The target day's blocks, with the moved block inserted. */
+  to: Block[];
+}
+
+/**
+ * Move `target` out of `fromBlocks` (a source day) and into `toBlocks` (a
+ * target day), optionally retiming it. Returns fresh arrays for both days;
+ * neither input is mutated. `time` defaults to the block's current range.
+ *
+ * `toPath` is the destination note path, stamped onto the moved block's source
+ * so it (and its tasks) route to the right file until the next reparse.
+ */
+export function moveBlockAcrossDays(
+  fromBlocks: Block[],
+  toBlocks: Block[],
+  target: Block,
+  toPath: string,
+  time?: TimeRange,
+): CrossDayMove {
+  const from = fromBlocks.filter((b) => !isOwner(b, target));
+
+  // Repoint the moved block (and its child tasks) at the destination file with
+  // throwaway lines; the reparse on write re-derives real lines.
+  const moved: Block = {
+    ...target,
+    source: { path: toPath, line: -1 },
+    ...(time ? { time } : {}),
+    tasks: target.tasks.map((t, i) => ({
+      ...t,
+      source: { path: toPath, line: -(i + 2) },
+    })),
+  };
+
+  return { from, to: [...toBlocks, moved] };
+}
+
 /** Return a copy of `blocks` with every block in `targets` removed. */
 export function deleteBlocks(
   blocks: Block[],
