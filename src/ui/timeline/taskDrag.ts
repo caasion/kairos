@@ -140,14 +140,6 @@ export function hitTestGridCell(event: PointerEvent): GridDropSlot | null {
   const rowKey = cell.dataset.gridRowKey;
   if (!date || !rowKey) return null;
 
-  const taskRows = Array.from(cell.querySelectorAll<HTMLElement>("[data-task-index]"));
-  let index = taskRows.length;
-  for (let i = 0; i < taskRows.length; i++) {
-    const rect = taskRows[i]!.getBoundingClientRect();
-    if (event.clientY < rect.top + rect.height / 2) {
-      index = i;
-      break;
-    }
-  }
-  return { date, rowKey, index };
+  // Grid drops are order-agnostic: always append to the target cell.
+  return { date, rowKey, index: APPEND_INDEX };
 }

@@ -674,7 +674,6 @@
 						data-grid-row-key={row.key}
 					>
 						{#if day}
-							{@const dropIdx = dropIndexFor(date, row.key)}
 							<GridCell
 								tasks={tasksFor(row, day)}
 								{resolve}
@@ -692,8 +691,7 @@
 								onBlockGrab={onBlockGrab}
 								dragTaskLine={taskDrag?.task.source.line}
 								dragBlockLine={blockDrag?.block.source.line}
-								dropIndex={dropIdx}
-								isDropTarget={dropIdx !== undefined}
+								isDropTarget={dropIndexFor(date, row.key) !== undefined}
 							/>
 						{:else}
 							<div class="grid-datacell-empty"></div>

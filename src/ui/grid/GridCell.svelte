@@ -35,7 +35,6 @@
 		// dragBlockLine for block drags (matches the block's source line = colocated task line).
 		dragTaskLine?: number;
 		dragBlockLine?: number;
-		dropIndex?: number;
 		// True only when THIS cell is the live drop target (not just any drag).
 		isDropTarget?: boolean;
 	}
@@ -57,7 +56,6 @@
 		onBlockGrab,
 		dragTaskLine,
 		dragBlockLine,
-		dropIndex,
 		isDropTarget = false,
 	}: Props = $props();
 
@@ -100,11 +98,8 @@
 	}
 </script>
 
-<div class="grid-cell">
+<div class="grid-cell" class:drop-target={isDropTarget}>
 	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
-		{#if dropIndex === i}
-			<div class="grid-drop-line"></div>
-		{/if}
 		<div
 			class="grid-cell-item"
 			class:dragging-origin={dragTaskLine === task.source.line || (task.colocated && dragBlockLine === task.block.source.line)}
@@ -158,16 +153,6 @@
 		</div>
 	{/each}
 
-	<!-- Trailing drop zone: append indicator after the last task row.
-	     Only rendered for the currently-hovered cell, not all cells. -->
-	{#if isDropTarget}
-		<div class="grid-drop-tail">
-			{#if dropIndex !== undefined && dropIndex >= tasks.length}
-				<div class="grid-drop-line"></div>
-			{/if}
-		</div>
-	{/if}
-
 	{#if allowCreate}
 		<button class="grid-cell-add" title="Add task" onclick={onCreate}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -186,17 +171,10 @@
 		min-width: 0;
 	}
 
-	/* Insertion indicator between task rows (or at the list ends). */
-	.grid-drop-line {
-		height: 0;
-		border-top: 2px solid var(--interactive-accent);
-		margin: -1px 0;
-	}
-
-	/* Trailing drop zone: padded home for the append indicator. */
-	.grid-drop-tail {
-		min-height: 6px;
-		flex-shrink: 0;
+	/* Outline the whole cell when it is the live drop target. */
+	.grid-cell.drop-target {
+		outline: 2px solid var(--interactive-accent);
+		border-radius: 4px;
 	}
 
 	/* Dim the row whose task is being dragged. */
