@@ -16,7 +16,8 @@
 		shiftISO,
 		todayISO,
 	} from "../../dayNote";
-	import DayColumn, { type UnscheduledItem } from "./DayColumn.svelte";
+	import DayColumn from "./DayColumn.svelte";
+	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";

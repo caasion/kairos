@@ -20,7 +20,13 @@
 // block is a target, not just its task strip — via the `data-block-line`
 // fallback. Append is signalled with a large index the caller's insert clamps.
 
-import type { Block, Task } from "../../types";
+import type { Block, ResolvedTask, Task } from "../../types";
+
+/** A flat item surfaced from DayColumn to WeekView for unscheduled rendering. */
+export interface UnscheduledItem {
+  block: Block;
+  task: ResolvedTask;
+}
 
 /** The task being dragged, plus the block it started in. */
 export interface TaskDragState {

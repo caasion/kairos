@@ -21,6 +21,7 @@
 		hitTestDropSlot,
 		type DropSlot,
 		type TaskDragState,
+		type UnscheduledItem,
 	} from "./taskDrag";
 	import {
 		dateFromISO,
@@ -86,12 +87,6 @@
 		// Called whenever the unscheduled task list changes, so the parent can
 		// render it outside this component (used by WeekView).
 		onUnscheduledChange?: (date: ISODate, items: UnscheduledItem[]) => void;
-	}
-
-	// A flat row passed up to WeekView for each unscheduled task.
-	export interface UnscheduledItem {
-		block: Block;
-		task: ResolvedTask;
 	}
 
 	let {
@@ -342,15 +337,43 @@
 		return map;
 	});
 
-	$effect(() => {
-		if (!onUnscheduledChange) return;
+	// The flat unscheduled list this column surfaces to WeekView. Derived (not an
+	// effect) so it recomputes purely from `blocks`; the effect below only pushes
+	// it up when its *content* actually changes, which breaks the render→effect→
+	// render loop a naive effect would create.
+	const unscheduledItems = $derived.by(() => {
 		const items: UnscheduledItem[] = [];
 		for (const block of unscheduled) {
 			for (const task of tasksBySource.get(block.source.line) ?? []) {
 				if (!task.colocated) items.push({ block, task });
 			}
 		}
-		onUnscheduledChange(date, items);
+		return items;
+	});
+
+	// A stable string over just the fields WeekView renders (prefixed with the
+	// date so a week-window shift always looks changed), so we notify the parent
+	// only on a genuine change — not on every re-derive that produces a fresh
+	// array of the same content.
+	const unscheduledSig = $derived(
+		date +
+			"\n" +
+			unscheduledItems
+				.map(
+					({ task }) =>
+						`${task.source.line}:${task.status}:${task.text}:${task.assoc?.id ?? task.owner?.id ?? ""}`,
+				)
+				.join("|"),
+	);
+
+	let lastUnscheduledSig = "";
+	$effect(() => {
+		// Read the signature to subscribe; guard on it so the effect is inert once
+		// the content is unchanged (avoids the update-depth-exceeded loop).
+		const sig = unscheduledSig;
+		if (!onUnscheduledChange || sig === lastUnscheduledSig) return;
+		lastUnscheduledSig = sig;
+		onUnscheduledChange(date, unscheduledItems);
 	});
 
 	// ── Interaction state (vertical gestures within this day) ──
