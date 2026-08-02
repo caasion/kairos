@@ -16,7 +16,8 @@
 		shiftISO,
 		todayISO,
 	} from "../../dayNote";
-	import DayColumn from "./DayColumn.svelte";
+	import DayColumn, { type UnscheduledItem } from "./DayColumn.svelte";
+	import TaskRow from "../task/Task.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -176,6 +177,22 @@
 	// Svelte 5: `bind:this` on each DayColumn gives us its exported methods.
 	let columns = $state<Record<string, DayColumn>>({});
 	let columnEls = $state<Record<string, HTMLDivElement>>({});
+
+	// Per-date unscheduled items pushed up from each DayColumn via callback.
+	let unscheduledByDate = $state<Record<string, UnscheduledItem[]>>({});
+	let unscheduledOpen = $state(true);
+
+	function onUnscheduledChange(date: ISODate, items: UnscheduledItem[]) {
+		unscheduledByDate = { ...unscheduledByDate, [date]: items };
+	}
+
+	const hasAnyUnscheduled = $derived(
+		dates.some((d) => (unscheduledByDate[d]?.length ?? 0) > 0),
+	);
+
+	const totalUnscheduled = $derived(
+		dates.reduce((n, d) => n + (unscheduledByDate[d]?.length ?? 0), 0),
+	);
 
 	// The column a live gesture began on, and the block it grabbed (single-block
 	// move only). Non-null only during a potential cross-day drag.
@@ -537,6 +554,53 @@
 		{/each}
 	</div>
 
+	{#if hasAnyUnscheduled}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="week-unscheduled">
+			<div
+				class="week-us-header"
+				class:open={unscheduledOpen}
+				onclick={() => (unscheduledOpen = !unscheduledOpen)}
+			>
+				<div class="week-us-gutter-spacer">
+					<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
+					<span>Unscheduled</span>
+					<span class="us-count">{totalUnscheduled}</span>
+				</div>
+				{#each dates as date (date)}
+					<div class="week-us-head-cell"></div>
+				{/each}
+			</div>
+			{#if unscheduledOpen}
+				<div class="week-us-body">
+					<div class="week-us-gutter-spacer"></div>
+					{#each dates as date (date)}
+						<div class="week-us-col">
+							{#each unscheduledByDate[date] ?? [] as { block, task } (task.source.line)}
+								{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}
+								<TaskRow
+									{task}
+									color={r?.color}
+									association={task.assoc ?? task.owner}
+									inherited={task.assoc === undefined && task.owner !== undefined}
+									resolved={r}
+									onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
+									onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
+									onNest={(rect) => columns[date]?.nestTask(block, task, rect)}
+									onSetStatus={(_t, status) => columns[date]?.setTaskStatus(block, task, status)}
+									onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
+									onDelete={(_t) => columns[date]?.deleteTask(block, task)}
+									onGrab={(e) => columns[date]?.grabTask(block, task, e)}
+								/>
+							{/each}
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	<div class="week-scroll">
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
@@ -576,6 +640,8 @@
 							onEditTaskAssoc={openTaskAssoc}
 							onNestTask={openBlockPicker}
 							{onCrossDayGrab}
+							showUnscheduled={false}
+							{onUnscheduledChange}
 						/>
 					</div>
 				{/each}
@@ -860,5 +926,81 @@
 	}
 	.week-col.drop-target :global(.col-canvas) {
 		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	}
+
+	/* ── Week-level unscheduled strip (above the timeline scroll) ── */
+	.week-unscheduled {
+		flex-shrink: 0;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	.week-us-header {
+		display: flex;
+		align-items: center;
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.week-us-header:hover {
+		background: var(--background-modifier-hover);
+	}
+
+	.week-us-gutter-spacer {
+		width: 46px;
+		min-width: 46px;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 6px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		flex-shrink: 0;
+		border-right: 1px solid var(--background-modifier-border);
+	}
+
+	.week-us-header:hover .week-us-gutter-spacer {
+		color: var(--text-normal);
+	}
+
+	.week-us-head-cell {
+		flex: 1;
+		min-width: 0;
+		border-left: 1px solid var(--background-modifier-border);
+	}
+
+	.week-us-head-cell:first-of-type {
+		border-left: none;
+	}
+
+	.us-chevron {
+		transition: transform 0.15s;
+		transform: rotate(-90deg);
+		flex-shrink: 0;
+	}
+
+	.week-us-header.open .us-chevron {
+		transform: rotate(0deg);
+	}
+
+	.us-count {
+		font-size: 10px;
+		font-weight: 400;
+		color: var(--text-faint);
+	}
+
+	.week-us-body {
+		display: flex;
+		padding: 0 10px;
+	}
+
+	.week-us-col {
+		flex: 1;
+		min-width: 0;
+		border-left: 1px solid var(--background-modifier-border);
+	}
+
+	.week-us-col:first-child {
+		border-left: none;
 	}
 </style>

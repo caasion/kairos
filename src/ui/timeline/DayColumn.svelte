@@ -29,6 +29,7 @@
 		todayISO,
 	} from "../../dayNote";
 	import TimelineBlock from "./TimelineBlock.svelte";
+	import TaskRow from "../task/Task.svelte";
 	import {
 		type Gesture,
 		beginBlockGesture,
@@ -79,6 +80,18 @@
 		// `takeBlock`/`isDropTarget` as needed. Returns nothing — the column keeps
 		// previewing vertically until `onPointerUp` resolves the drop.
 		onCrossDayGrab?: (date: ISODate, block: Block, event: PointerEvent) => void;
+		// When false, the component skips rendering its own unscheduled section.
+		// The parent is then responsible for rendering it (e.g. WeekView).
+		showUnscheduled?: boolean;
+		// Called whenever the unscheduled task list changes, so the parent can
+		// render it outside this component (used by WeekView).
+		onUnscheduledChange?: (date: ISODate, items: UnscheduledItem[]) => void;
+	}
+
+	// A flat row passed up to WeekView for each unscheduled task.
+	export interface UnscheduledItem {
+		block: Block;
+		task: ResolvedTask;
 	}
 
 	let {
@@ -91,6 +104,8 @@
 		onEditTaskAssoc,
 		onNestTask,
 		onCrossDayGrab,
+		showUnscheduled = true,
+		onUnscheduledChange,
 	}: Props = $props();
 
 	function onNavigate(assoc: Association) {
@@ -327,6 +342,17 @@
 		return map;
 	});
 
+	$effect(() => {
+		if (!onUnscheduledChange) return;
+		const items: UnscheduledItem[] = [];
+		for (const block of unscheduled) {
+			for (const task of tasksBySource.get(block.source.line) ?? []) {
+				if (!task.colocated) items.push({ block, task });
+			}
+		}
+		onUnscheduledChange(date, items);
+	});
+
 	// ── Interaction state (vertical gestures within this day) ──
 
 	let selection = $state<Set<Block>>(new Set());
@@ -370,6 +396,7 @@
 	);
 
 	const unscheduled = $derived(blocks.filter((b) => !b.scheduled));
+	let unscheduledOpen = $state(true);
 
 	// "now" needle only on today's column.
 	const isToday = $derived(date === todayISO());
@@ -622,6 +649,50 @@
 		void openDayNote();
 	}
 
+	// ── Unscheduled data surface (for week-level rendering) ──────────────
+	// WeekView suppresses the inline section (showUnscheduled=false) and calls
+	// these to build its own per-column unscheduled strip above the scroll area.
+
+	export function getUnscheduledBlocks(): Block[] {
+		return unscheduled;
+	}
+
+	export function getUnscheduledTasks(blockLine: number): ResolvedTask[] {
+		return (tasksBySource.get(blockLine) ?? []).filter((t) => !t.colocated);
+	}
+
+	export function resolveAssoc(assoc: Association) {
+		return resolve(assoc);
+	}
+
+	export function setTaskStatus(owner: Block, task: Task, status: TaskStatus) {
+		handleSetTaskStatus(owner, task, status);
+	}
+
+	export function setTaskText(owner: Block, task: Task, text: string) {
+		handleSetTaskText(owner, task, text);
+	}
+
+	export function deleteTask(owner: Block, task: Task) {
+		handleDeleteTask(owner, task);
+	}
+
+	export function grabTask(owner: Block, task: Task, event: PointerEvent) {
+		onTaskGrab(owner, task, event);
+	}
+
+	export function editTaskAssoc(owner: Block, task: Task, anchor: DOMRect) {
+		openTaskAssocPicker(owner, task, anchor);
+	}
+
+	export function nestTask(owner: Block, task: Task, anchor: DOMRect) {
+		openBlockPicker(owner, task, anchor);
+	}
+
+	export function navigateAssoc(assoc: Association) {
+		onNavigate(assoc);
+	}
+
 	// Portal the drag ghost to <body> so `position: fixed` escapes any transformed
 	// leaf-container ancestor (same reason the pickers portal).
 	function portal(node: HTMLElement) {
@@ -647,6 +718,44 @@
 
 	void dateFromISO; // retained import parity with DayView; harmless
 </script>
+
+{#if showUnscheduled && unscheduled.length > 0}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div class="col-unscheduled">
+		<div
+			class="us-header"
+			class:open={unscheduledOpen}
+			onclick={() => (unscheduledOpen = !unscheduledOpen)}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
+			<span>Unscheduled</span>
+			<span class="us-count">{unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).filter((t) => !t.colocated).length, 0)}</span>
+		</div>
+		{#if unscheduledOpen}
+			{#each unscheduled as block (block.source.line)}
+				{@const tasks = tasksBySource.get(block.source.line) ?? []}
+				{#each tasks.filter((t) => !t.colocated) as task (task.source.line)}
+					{@const r = task.owner ? resolve(task.owner) : undefined}
+					<TaskRow
+						{task}
+						color={r?.color}
+						association={task.assoc ?? task.owner}
+						inherited={task.assoc === undefined && task.owner !== undefined}
+						resolved={r}
+						onNavigate={() => task.owner && onNavigate(task.owner)}
+						onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
+						onNest={(rect) => openBlockPicker(block, task, rect)}
+						onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
+						onSetText={(_t, text) => handleSetTaskText(block, task, text)}
+						onDelete={(_t) => handleDeleteTask(block, task)}
+						onGrab={(e) => onTaskGrab(block, task, e)}
+					/>
+				{/each}
+			{/each}
+		{/if}
+	</div>
+{/if}
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="col-canvas-wrap" style={`height: ${bodyHeight}px;`}>
@@ -709,47 +818,6 @@
 		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
 	>
 		{taskDrag.label}
-	</div>
-{/if}
-
-{#if unscheduled.length > 0}
-	<div class="col-unscheduled">
-		{#each unscheduled as block (block.source.line)}
-			{@const tasks = tasksBySource.get(block.source.line) ?? []}
-			<div class="us-block">
-				<div class="us-title">{block.title}</div>
-				{#each tasks.filter((t) => !t.colocated) as task (task.source.line)}
-					{@const r = task.owner ? resolve(task.owner) : undefined}
-					<div
-						class="us-task"
-						class:done={task.status === "x"}
-						class:cancelled={task.status === "-"}
-					>
-						<span class="us-dot" class:half={task.status === "/"}></span>
-						<span class="us-text">{task.text}</span>
-						{#if task.owner && r}
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<span
-								class="us-assoc"
-								class:domain={task.owner.kind === "domain"}
-								class:inherited={task.assoc === undefined}
-								class:linked={r.resolved}
-								title={r.resolved ? "Ctrl+click to open" : undefined}
-								onclick={(e) => {
-									if (e.ctrlKey || e.metaKey) {
-										e.stopPropagation();
-										onNavigate(task.owner!);
-									}
-								}}
-							>
-								{r.displayName}
-							</span>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		{/each}
 	</div>
 {/if}
 
@@ -818,82 +886,40 @@
 
 	/* ── Unscheduled (per column) ── */
 	.col-unscheduled {
-		padding: 8px 6px;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	.us-header {
 		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.us-block {
-		border: 1px dashed var(--background-modifier-border);
-		border-radius: 6px;
-		padding: 6px 8px;
-	}
-
-	.us-title {
+		align-items: center;
+		gap: 5px;
+		padding: 4px 6px;
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--text-muted);
-		margin-bottom: 4px;
+		cursor: pointer;
+		user-select: none;
 	}
 
-	.us-task {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		padding: 1px 0;
-		min-width: 0;
-	}
-
-	.us-dot {
-		flex-shrink: 0;
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--text-muted);
-	}
-
-	.us-dot.half {
-		background: var(--text-accent);
-	}
-
-	.us-text {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	.us-header:hover {
+		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 	}
 
-	.us-task.done .us-text,
-	.us-task.cancelled .us-text {
-		text-decoration: line-through;
-		opacity: 0.5;
-	}
-
-	.us-assoc {
+	.us-chevron {
+		transition: transform 0.15s;
+		transform: rotate(-90deg);
 		flex-shrink: 0;
-		font-size: 9px;
-		padding: 0 5px;
-		border-radius: 7px;
-		background: var(--background-modifier-border);
-		color: var(--text-muted);
 	}
 
-	.us-assoc.domain {
-		background: var(--background-modifier-success);
+	.us-header.open .us-chevron {
+		transform: rotate(0deg);
 	}
 
-	.us-assoc.inherited {
-		opacity: 0.6;
-		font-style: italic;
-	}
-
-	.us-assoc.linked {
-		cursor: pointer;
-	}
-
-	.us-assoc.linked:hover {
-		text-decoration: underline;
+	.us-count {
+		font-size: 10px;
+		font-weight: 400;
+		color: var(--text-faint);
+		margin-left: 2px;
 	}
 </style>

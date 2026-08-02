@@ -28,6 +28,7 @@
 		todayISO,
 	} from "../../dayNote";
 	import TimelineBlock from "./TimelineBlock.svelte";
+	import TaskRow from "../task/Task.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -609,8 +610,9 @@
 	);
 
 	// Untimed blocks (the Unscheduled inbox and any other untimed item) render as
-	// a plain list below the timeline, since they have no position on it.
+	// a collapsible list above the timeline, since they have no position on it.
 	const unscheduled = $derived(blocks.filter((b) => !b.scheduled));
+	let unscheduledOpen = $state(true);
 
 	const needleTop = $derived(minutesToOffset(nowMinutes, geo));
 	const needleVisible = $derived(
@@ -1020,6 +1022,43 @@
 	<!-- The timeline always renders, even for a day with no note yet: creating a
 	     block on an empty day lazily creates the daily note (see writeToDisk). -->
 	<div class="day-scroll" bind:this={scrollEl}>
+		{#if unscheduled.length > 0}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="day-unscheduled">
+				<div
+					class="us-header"
+					class:open={unscheduledOpen}
+					onclick={() => (unscheduledOpen = !unscheduledOpen)}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
+					<span>Unscheduled</span>
+					<span class="us-count">{unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).filter((t) => !t.colocated).length, 0)}</span>
+				</div>
+				{#if unscheduledOpen}
+					{#each unscheduled as block (block.source.line)}
+						{@const tasks = tasksBySource.get(block.source.line) ?? []}
+						{#each tasks.filter((t) => !t.colocated) as task (task.source.line)}
+							{@const r = task.owner ? resolve(task.owner) : undefined}
+							<TaskRow
+								{task}
+								color={r?.color}
+								association={task.assoc ?? task.owner}
+								inherited={task.assoc === undefined && task.owner !== undefined}
+								resolved={r}
+								onNavigate={() => task.owner && onNavigate(task.owner)}
+								onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
+								onNest={(rect) => openBlockPicker(block, task, rect)}
+								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
+								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
+								onDelete={(_t) => handleDeleteTask(block, task)}
+								onGrab={(e) => onTaskGrab(block, task, e)}
+							/>
+						{/each}
+					{/each}
+				{/if}
+			</div>
+		{/if}
 		<div class="day-body" style={`height: ${bodyHeight}px;`}>
 				<!-- Hour gutter -->
 				<div class="day-gutter">
@@ -1094,46 +1133,6 @@
 				</div>
 			</div>
 
-			{#if unscheduled.length > 0}
-				<div class="day-unscheduled">
-					{#each unscheduled as block (block.source.line)}
-						{@const tasks = tasksBySource.get(block.source.line) ?? []}
-						<div class="us-block">
-							<div class="us-title">{block.title}</div>
-							{#each tasks.filter((t) => !t.colocated) as task (task.source.line)}
-								{@const r = task.owner ? resolve(task.owner) : undefined}
-								<div
-									class="us-task"
-									class:done={task.status === "x"}
-									class:cancelled={task.status === "-"}
-								>
-									<span class="us-dot" class:half={task.status === "/"}></span>
-									<span class="us-text">{task.text}</span>
-									{#if task.owner && r}
-										<span
-											class="us-assoc"
-											class:domain={task.owner.kind === "domain"}
-											class:inherited={task.assoc === undefined}
-											class:linked={r.resolved}
-											title={r.resolved
-												? "Ctrl+click to open"
-												: undefined}
-											onclick={(e) => {
-												if (e.ctrlKey || e.metaKey) {
-													e.stopPropagation();
-													onNavigate(task.owner!);
-												}
-											}}
-										>
-											{r.displayName}
-										</span>
-									{/if}
-								</div>
-							{/each}
-						</div>
-					{/each}
-				</div>
-			{/if}
 		</div>
 </div>
 
@@ -1442,82 +1441,40 @@
 
 	/* ── Unscheduled ── */
 	.day-unscheduled {
-		padding: 10px;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	.us-header {
 		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.us-block {
-		border: 1px dashed var(--background-modifier-border);
-		border-radius: 6px;
-		padding: 6px 8px;
-	}
-
-	.us-title {
+		align-items: center;
+		gap: 5px;
+		padding: 5px 10px;
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--text-muted);
-		margin-bottom: 4px;
+		cursor: pointer;
+		user-select: none;
 	}
 
-	.us-task {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		padding: 1px 0;
-		min-width: 0;
-	}
-
-	.us-dot {
-		flex-shrink: 0;
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		background: var(--text-muted);
-	}
-
-	.us-dot.half {
-		background: var(--text-accent);
-	}
-
-	.us-text {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	.us-header:hover {
+		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 	}
 
-	.us-task.done .us-text,
-	.us-task.cancelled .us-text {
-		text-decoration: line-through;
-		opacity: 0.5;
-	}
-
-	.us-assoc {
+	.us-chevron {
+		transition: transform 0.15s;
+		transform: rotate(-90deg);
 		flex-shrink: 0;
-		font-size: 9px;
-		padding: 0 5px;
-		border-radius: 7px;
-		background: var(--background-modifier-border);
-		color: var(--text-muted);
 	}
 
-	.us-assoc.domain {
-		background: var(--background-modifier-success);
+	.us-header.open .us-chevron {
+		transform: rotate(0deg);
 	}
 
-	.us-assoc.inherited {
-		opacity: 0.6;
-		font-style: italic;
-	}
-
-	.us-assoc.linked {
-		cursor: pointer;
-	}
-
-	.us-assoc.linked:hover {
-		text-decoration: underline;
+	.us-count {
+		font-size: 10px;
+		font-weight: 400;
+		color: var(--text-faint);
+		margin-left: 2px;
 	}
 </style>
