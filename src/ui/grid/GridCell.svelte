@@ -171,10 +171,10 @@
 		min-width: 0;
 	}
 
-	/* Outline the whole cell when it is the live drop target. */
+	/* Highlight the whole cell when it is the live drop target.
+	   Inset box-shadow instead of outline so it isn't clipped by the grid table's overflow:hidden. */
 	.grid-cell.drop-target {
-		outline: 2px solid var(--interactive-accent);
-		border-radius: 4px;
+		box-shadow: inset 0 0 0 2px var(--interactive-accent);
 	}
 
 	/* Dim the row whose task is being dragged. */

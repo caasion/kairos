@@ -409,11 +409,12 @@
 		blockDrop = null;
 	}
 
-	// The drop index for a given cell (date + row). Undefined when the live drop
-	// is targeting a different cell — only that cell renders the indicator.
-	function dropIndexFor(date: ISODate, rowKey: string): number | undefined {
-		if (!taskDrop || taskDrop.date !== date || taskDrop.rowKey !== rowKey) return undefined;
-		return taskDrop.index;
+	// True when the given cell (date + row) is the live drop target for either
+	// a task drag or a block drag.
+	function isDropTargetFor(date: ISODate, rowKey: string): boolean {
+		if (taskDrop && taskDrop.date === date && taskDrop.rowKey === rowKey) return true;
+		if (blockDrop && blockDrop.date === date && blockDrop.rowKey === rowKey) return true;
+		return false;
 	}
 
 	function portal(node: HTMLElement) {
@@ -691,7 +692,7 @@
 								onBlockGrab={onBlockGrab}
 								dragTaskLine={taskDrag?.task.source.line}
 								dragBlockLine={blockDrag?.block.source.line}
-								isDropTarget={dropIndexFor(date, row.key) !== undefined}
+								isDropTarget={isDropTargetFor(date, row.key)}
 							/>
 						{:else}
 							<div class="grid-datacell-empty"></div>
