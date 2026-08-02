@@ -27,13 +27,15 @@
 	import {
 		addTaskToUnscheduled,
 		deleteTask,
+		moveBlockAcrossDays,
 		moveTaskAcrossDays,
+		setBlockAssoc,
 		setTaskStatus,
 		setTaskText,
 		unnestTask,
 	} from "../../writer";
 	import type { GridDay, GridSnapshot, KairosIndex, Resolver } from "../../index";
-	import { hitTestGridCell, type GridDropSlot, type TaskDragState } from "../timeline/taskDrag";
+	import { hitTestGridCell, type BlockDragState, type GridDropSlot, type TaskDragState } from "../timeline/taskDrag";
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		buildRows,
@@ -323,6 +325,90 @@
 		taskDrop = null;
 	}
 
+	// ── Block drag (grid block DnD) ──
+	// Long-press on a colocated task (checkable block) lifts the whole block —
+	// its time, title, and all child tasks — and drops it onto a new (date, row).
+	// Same-day drop: association-only change via setBlockAssoc.
+	// Cross-day drop: full block move via moveBlockAcrossDays + applyCrossDayMove.
+	let blockDrag = $state<BlockDragState | null>(null);
+	let blockDrop = $state<GridDropSlot | null>(null);
+
+	function onBlockGrab(task: ResolvedTask, event: PointerEvent) {
+		lastPointerX = event.clientX;
+		lastPointerY = event.clientY;
+		const block = task.block;
+		const childCount = block.tasks.length;
+		const label = childCount > 0 ? `${block.title} (+${childCount})` : block.title;
+		// Stash the source date on the drag state so onBlockDragUp can find the day.
+		blockDrag = { block, sourceDate: task.date, ghostX: event.clientX, ghostY: event.clientY, label };
+		blockDrop = hitTestGridCell(event);
+	}
+
+	function onBlockDragMove(event: PointerEvent) {
+		if (!blockDrag) return;
+		lastPointerX = event.clientX;
+		lastPointerY = event.clientY;
+		blockDrag = { ...blockDrag, ghostX: event.clientX, ghostY: event.clientY };
+		blockDrop = hitTestGridCell(event);
+	}
+
+	async function onBlockDragUp() {
+		if (!blockDrag) return;
+		const drag = blockDrag;
+		const synth = new MouseEvent("pointermove", { clientX: lastPointerX, clientY: lastPointerY }) as PointerEvent;
+		const drop = hitTestGridCell(synth) ?? blockDrop;
+		blockDrag = null;
+		blockDrop = null;
+		if (!drop) return;
+
+		const sourceDate = drag.sourceDate as ISODate;
+		const sourceDay = dayOf(sourceDate);
+		if (!sourceDay || sourceDay.path === null) return;
+
+		// Resolve the target row's association.
+		const targetRow = rows.find((r) => r.key === drop.rowKey);
+		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
+		const newAssoc: Association | null | undefined = targetAssoc
+			? { kind: targetAssoc.kind, id: targetAssoc.id }
+			: targetAssoc === undefined
+				? undefined
+				: null; // unassigned row — clear assoc
+
+		if (drop.date === sourceDate) {
+			// Same day: only the association changes.
+			if (newAssoc === undefined) return; // no valid target row
+			const next = setBlockAssoc(sourceDay.blocks, drag.block, newAssoc);
+			if (next !== sourceDay.blocks) commit(sourceDate, sourceDay.path, next);
+			return;
+		}
+
+		// Cross-day: move the whole block (time, title, children) to the target day.
+		const targetDay = dayOf(drop.date as ISODate);
+		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+		const targetBlocks = targetDay?.blocks ?? [];
+		const { from, to } = moveBlockAcrossDays(
+			sourceDay.blocks,
+			targetBlocks,
+			drag.block,
+			targetPath,
+			undefined, // keep existing time
+			newAssoc,
+		);
+		index.applyCrossDayMove(
+			sourceDate,
+			sourceDay.path,
+			from,
+			drop.date as ISODate,
+			targetPath,
+			to,
+		);
+	}
+
+	function cancelBlockDrag() {
+		blockDrag = null;
+		blockDrop = null;
+	}
+
 	// The drop index for a given cell (date + row). Undefined when the live drop
 	// is targeting a different cell — only that cell renders the indicator.
 	function dropIndexFor(date: ISODate, rowKey: string): number | undefined {
@@ -431,9 +517,9 @@
 	);
 
 	function onKeyDown(event: KeyboardEvent) {
-		if (event.key === "Escape" && taskDrag) {
-			event.preventDefault();
-			cancelTaskDrag();
+		if (event.key === "Escape") {
+			if (taskDrag) { event.preventDefault(); cancelTaskDrag(); }
+			if (blockDrag) { event.preventDefault(); cancelBlockDrag(); }
 		}
 	}
 
@@ -442,8 +528,14 @@
 			resolve = r;
 		});
 
-		const move = (e: PointerEvent) => { if (taskDrag) onTaskDragMove(e); };
-		const up = () => { if (taskDrag) void onTaskDragUp(); };
+		const move = (e: PointerEvent) => {
+			if (taskDrag) onTaskDragMove(e);
+			if (blockDrag) onBlockDragMove(e);
+		};
+		const up = () => {
+			if (taskDrag) void onTaskDragUp();
+			if (blockDrag) void onBlockDragUp();
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
 
@@ -597,7 +689,9 @@
 								{onUnnest}
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
+								onBlockGrab={onBlockGrab}
 								dragTaskLine={taskDrag?.task.source.line}
+								dragBlockLine={blockDrag?.block.source.line}
 								dropIndex={dropIdx}
 								isDropTarget={dropIdx !== undefined}
 							/>
@@ -634,6 +728,16 @@
 		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
 	>
 		{taskDrag.label}
+	</div>
+{/if}
+
+{#if blockDrag}
+	<div
+		class="task-ghost task-ghost-block"
+		use:portal
+		style={`left: ${blockDrag.ghostX + 12}px; top: ${blockDrag.ghostY + 8}px;`}
+	>
+		{blockDrag.label}
 	</div>
 {/if}
 
@@ -891,5 +995,12 @@
 		text-align: center;
 		font-size: 13px;
 		color: var(--text-muted);
+	}
+
+	/* Block drag ghost: same base as task ghost but with a filled accent border
+	   to signal that the whole block (+ children) is being carried. */
+	:global(.task-ghost-block) {
+		border-color: var(--interactive-accent) !important;
+		background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary)) !important;
 	}
 </style>

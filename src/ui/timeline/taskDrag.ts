@@ -33,6 +33,18 @@ export interface TaskDragState {
   label: string;
 }
 
+/** A checkable block being dragged (grid block DnD). */
+export interface BlockDragState {
+  block: Block;
+  /** The ISO date of the source day — used at drop time to find the source day. */
+  sourceDate: string;
+  // Where to paint the floating ghost.
+  ghostX: number;
+  ghostY: number;
+  // Ghost label: block title + child count so the user knows what's carried.
+  label: string;
+}
+
 /** A resolved drop position: which block, and the insertion index within it. */
 export interface DropSlot {
   blockLine: number;

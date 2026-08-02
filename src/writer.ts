@@ -546,6 +546,9 @@ export interface CrossDayMove {
  * target day), optionally retiming it. Returns fresh arrays for both days;
  * neither input is mutated. `time` defaults to the block's current range.
  *
+ * `targetAssoc` overrides the block's association on arrival. Pass `null` to
+ * clear it (unassigned drop); omit to preserve the existing association.
+ *
  * `toPath` is the destination note path, stamped onto the moved block's source
  * so it (and its tasks) route to the right file until the next reparse.
  */
@@ -555,8 +558,15 @@ export function moveBlockAcrossDays(
   target: Block,
   toPath: string,
   time?: TimeRange,
+  targetAssoc?: Association | null,
 ): CrossDayMove {
   const from = fromBlocks.filter((b) => !isOwner(b, target));
+
+  // Determine outgoing association.
+  const assoc =
+    targetAssoc !== undefined
+      ? targetAssoc ?? undefined
+      : target.assoc;
 
   // Repoint the moved block (and its child tasks) at the destination file with
   // throwaway lines; the reparse on write re-derives real lines.
@@ -564,13 +574,32 @@ export function moveBlockAcrossDays(
     ...target,
     source: { path: toPath, line: -1 },
     ...(time ? { time } : {}),
+    ...(assoc ? { assoc } : {}),
     tasks: target.tasks.map((t, i) => ({
       ...t,
       source: { path: toPath, line: -(i + 2) },
     })),
   };
+  if (!assoc) delete (moved as Partial<Block>).assoc;
 
   return { from, to: [...toBlocks, moved] };
+}
+
+/**
+ * Change a block's association in-place (same-day association edit).
+ * Pass `null` to clear the association (unassigned).
+ */
+export function setBlockAssoc(
+  blocks: Block[],
+  target: Block,
+  assoc: Association | null,
+): Block[] {
+  return blocks.map((b) => {
+    if (!isOwner(b, target)) return b;
+    if (assoc) return { ...b, assoc };
+    const { assoc: _drop, ...rest } = b;
+    return rest as Block;
+  });
 }
 
 /** Return a copy of `blocks` with every block in `targets` removed. */

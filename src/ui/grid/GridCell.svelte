@@ -27,11 +27,14 @@
 		onReveal: (task: ResolvedTask) => void;
 		// Unnest: move this task out of its timed block into Unscheduled.
 		onUnnest: (task: ResolvedTask) => void;
-		// A long-press on a task began a grid drag-to-reschedule. The parent takes over.
+		// A long-press on a regular task began a grid drag-to-reschedule.
 		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
-		// While a task drag is live: the source task's line (to dim it) and the
-		// live insertion slot for this cell (to show a drop indicator).
+		// A long-press on a colocated task (checkable block) began a block drag.
+		onBlockGrab?: (task: ResolvedTask, event: PointerEvent) => void;
+		// While a drag is live: dim the source item. dragTaskLine for task drags,
+		// dragBlockLine for block drags (matches the block's source line = colocated task line).
 		dragTaskLine?: number;
+		dragBlockLine?: number;
 		dropIndex?: number;
 		// True only when THIS cell is the live drop target (not just any drag).
 		isDropTarget?: boolean;
@@ -51,7 +54,9 @@
 		onReveal,
 		onUnnest,
 		onTaskGrab,
+		onBlockGrab,
 		dragTaskLine,
+		dragBlockLine,
 		dropIndex,
 		isDropTarget = false,
 	}: Props = $props();
@@ -90,6 +95,9 @@
 	function grabOf(task: Task, event: PointerEvent) {
 		if (onTaskGrab) onTaskGrab(task as ResolvedTask, event);
 	}
+	function blockGrabOf(task: Task, event: PointerEvent) {
+		if (onBlockGrab) onBlockGrab(task as ResolvedTask, event);
+	}
 </script>
 
 <div class="grid-cell">
@@ -99,7 +107,7 @@
 		{/if}
 		<div
 			class="grid-cell-item"
-			class:dragging-origin={dragTaskLine === task.source.line}
+			class:dragging-origin={dragTaskLine === task.source.line || (task.colocated && dragBlockLine === task.block.source.line)}
 			data-task-index={i}
 		>
 			<Task_
@@ -108,13 +116,14 @@
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
-				onGrab={onTaskGrab && !task.colocated ? (e) => grabOf(task, e) : undefined}
+				onGrab={task.colocated
+					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined
+					: onTaskGrab ? (e) => grabOf(task, e) : undefined}
 			/>
 
 			{#if task.colocated}
-				<!-- Colocated = a checkable block. Show a clock-badge with the block
-				     time so it's clear this item is anchored to a scheduled block.
-				     Not draggable — move the block from the timeline instead. -->
+				<!-- Colocated = a checkable block. Long-press starts a block drag
+				     that carries the block + its children to the new day/row. -->
 				<div class="grid-cell-badge-row">
 					<button
 						class="grid-cell-badge grid-cell-badge-block"
@@ -122,7 +131,7 @@
 						onclick={() => onReveal(task)}
 					>
 						<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-						<span class="grid-cell-badge-label">{badgeLabel(task)}</span>
+						<span class="grid-cell-badge-label">{badgeLabel(task)}{task.block.tasks.length > 0 ? ` +${task.block.tasks.length}` : ""}</span>
 					</button>
 				</div>
 			{:else if isNested(task)}
