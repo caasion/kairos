@@ -126,7 +126,12 @@
 						onclick={() => onReveal(task)}
 					>
 						<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-						<span class="grid-cell-badge-label">{badgeLabel(task)}{task.block.tasks.length > 0 ? ` +${task.block.tasks.length}` : ""}</span>
+						<span class="grid-cell-badge-label">
+							{badgeLabel(task)}
+							<span class="grid-cell-badge-block-number">
+								{task.block.tasks.length > 0 ? ` +${task.block.tasks.length}` : ""}
+							</span>
+						</span>
 					</button>
 				</div>
 			{:else if isNested(task)}
@@ -236,11 +241,12 @@
 		align-items: center;
 		gap: 3px;
 		max-width: 100%;
-		padding: 0 5px;
+		padding: 0 0;
 		height: 16px;
 		font-size: 10px;
 		color: var(--text-muted);
-		background: var(--background-modifier-border);
+		background: transparent;
+		box-shadow: none;
 		border: none;
 		border-radius: 7px;
 		cursor: pointer;
@@ -254,18 +260,10 @@
 	/* Colocated block badge gets a slightly warmer tint to distinguish it
 	   from a plain nested-task time badge. */
 	.grid-cell-badge-block {
-		background: color-mix(
-			in srgb,
-			var(--interactive-accent) 12%,
-			var(--background-modifier-border)
-		);
+		background: transparent;
 	}
 	.grid-cell-badge-block:hover {
-		background: color-mix(
-			in srgb,
-			var(--interactive-accent) 20%,
-			var(--background-modifier-border)
-		);
+		background: var(--background-modifier-hover);
 	}
 	.grid-cell-badge svg {
 		flex-shrink: 0;
@@ -275,6 +273,13 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		font-variant-numeric: tabular-nums;
+	}
+	.grid-cell-badge-block-number {
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 20%,
+			var(--background-modifier-border)
+		);
 	}
 
 	.grid-cell-unnest {
