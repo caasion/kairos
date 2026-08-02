@@ -33,8 +33,8 @@
 		// live insertion slot for this cell (to show a drop indicator).
 		dragTaskLine?: number;
 		dropIndex?: number;
-		// True while ANY task drag is active — shows the drop zone even when empty.
-		dragActive?: boolean;
+		// True only when THIS cell is the live drop target (not just any drag).
+		isDropTarget?: boolean;
 	}
 
 	let {
@@ -53,7 +53,7 @@
 		onTaskGrab,
 		dragTaskLine,
 		dropIndex,
-		dragActive = false,
+		isDropTarget = false,
 	}: Props = $props();
 
 	// A scheduled task shows a badge = its block's time + title. "Scheduled" here
@@ -149,8 +149,9 @@
 		</div>
 	{/each}
 
-	<!-- Trailing drop zone: append indicator after the last task row. -->
-	{#if dragActive}
+	<!-- Trailing drop zone: append indicator after the last task row.
+	     Only rendered for the currently-hovered cell, not all cells. -->
+	{#if isDropTarget}
 		<div class="grid-drop-tail">
 			{#if dropIndex !== undefined && dropIndex >= tasks.length}
 				<div class="grid-drop-line"></div>

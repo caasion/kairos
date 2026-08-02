@@ -212,13 +212,19 @@
 
 	// ── Task drag-to-reschedule (grid DnD) ──
 	// Long-press on a task body starts a drag. The ghost follows the pointer; the
-	// hovered cell's date is tracked as the live drop target. On release:
-	//   • Same day → reorder within that day's blocks via nestTaskUnderBlock.
+	// hovered cell's (date, rowKey) is tracked as the live drop target. On release:
+	//   • Same day → unnest + re-associate within that day.
 	//   • Different day → cross-day move via moveTaskAcrossDays.
 	let taskDrag = $state<TaskDragState | null>(null);
 	let taskDrop = $state<GridDropSlot | null>(null);
+	// Last pointer coordinates, updated on every pointermove during a drag.
+	// Re-hit-tested at pointerup to get the freshest drop slot.
+	let lastPointerX = 0;
+	let lastPointerY = 0;
 
 	function onTaskGrab(task: ResolvedTask, event: PointerEvent) {
+		lastPointerX = event.clientX;
+		lastPointerY = event.clientY;
 		taskDrag = {
 			owner: task.block,
 			task,
@@ -231,6 +237,8 @@
 
 	function onTaskDragMove(event: PointerEvent) {
 		if (!taskDrag) return;
+		lastPointerX = event.clientX;
+		lastPointerY = event.clientY;
 		taskDrag = { ...taskDrag, ghostX: event.clientX, ghostY: event.clientY };
 		taskDrop = hitTestGridCell(event);
 	}
@@ -238,7 +246,10 @@
 	async function onTaskDragUp() {
 		if (!taskDrag) return;
 		const drag = taskDrag;
-		const drop = taskDrop;
+		// Re-hit-test at the exact release coordinates for the freshest slot —
+		// taskDrop could be stale if no pointermove fired since entering this cell.
+		const synth = new MouseEvent("pointermove", { clientX: lastPointerX, clientY: lastPointerY }) as PointerEvent;
+		const drop = hitTestGridCell(synth) ?? taskDrop;
 		taskDrag = null;
 		taskDrop = null;
 		if (!drop) return;
@@ -571,6 +582,7 @@
 						data-grid-row-key={row.key}
 					>
 						{#if day}
+							{@const dropIdx = dropIndexFor(date, row.key)}
 							<GridCell
 								tasks={tasksFor(row, day)}
 								{resolve}
@@ -586,8 +598,8 @@
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
 								dragTaskLine={taskDrag?.task.source.line}
-								dropIndex={dropIndexFor(date, row.key)}
-								dragActive={taskDrag !== null}
+								dropIndex={dropIdx}
+								isDropTarget={dropIdx !== undefined}
 							/>
 						{:else}
 							<div class="grid-datacell-empty"></div>
