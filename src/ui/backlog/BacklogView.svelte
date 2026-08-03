@@ -282,6 +282,15 @@
 							class="group-accent"
 							style={`background-color: ${group.color || "var(--text-faint)"};`}
 						></span>
+						<!-- Icon distinguishes a domain from a project, matching the
+						     association-tag icons used in the grid & timeline views. -->
+						<span class="group-kind-icon" title={group.kind === "domain" ? "Domain" : "Project"}>
+							{#if group.kind === "domain"}
+								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+							{:else}
+								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+							{/if}
+						</span>
 					{/if}
 					<span class="group-name" class:unassociated={group.kind === "none"}
 						>{group.name}</span
@@ -306,85 +315,113 @@
 					<ul class="entry-list">
 						{#each group.entries as entry (entry.source.line)}
 							<li class="entry-row">
-								<span class="entry-bullet"></span>
+								<div class="entry-main">
+									<span class="entry-bullet"></span>
 
-								{#if isEditing(entry)}
-									<!-- svelte-ignore a11y_autofocus -->
-									<input
-										class="entry-input"
-										value={entry.text}
-										autofocus
-										onclick={(e) => e.stopPropagation()}
-										onblur={(e) => finishEdit(entry, e.currentTarget.value)}
-										onkeydown={(e) => {
-											if (e.key === "Enter") e.currentTarget.blur();
-											if (e.key === "Escape") {
-												e.currentTarget.value = entry.text;
-												e.currentTarget.blur();
-											}
-										}}
-									/>
-								{:else}
-									<button class="entry-text" onclick={(e) => { e.stopPropagation(); startEdit(entry); }}>
-										{entry.text}
+									{#if isEditing(entry)}
+										<!-- svelte-ignore a11y_autofocus -->
+										<!-- Styled to be indistinguishable from the static text
+										     (no box, no border) so editing feels like typing in
+										     place — same discipline as the task row. -->
+										<input
+											class="entry-input"
+											value={entry.text}
+											autofocus
+											onclick={(e) => e.stopPropagation()}
+											onblur={(e) => finishEdit(entry, e.currentTarget.value)}
+											onkeydown={(e) => {
+												if (e.key === "Enter") e.currentTarget.blur();
+												if (e.key === "Escape") {
+													e.currentTarget.value = entry.text;
+													e.currentTarget.blur();
+												}
+											}}
+										/>
+									{:else}
+										<button class="entry-text" onclick={(e) => { e.stopPropagation(); startEdit(entry); }}>
+											{entry.text}
+										</button>
+									{/if}
+
+									<span class="entry-spacer"></span>
+
+								<!-- Hover action bar — rectangular, revealed on row hover,
+								     mirroring the task row's action bar. -->
+								<div class="entry-actions">
+									<!-- Resurface date -->
+									<button
+										class="entry-action"
+										class:active={entry.resurface}
+										title={entry.resurface ? "Resurface date — click to change" : "Set a resurface date"}
+										aria-label="Resurface date"
+										onclick={(e) => openResurface(entry, e)}
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
 									</button>
-								{/if}
+									{#if entry.resurface}
+										<button
+											class="entry-action"
+											title="Clear resurface date"
+											aria-label="Clear resurface date"
+											onclick={(e) => clearResurface(entry, e)}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+										</button>
+									{/if}
 
-								<span class="entry-spacer"></span>
+									<!-- Association. Once an entry is grouped under a project/
+									     domain the tag is redundant, so we only offer to add one
+									     when the entry is unassociated; re-associating an
+									     associated entry stays available via the context of its
+									     group. -->
+									{#if !entry.assoc}
+										<button
+											class="entry-action"
+											title="Associate with a project or domain"
+											aria-label="Associate"
+											onclick={(e) => openAssoc(entry, e)}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+										</button>
+									{:else}
+										<button
+											class="entry-action"
+											title="Change association"
+											aria-label="Change association"
+											onclick={(e) => openAssoc(entry, e)}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+										</button>
+									{/if}
 
-								<!-- Resurface date chip -->
+									<!-- Delete -->
+									<button
+										class="entry-action entry-action-danger"
+										title="Delete item"
+										aria-label="Delete"
+										onclick={(e) => { e.stopPropagation(); onDelete(entry); }}
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+									</button>
+									</div>
+								</div>
+
+								<!-- Resurface date shown as a metadata line under the item,
+								     mirroring the task row's association line. A due date
+								     stands out (orange); a future one reads muted. -->
 								{#if entry.resurface}
 									<button
-										class="chip resurface-chip"
+										class="entry-meta"
 										class:due={isDue(entry.resurface)}
-										title="Resurface date — click to change, ✕ to clear"
+										title="Resurface date — click to change"
 										onclick={(e) => openResurface(entry, e)}
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-										<span>{formatResurface(entry.resurface)}</span>
-										<span
-											class="chip-x"
-											role="button"
-											tabindex="-1"
-											aria-label="Clear resurface date"
-											onclick={(e) => clearResurface(entry, e)}>×</span
-										>
-									</button>
-								{:else}
-									<button
-										class="chip chip-ghost"
-										title="Set a resurface date"
-										onclick={(e) => openResurface(entry, e)}
-										aria-label="Set resurface date"
-									>
-										<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+										<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+										<span class="entry-meta-label">
+											{isDue(entry.resurface) ? "Resurfacing" : "Resurfaces"} {formatResurface(entry.resurface)}
+										</span>
 									</button>
 								{/if}
-
-								<!-- Association chip -->
-								<button
-									class="chip assoc-chip"
-									class:ghost={!entry.assoc}
-									title={entry.assoc ? "Change association" : "Associate with a project or domain"}
-									style={group.color ? `--chip-accent: ${group.color};` : ""}
-									onclick={(e) => openAssoc(entry, e)}
-								>
-									{#if entry.assoc}
-										{resolve(entry.assoc).displayName || entry.assoc.id}
-									{:else}
-										<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-									{/if}
-								</button>
-
-								<!-- Delete -->
-								<button
-									class="chip delete-chip"
-									title="Delete item"
-									onclick={(e) => { e.stopPropagation(); onDelete(entry); }}
-									aria-label="Delete"
-								>
-									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-								</button>
 
 								<!-- Popups anchored to this row -->
 								{#if resurfaceEntry && sameEntry(resurfaceEntry, entry)}
@@ -502,6 +539,12 @@
 		border-radius: 2px;
 		flex-shrink: 0;
 	}
+	.group-kind-icon {
+		display: flex;
+		align-items: center;
+		color: var(--text-muted);
+		flex-shrink: 0;
+	}
 	.group-name {
 		font-size: 12px;
 		font-weight: 700;
@@ -552,14 +595,20 @@
 	}
 	.entry-row {
 		display: flex;
-		align-items: center;
-		gap: 6px;
+		flex-direction: column;
+		gap: 1px;
 		padding: 5px 8px;
 		border-radius: 7px;
 		position: relative;
 	}
 	.entry-row:hover {
 		background: var(--background-modifier-hover);
+	}
+	.entry-main {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
 	}
 	.entry-bullet {
 		width: 5px;
@@ -569,83 +618,126 @@
 		flex-shrink: 0;
 		margin: 0 3px;
 	}
+	/* The text button and the edit input are styled identically so clicking to
+	   edit feels like putting the cursor on the item name — no box, no border,
+	   no box-shadow (Obsidian's default button shadow is explicitly killed). */
 	.entry-text {
+		min-width: 0;
 		font-size: 13px;
+		line-height: 1.4;
+		height: min-content;
 		color: var(--text-normal);
 		background: transparent;
 		border: none;
-		padding: 2px 0;
+		box-shadow: none;
+		padding: 0;
+		margin: 0;
 		cursor: text;
 		text-align: left;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.entry-input {
+		flex: 1;
+		min-width: 0;
 		font-size: 13px;
+		line-height: 1.4;
+		font-family: inherit;
 		color: var(--text-normal);
-		background: var(--background-primary);
-		border: 1px solid var(--interactive-accent);
-		border-radius: 5px;
-		padding: 2px 6px;
-		min-width: 160px;
+		background: transparent;
+		border: none;
+		border-radius: 0;
+		box-shadow: none;
+		outline: none;
+		padding: 0;
+		margin: 0;
+	}
+	.entry-input:focus,
+	.entry-input:focus-visible {
+		border: none;
+		box-shadow: none;
+		outline: none;
 	}
 	.entry-spacer {
 		flex: 1;
 	}
 
-	/* ── Chips (association, resurface, schedule, delete) ── */
-	.chip {
-		display: inline-flex;
+	/* ── Resurface metadata line (under the item text) ── */
+	/* Modeled on the task row's association line: a small, muted line indented to
+	   sit under the text (past the bullet). A due date stands out in orange. It's
+	   a button so clicking it reopens the datepicker. No default button chrome. */
+	.entry-meta {
+		display: flex;
 		align-items: center;
-		gap: 4px;
-		height: 22px;
-		padding: 0 7px;
-		font-size: 11px;
-		font-weight: 500;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 11px;
-		background: var(--background-primary-alt);
+		gap: 3px;
+		align-self: flex-start;
+		padding: 0 0 0 16px;
+		margin: 0;
+		border: none;
+		box-shadow: none;
+		background: transparent;
+		font-size: 10px;
 		color: var(--text-muted);
 		cursor: pointer;
-		flex-shrink: 0;
-		white-space: nowrap;
+		min-width: 0;
+		max-width: 100%;
+		height: min-content;
 	}
-	.chip:hover {
+	.entry-meta:hover .entry-meta-label {
+		text-decoration: underline;
+	}
+	.entry-meta.due {
+		color: var(--color-orange, var(--interactive-accent));
+	}
+	.entry-meta svg {
+		flex-shrink: 0;
+	}
+	.entry-meta-label {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* ── Hover action bar (resurface, associate, delete) ── */
+	/* Revealed only on row hover, mirroring the task row. Rectangular-ish and
+	   free of Obsidian's default button box-shadow. */
+	.entry-actions {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex-shrink: 0;
+		opacity: 0;
+		transition: opacity 0.1s;
+	}
+	.entry-row:hover .entry-actions {
+		opacity: 1;
+	}
+	.entry-action {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		box-shadow: none;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.entry-action:hover {
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 	}
-	.chip svg {
-		flex-shrink: 0;
-	}
-	/* Icon-only chips are square-ish. */
-	.chip-ghost,
-	.delete-chip {
-		padding: 0 6px;
-	}
-
-	/* Association chip picks up the domain accent when one applies. */
-	.assoc-chip {
-		border-color: color-mix(in srgb, var(--chip-accent, var(--background-modifier-border)) 55%, var(--background-modifier-border));
+	.entry-action.active {
 		color: var(--text-normal);
 	}
-	.assoc-chip.ghost {
-		color: var(--text-faint);
+	.entry-action svg {
+		flex-shrink: 0;
 	}
-
-	.resurface-chip.due {
-		border-color: var(--color-orange, var(--interactive-accent));
-		color: var(--color-orange, var(--interactive-accent));
-	}
-	.chip-x {
-		margin-left: 1px;
-		font-size: 13px;
-		line-height: 1;
-		opacity: 0.6;
-	}
-	.chip-x:hover {
-		opacity: 1;
-	}
-
-	.delete-chip:hover {
-		border-color: var(--text-error, #e05555);
+	.entry-action-danger:hover {
 		color: var(--text-error, #e05555);
 	}
 

@@ -85,7 +85,7 @@
 			onInsert(entry);
 		}}
 	>
-		<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
 	</button>
 
 	<span class="nudge-text">{entry.text}</span>
@@ -132,7 +132,6 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 4px 8px;
 		border-radius: 7px;
 		position: relative;
 		/* ~10% accent tint so surfaced intentions are in-your-face. */
@@ -149,8 +148,9 @@
 		justify-content: center;
 		height: 18px;
 		width: 18px;
+		min-width: fit-content;
 		flex-shrink: 0;
-		border: 1px solid var(--nudge-accent);
+		padding: 0px;
 		border-radius: 5px;
 		background: transparent;
 		color: var(--nudge-accent);
