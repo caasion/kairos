@@ -9,6 +9,10 @@ import type { ISODate } from './types';
 import { KAIROS_VIEW_TYPE, KairosView } from './KairosView';
 import { KAIROS_WEEK_VIEW_TYPE, KairosWeekView } from './KairosWeekView';
 import { KAIROS_GRID_VIEW_TYPE, KairosGridView } from './KairosGridView';
+import {
+	KAIROS_BACKLOG_VIEW_TYPE,
+	KairosBacklogView,
+} from './KairosBacklogView';
 import { IndexAdapter } from './indexAdapter';
 
 // Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
@@ -90,6 +94,11 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosGridView(leaf, this),
 		);
 
+		this.registerView(
+			KAIROS_BACKLOG_VIEW_TYPE,
+			(leaf) => new KairosBacklogView(leaf, this),
+		);
+
 		this.addRibbonIcon('clock', 'Open Kairos Day view', () => {
 			void this.activateView();
 		});
@@ -100,6 +109,10 @@ export default class Kairos extends Plugin {
 
 		this.addRibbonIcon('layout-grid', 'Open Kairos Grid view', () => {
 			void this.activateGridView();
+		});
+
+		this.addRibbonIcon('inbox', 'Open Kairos Backlog view', () => {
+			void this.activateBacklogView();
 		});
 
 		this.addCommand({
@@ -118,6 +131,12 @@ export default class Kairos extends Plugin {
 			id: 'open-kairos-grid-view',
 			name: 'Open Grid view',
 			callback: () => void this.activateGridView(),
+		});
+
+		this.addCommand({
+			id: 'open-kairos-backlog-view',
+			name: 'Open Backlog view',
+			callback: () => void this.activateBacklogView(),
 		});
 
 		// Dev command: parse the active note's Schedule section and log the JSON.
@@ -215,6 +234,25 @@ export default class Kairos extends Plugin {
 			leaf = workspace.getLeaf('tab');
 			await leaf.setViewState({
 				type: KAIROS_GRID_VIEW_TYPE,
+				active: true,
+			});
+		}
+
+		if (leaf) void workspace.revealLeaf(leaf);
+	}
+
+	// Reveal the Backlog view in the right sidebar, reusing a leaf if one is open.
+	async activateBacklogView() {
+		const { workspace } = this.app;
+
+		const existing = workspace.getLeavesOfType(KAIROS_BACKLOG_VIEW_TYPE);
+		let leaf: WorkspaceLeaf | null =
+			existing.length > 0 ? existing[0] ?? null : null;
+
+		if (!leaf) {
+			leaf = workspace.getRightLeaf(false);
+			await leaf?.setViewState({
+				type: KAIROS_BACKLOG_VIEW_TYPE,
 				active: true,
 			});
 		}
