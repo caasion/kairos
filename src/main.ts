@@ -13,6 +13,10 @@ import {
 	KAIROS_BACKLOG_VIEW_TYPE,
 	KairosBacklogView,
 } from './KairosBacklogView';
+import {
+	KAIROS_PROJECTS_VIEW_TYPE,
+	KairosProjectsView,
+} from './KairosProjectsView';
 import { IndexAdapter } from './indexAdapter';
 
 // Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
@@ -127,6 +131,11 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosBacklogView(leaf, this),
 		);
 
+		this.registerView(
+			KAIROS_PROJECTS_VIEW_TYPE,
+			(leaf) => new KairosProjectsView(leaf, this),
+		);
+
 		this.addRibbonIcon('clock', 'Open Kairos Day view', () => {
 			void this.activateView();
 		});
@@ -141,6 +150,10 @@ export default class Kairos extends Plugin {
 
 		this.addRibbonIcon('inbox', 'Open Kairos Backlog view', () => {
 			void this.activateBacklogView();
+		});
+
+		this.addRibbonIcon('folder-kanban', 'Open Kairos Projects view', () => {
+			void this.activateProjectsView();
 		});
 
 		this.addCommand({
@@ -165,6 +178,12 @@ export default class Kairos extends Plugin {
 			id: 'open-kairos-backlog-view',
 			name: 'Open Backlog view',
 			callback: () => void this.activateBacklogView(),
+		});
+
+		this.addCommand({
+			id: 'open-kairos-projects-view',
+			name: 'Open Projects & domains view',
+			callback: () => void this.activateProjectsView(),
 		});
 
 		// Dev command: parse the active note's Schedule section and log the JSON.
@@ -291,6 +310,26 @@ export default class Kairos extends Plugin {
 
 		if (leaf) void workspace.revealLeaf(leaf);
 	}
+
+	// Reveal the Projects & Domains view in a main (center) leaf, reusing one.
+	async activateProjectsView() {
+		const { workspace } = this.app;
+
+		const existing = workspace.getLeavesOfType(KAIROS_PROJECTS_VIEW_TYPE);
+		let leaf: WorkspaceLeaf | null =
+			existing.length > 0 ? existing[0] ?? null : null;
+
+		if (!leaf) {
+			leaf = workspace.getLeaf('tab');
+			await leaf.setViewState({
+				type: KAIROS_PROJECTS_VIEW_TYPE,
+				active: true,
+			});
+		}
+
+		if (leaf) void workspace.revealLeaf(leaf);
+	}
+
 	/**
 	 * Open the Backlog view filtered to a set of association names — the Projects
 	 * page's "view backlog" button lands here. Activating first guarantees a
