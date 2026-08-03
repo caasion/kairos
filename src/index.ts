@@ -36,6 +36,7 @@ import type {
 } from "./types";
 import { parseSchedule } from "./parser";
 import { serialize } from "./serializer";
+import { parseBacklog, serializeBacklog } from "./backlog";
 import { DEFAULT_HEADING, spliceSection } from "./section";
 import { resolveBlocks } from "./resolver";
 import { parseDomain, parseProject } from "./projectFile";
@@ -217,6 +218,26 @@ export function removeDomainFile(state: IndexState, path: string): IndexState {
 }
 
 /**
+ * Reparse the global backlog file into the state. The backlog is a single flat
+ * file (spec §2.6), so — unlike days/projects/domains — reindexing replaces the
+ * whole list rather than one keyed entry. Backlog entries are not tasks and
+ * feed no rollup, so `deriveLookups` need not rerun; the caller republishes the
+ * backlog store directly.
+ */
+export function reindexBacklog(
+	state: IndexState,
+	path: string,
+	content: string,
+): IndexState {
+	return { ...state, backlog: parseBacklog(content, path) };
+}
+
+/** Drop the backlog (its file was deleted): an empty list. */
+export function removeBacklog(state: IndexState): IndexState {
+	return { ...state, backlog: [] };
+}
+
+/**
  * Remove any entry sourced from `path`. Needed because these maps are keyed by
  * name, not path: a rename or a name change means the old key must be found via
  * its source. Returns whether anything was removed.
@@ -267,6 +288,22 @@ function taskSig(t: Block["tasks"][number]): unknown {
 		t.assoc ? [t.assoc.kind, t.assoc.id] : null,
 		t.metadata ?? null,
 	];
+}
+
+/**
+ * A stable string over the backlog's parsed entries — order-sensitive (entry
+ * order is user-meaningful) and covering everything the view renders: text,
+ * association, resurface date. Excludes `source.line`, which shifts on every
+ * edit, so an echo of our own write matches memory and notifies no one.
+ */
+export function backlogSignature(entries: BacklogEntry[]): string {
+	return JSON.stringify(
+		entries.map((e) => [
+			e.text,
+			e.assoc ? [e.assoc.kind, e.assoc.id] : null,
+			e.resurface ?? null,
+		]),
+	);
 }
 
 // ─── the live index (stores + watcher shell) ───────────────────
@@ -341,6 +378,9 @@ export class KairosIndex {
 	// row set, names, or colors) re-derives the grid even when no day changed.
 	private structureVersion: Writable<number> = writable(0);
 	private writeTimers = new Map<ISODate, ReturnType<typeof setTimeout>>();
+	// The single global backlog file has one debounced write timer of its own,
+	// keyed by nothing (there is only one backlog).
+	private backlogWriteTimer?: ReturnType<typeof setTimeout>;
 
 	constructor(private deps: IndexDeps) {
 		this.resolverStore.set(this.makeResolver());
@@ -373,7 +413,9 @@ export class KairosIndex {
 				case "domain":
 					state = reindexDomain(state, f.path, f.content);
 					break;
-				// TODO: backlog branch once its shape lands.
+				case "backlog":
+					state = reindexBacklog(state, f.path, f.content);
+					break;
 			}
 		}
 		this.state = state;
@@ -476,8 +518,24 @@ export class KairosIndex {
 				this.state = reindexDomain(this.state, path, content);
 				this.publishProjectsAndDomains();
 				return;
-			// TODO: backlog branch once its shape lands.
+			case "backlog":
+				this.onBacklogChanged(content);
+				return;
 		}
+	}
+
+	/**
+	 * The backlog file changed. Reparse and republish — but drop an echo of our
+	 * own write: an optimistic `applyBacklogEdit` already updated memory + the
+	 * store, so a subsequent `modify` carrying an identical list must notify no
+	 * one (the same discipline `onDayChanged` uses for the schedule).
+	 */
+	private onBacklogChanged(content: string): void {
+		const path = this.deps.settings.backlogPath;
+		const next = parseBacklog(content, path);
+		if (backlogSignature(this.state.backlog) === backlogSignature(next)) return;
+		this.state = { ...this.state, backlog: next };
+		this.backlogStore.set(this.state.backlog);
 	}
 
 	private onDayChanged(
@@ -520,6 +578,10 @@ export class KairosIndex {
 			case "domain":
 				this.state = removeDomainFile(this.state, path);
 				this.publishProjectsAndDomains();
+				return;
+			case "backlog":
+				this.state = removeBacklog(this.state);
+				this.backlogStore.set(this.state.backlog);
 				return;
 		}
 	}
@@ -596,6 +658,132 @@ export class KairosIndex {
 		this.scheduleWrite(toDate, toPath);
 	}
 
+	// ── backlog edit + actions ──
+	//
+	// CORE LOGIC — flagged for review. The backlog is the second write surface
+	// (after daily notes). Editing it follows the same optimistic discipline as
+	// `applyDayEdit`: update memory + notify immediately, debounce the file write,
+	// and drop the write's `modify` echo via `backlogSignature`. Because the
+	// backlog owns its whole file, its write is a plain overwrite, not a splice.
+
+	/**
+	 * Apply a new backlog entry list: update memory + notify immediately, then
+	 * debounce the file write. Every backlog mutation (create/edit/remove/reorder)
+	 * routes through here so there is a single write path, exactly like the day's.
+	 */
+	applyBacklogEdit(entries: BacklogEntry[]): void {
+		this.state = { ...this.state, backlog: entries };
+		this.backlogStore.set(entries);
+		this.scheduleBacklogWrite();
+	}
+
+	/**
+	 * Schedule a backlog entry (spec §2.6): remove it from the backlog and create
+	 * a task in `date`'s daily note, carrying the entry's association forward. The
+	 * resulting task lands in the day's Unscheduled block — scheduling here means
+	 * "give it a home in a day", not "assign a time"; the user times it later on
+	 * the timeline. The backlog line simply disappears; no pointer links the task
+	 * back to it.
+	 *
+	 * Both writes commit optimistically as one unit — the backlog store and the
+	 * day store both update before either debounced write — so a view never sees
+	 * the entry gone from the backlog yet absent from the day, or present in both.
+	 *
+	 * `addToDay` is the caller-supplied day transform (the writer's
+	 * `addTaskToUnscheduled`), applied to the target day's current blocks. It is
+	 * injected rather than imported so this engine stays free of the writer and
+	 * unit-testable in isolation.
+	 */
+	scheduleEntry(
+		entry: BacklogEntry,
+		date: ISODate,
+		path: string,
+		addToDay: (blocks: Block[]) => Block[],
+	): void {
+		// Remove the consumed entry from the backlog (match by source line — the
+		// stable handle every edit uses; text alone could collide across entries).
+		const backlog = this.state.backlog.filter(
+			(e) => e.source.line !== entry.source.line,
+		);
+
+		// Fold the new task into the target day's blocks.
+		const prev = this.state.days.get(date);
+		const blocks = addToDay(prev?.blocks ?? []);
+		const day: Day = {
+			date,
+			path,
+			mtime: prev?.mtime ?? this.deps.now(),
+			blocks,
+		};
+		const days = new Map(this.state.days);
+		days.set(date, day);
+
+		this.state = deriveLookups({ ...this.state, days, backlog });
+		this.backlogStore.set(this.state.backlog);
+		this.publishDay(date);
+		this.publishProjectsAndDomains();
+
+		this.scheduleBacklogWrite();
+		this.scheduleWrite(date, path);
+	}
+
+	/**
+	 * Return a day task to the backlog (spec §2.6, §4.2 "special delete"):
+	 * semantically create a *new* backlog entry and delete the day task. There is
+	 * no restore of an original entry — the task's text and association seed a
+	 * fresh entry appended to the backlog; no resurface date is set.
+	 *
+	 * The two writes commit as one optimistic unit, like `scheduleEntry` in
+	 * reverse. `removeFromDay` is the caller-supplied day transform (the writer's
+	 * `deleteTask`), applied to the day's current blocks. `newEntry` is the entry
+	 * to append (text + association the caller lifted off the task).
+	 */
+	returnToBacklog(
+		date: ISODate,
+		path: string,
+		removeFromDay: (blocks: Block[]) => Block[],
+		newEntry: BacklogEntry,
+	): void {
+		const prev = this.state.days.get(date);
+		const blocks = removeFromDay(prev?.blocks ?? []);
+		const day: Day = {
+			date,
+			path,
+			mtime: prev?.mtime ?? this.deps.now(),
+			blocks,
+		};
+		const days = new Map(this.state.days);
+		days.set(date, day);
+
+		const backlog = [...this.state.backlog, newEntry];
+
+		this.state = deriveLookups({ ...this.state, days, backlog });
+		this.backlogStore.set(this.state.backlog);
+		this.publishDay(date);
+		this.publishProjectsAndDomains();
+
+		this.scheduleBacklogWrite();
+		this.scheduleWrite(date, path);
+	}
+
+	private scheduleBacklogWrite(): void {
+		if (this.backlogWriteTimer) clearTimeout(this.backlogWriteTimer);
+		this.backlogWriteTimer = setTimeout(() => {
+			this.backlogWriteTimer = undefined;
+			void this.writeBacklog();
+		}, this.deps.writeDebounceMs);
+	}
+
+	/**
+	 * Persist the backlog by overwriting its file with the serialized entry list
+	 * (the backlog owns the whole file — no section to preserve). Serializes the
+	 * *latest* entries, so a burst of edits collapses to one correct write.
+	 */
+	private async writeBacklog(): Promise<void> {
+		const path = this.deps.settings.backlogPath;
+		await this.deps.write(path, serializeBacklog(this.state.backlog));
+	}
+
 	private scheduleWrite(date: ISODate, path: string): void {
 		const existing = this.writeTimers.get(date);
 		if (existing) clearTimeout(existing);
@@ -644,6 +832,8 @@ export class KairosIndex {
 	dispose(): void {
 		for (const t of this.writeTimers.values()) clearTimeout(t);
 		this.writeTimers.clear();
+		if (this.backlogWriteTimer) clearTimeout(this.backlogWriteTimer);
+		this.backlogWriteTimer = undefined;
 	}
 
 	// ── store plumbing ──
