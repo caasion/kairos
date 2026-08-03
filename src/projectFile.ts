@@ -206,3 +206,182 @@ export function serializeDomainFrontmatter(domain: Domain): string {
 function fence(fm: Record<string, unknown>): string {
 	return `---\n${stringifyYaml(fm)}---\n`;
 }
+
+// ─── file creation ─────────────────────────────────────────────
+//
+// A brand-new project/domain is a file: frontmatter plus an empty folder-note
+// body the user fills in (spec §4.4 "recommended through the interface so all
+// frontmatter fields get initialized"). The name is the filename, so the caller
+// builds the path from `<folder>/<name>.md`; these produce the file contents.
+
+/** A short random id, stable for the life of the project/domain file. */
+function freshId(): string {
+	return Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * A newly-created project, initialized `active` as of `today` (spec §4.4). Name
+ * is the caller's responsibility to keep collision-free (`renameGuard`).
+ */
+export function newProject(name: string, today: ISODate, domainId?: string): Project {
+	const history: StatusRecord[] = [{ date: today, status: "active" }];
+	return {
+		id: freshId(),
+		name: name.trim(),
+		aliases: [],
+		...(domainId ? { domain: domainId } : {}),
+		history,
+		archived: false,
+		source: { path: "", line: 0 },
+	};
+}
+
+/** A newly-created domain, initialized `active` as of `today`. Durable: never archived. */
+export function newDomain(name: string, today: ISODate, order: number): Domain {
+	const history: StatusRecord[] = [{ date: today, status: "active" }];
+	return {
+		id: freshId(),
+		name: name.trim(),
+		aliases: [],
+		order,
+		color: "",
+		history,
+		archived: false,
+		source: { path: "", line: 0 },
+	};
+}
+
+/** Full file contents for a new project: frontmatter fence + folder-note stub. */
+export function serializeProjectFile(project: Project): string {
+	return `${serializeProjectFrontmatter(project)}\n# ${project.name}\n`;
+}
+
+/** Full file contents for a new domain. */
+export function serializeDomainFile(domain: Domain): string {
+	return `${serializeDomainFrontmatter(domain)}\n# ${domain.name}\n`;
+}
+
+// ─── pure edit functions ───────────────────────────────────────
+//
+// Each takes an entity and returns a NEW entity — never mutates. They own no
+// I/O and no markdown; the index serializes the result and writes it. Status
+// history is the one time-varying fact these carry (spec §4.4): editing it means
+// appending a record, never rewriting the past. `archived` is always re-derived
+// from the (possibly new) latest record so it can't drift out of sync.
+//
+// Domains are DURABLE (they never terminate as an identity): a domain may go
+// active/inactive but is never archived. `appendStatus` enforces that by
+// refusing an `archived` transition on a domain; a project may archive freely.
+
+/** True for a `Project` (has a `domain?` field); false for a `Domain`. */
+function isProject(entity: Project | Domain): entity is Project {
+	return "domain" in entity || !("order" in entity);
+}
+
+/**
+ * Append a status record dated `date` (spec §4.4). Additive: it never edits an
+ * existing record, so the history stays a faithful log of when focus shifted.
+ * A same-day re-status replaces that day's record (one status per day) rather
+ * than stacking two. `archived` is re-derived from the resulting latest record.
+ *
+ * Domains cannot be archived (they are durable, spec §2.5 as constrained): an
+ * `archived` transition on a domain is rejected and the entity returned
+ * unchanged. Callers should gate the UI so this never fires, but the guard keeps
+ * the invariant true even if it does.
+ */
+export function appendStatus<T extends Project | Domain>(
+	entity: T,
+	date: ISODate,
+	status: LifecycleState,
+): T {
+	if (!isProject(entity) && status === "archived") return entity;
+
+	const history = entity.history.filter((r) => r.date !== date);
+	history.push({ date, status });
+	history.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+	return { ...entity, history, archived: deriveArchived(history) };
+}
+
+/**
+ * Rename by recording the old name as an alias (spec §4.4), so daily-note tags
+ * written against the old name still resolve. The entity's `name` is its
+ * filename, so the actual rename is a file move the caller performs; this only
+ * updates the metadata that travels with it. A no-op rename (same name) returns
+ * the entity untouched. The caller must run `renameGuard` first — this does not
+ * check for collisions itself.
+ */
+export function renameWithAlias<T extends Project | Domain>(
+	entity: T,
+	newName: string,
+): T {
+	const next = newName.trim();
+	if (next === "" || next === entity.name) return entity;
+	const aliases = entity.aliases.includes(entity.name)
+		? entity.aliases
+		: [...entity.aliases, entity.name];
+	return { ...entity, name: next, aliases };
+}
+
+/**
+ * Whether `newName` collides with an existing project/domain name OR alias
+ * (spec §4.4 rename conflict guard). Association is by exact name match, so a
+ * duplicate name or alias would make a daily-note tag ambiguous; a create or
+ * rename that collides must be refused. Comparison is case-insensitive and
+ * trims, matching how a user perceives "the same name". `self` is the entity
+ * being renamed (excluded so renaming to your own current name/alias is fine).
+ *
+ * Returns the canonical name it collides with, or null when the name is free.
+ */
+export function renameGuard(
+	newName: string,
+	projects: Map<string, Project>,
+	domains: Map<string, Domain>,
+	self?: Project | Domain,
+): string | null {
+	const target = newName.trim().toLowerCase();
+	if (target === "") return null;
+
+	const clash = (entity: Project | Domain): string | null => {
+		if (self && entity.source.path === self.source.path) return null;
+		if (entity.name.toLowerCase() === target) return entity.name;
+		for (const alias of entity.aliases) {
+			if (alias.toLowerCase() === target) return entity.name;
+		}
+		return null;
+	};
+
+	for (const p of projects.values()) {
+		const hit = clash(p);
+		if (hit) return hit;
+	}
+	for (const d of domains.values()) {
+		const hit = clash(d);
+		if (hit) return hit;
+	}
+	return null;
+}
+
+/** Set a domain's color (any CSS color string; "" clears it). */
+export function setColor(domain: Domain, color: string): Domain {
+	return { ...domain, color: color.trim() };
+}
+
+/** Set a domain's sort order among domains (the page's row order). */
+export function setOrder(domain: Domain, order: number): Domain {
+	return { ...domain, order };
+}
+
+/**
+ * Point a project at a domain by the domain's stable `id`, or clear it with
+ * `undefined` (spec §2.2: nothing is required to have a domain). At most one
+ * domain (spec §2.4). The link is by id, not name, so a later domain rename
+ * never orphans the project (see `association.ts`).
+ */
+export function setDomain(project: Project, domainId: string | undefined): Project {
+	if (!domainId) {
+		const { domain: _drop, ...rest } = project;
+		return rest;
+	}
+	return { ...project, domain: domainId };
+}
