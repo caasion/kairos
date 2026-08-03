@@ -34,6 +34,21 @@ export function extractFrontmatter(content: string): string | null {
 	return m ? (m[1] ?? "") : null;
 }
 
+/**
+ * Replace a file's frontmatter fence with `fence` (a full `---…---\n` block),
+ * leaving the body untouched. When the file has no frontmatter, the fence is
+ * prepended. This is how a metadata edit persists without disturbing the user's
+ * folder-note prose — the mirror of how the day writer splices the schedule
+ * section rather than overwriting the note.
+ */
+export function replaceFrontmatter(content: string, fence: string): string {
+	const m = FRONTMATTER.exec(content);
+	// The fence already ends in a newline; keep exactly one blank line before body.
+	if (!m) return `${fence}${content.startsWith("\n") ? "" : "\n"}${content}`;
+	const body = content.slice(m[0].length).replace(/^\r?\n/, "");
+	return `${fence}\n${body}`;
+}
+
 interface RawFrontmatter {
 	tags?: unknown;
 	id?: unknown;

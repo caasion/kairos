@@ -57,6 +57,8 @@ export class IndexAdapter {
 		return {
 			read: (path) => this.readPath(app, path),
 			write: (path, content) => this.writePath(app, path, content),
+			rename: (oldPath, newPath) => this.renamePath(app, oldPath, newPath),
+			remove: (path) => this.removePath(app, path),
 			now: () => Date.now(),
 			// A getter so live settings edits are picked up without rebuilding.
 			get settings(): IndexPaths {
@@ -89,6 +91,20 @@ export class IndexAdapter {
 		} else {
 			await app.vault.create(path, content);
 		}
+	}
+
+	private async renamePath(
+		app: App,
+		oldPath: string,
+		newPath: string,
+	): Promise<void> {
+		const file = app.vault.getAbstractFileByPath(oldPath);
+		if (file instanceof TFile) await app.fileManager.renameFile(file, newPath);
+	}
+
+	private async removePath(app: App, path: string): Promise<void> {
+		const file = app.vault.getAbstractFileByPath(path);
+		if (file instanceof TFile) await app.vault.delete(file);
 	}
 
 	// ── cold start ──

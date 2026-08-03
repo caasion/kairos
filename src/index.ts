@@ -39,7 +39,18 @@ import { serialize } from "./serializer";
 import { parseBacklog, serializeBacklog } from "./backlog";
 import { DEFAULT_HEADING, spliceSection } from "./section";
 import { resolveBlocks } from "./resolver";
-import { parseDomain, parseProject } from "./projectFile";
+import {
+	newDomain,
+	newProject,
+	parseDomain,
+	parseProject,
+	renameGuard,
+	replaceFrontmatter,
+	serializeDomainFile,
+	serializeDomainFrontmatter,
+	serializeProjectFile,
+	serializeProjectFrontmatter,
+} from "./projectFile";
 import { domainProjects, resolveAssociation } from "./association";
 import type { ResolvedAssociation } from "./association";
 import { associationOptions } from "./associationOptions";
@@ -312,9 +323,27 @@ export function backlogSignature(entries: BacklogEntry[]): string {
 export interface IndexDeps {
 	read(path: string): Promise<string>;
 	write(path: string, content: string): Promise<void>;
+	/** Rename/move a file. Project/domain names ARE filenames, so a rename is a
+	 *  file move, not a content edit — this is the write path a rename takes. */
+	rename(oldPath: string, newPath: string): Promise<void>;
+	/** Delete a file. Used when the user deletes a project/domain outright
+	 *  (spec §4.4 — allowed, with a dangling-reference warning owned by the UI). */
+	remove(path: string): Promise<void>;
 	now(): number;
 	settings: IndexPaths;
 	writeDebounceMs: number;
+}
+
+/**
+ * What the Projects & Domains page renders: domains as durable top-level rows
+ * (ordered), each with its child projects, plus the projects that belong to no
+ * domain. Everything is derived from the current project/domain maps and
+ * re-emitted whenever they change (spec §5, §6 project page).
+ */
+export interface ProjectsDomains {
+	domains: Domain[];
+	projectsByDomain: Map<string, Project[]>;
+	orphans: Project[];
 }
 
 /** What a project-page store yields: the project plus its resolved tasks. */
@@ -489,6 +518,47 @@ export class KairosIndex {
 	 */
 	resolver(): Readable<Resolver> {
 		return this.resolverStore;
+	}
+
+	/**
+	 * A live feed for the Projects & Domains page: domains (ordered) with their
+	 * child projects, plus orphan projects. Re-derives on any project/domain edit
+	 * via `structureVersion`, so a create/rename/recolor/reorder/status change
+	 * re-renders the page. Includes archived entities; the view filters them.
+	 */
+	projectsDomains(): Readable<ProjectsDomains> {
+		return derived(this.structureVersion, () => this.assembleProjectsDomains());
+	}
+
+	private assembleProjectsDomains(): ProjectsDomains {
+		const { projects, domains } = this.state;
+
+		const ordered = [...domains.values()].sort(
+			(a, b) =>
+				a.order - b.order ||
+				a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+		);
+
+		// Group projects by their domain id (the stable link, not name), so a
+		// domain rename never re-buckets its projects. Unlinked or dangling-domain
+		// projects fall to `orphans`.
+		const domainIds = new Set([...domains.values()].map((d) => d.id));
+		const projectsByDomain = new Map<string, Project[]>();
+		const orphans: Project[] = [];
+		const byName = (a: Project, b: Project) =>
+			a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+
+		for (const p of [...projects.values()].sort(byName)) {
+			if (p.domain && domainIds.has(p.domain)) {
+				const bucket = projectsByDomain.get(p.domain) ?? [];
+				bucket.push(p);
+				projectsByDomain.set(p.domain, bucket);
+			} else {
+				orphans.push(p);
+			}
+		}
+
+		return { domains: ordered, projectsByDomain, orphans };
 	}
 
 	/** A live store of a project and its resolved tasks (undefined if unknown). */
@@ -764,6 +834,171 @@ export class KairosIndex {
 
 		this.scheduleBacklogWrite();
 		this.scheduleWrite(date, path);
+	}
+
+	// ── project / domain edit + lifecycle ──
+	//
+	// CORE LOGIC — flagged for review. Project and domain files are the third and
+	// fourth write surfaces. Their metadata lives in frontmatter, so a plain edit
+	// (color, order, status, domain link) splices the frontmatter and leaves the
+	// folder-note body alone — the same discipline the day writer uses for the
+	// schedule section. Three operations are structural, not content edits:
+	//   • rename — the name IS the filename, so it's a file move + rekey.
+	//   • create — a brand-new file with initialized frontmatter.
+	//   • delete — remove the file; tags still referencing it go dangling by
+	//     design (spec §4.4), which the resolver already renders gracefully.
+	// Unlike days/backlog these write EAGERLY (no debounce): edits are discrete UI
+	// actions (a click on a swatch, a status pick), not a keystroke stream, so
+	// there's nothing to coalesce and immediate persistence keeps the file honest.
+
+	/**
+	 * Persist a metadata edit to a project. Updates memory + republishes
+	 * optimistically, then splices the new frontmatter into the file. The map is
+	 * keyed by name; a metadata edit never changes the name (rename is separate),
+	 * so the key is stable. The subsequent `modify` echo is absorbed by
+	 * `reindexProject` re-deriving the same state.
+	 */
+	applyProjectEdit(project: Project): void {
+		const projects = new Map(this.state.projects);
+		projects.set(project.name, project);
+		this.state = deriveLookups({ ...this.state, projects });
+		this.publishProjectsAndDomains();
+		void this.writeFrontmatter(
+			project.source.path,
+			serializeProjectFrontmatter(project),
+		);
+	}
+
+	/** Persist a metadata edit to a domain (see `applyProjectEdit`). */
+	applyDomainEdit(domain: Domain): void {
+		const domains = new Map(this.state.domains);
+		domains.set(domain.name, domain);
+		this.state = deriveLookups({ ...this.state, domains });
+		this.publishProjectsAndDomains();
+		void this.writeFrontmatter(
+			domain.source.path,
+			serializeDomainFrontmatter(domain),
+		);
+	}
+
+	/**
+	 * Create a new project file under the projects folder and index it. `entity`
+	 * already carries initialized frontmatter (`newProject`); this computes its
+	 * path from the name, writes the file, and folds it into state so the page
+	 * shows it before the vault event echoes back.
+	 */
+	async createProject(name: string, domainId?: string): Promise<void> {
+		const project = newProject(name, this.today(), domainId);
+		const path = `${this.deps.settings.projectsFolder}/${name}.md`;
+		project.source = { path, line: 0 };
+		await this.deps.write(path, serializeProjectFile(project));
+		const projects = new Map(this.state.projects);
+		projects.set(project.name, project);
+		this.state = deriveLookups({ ...this.state, projects });
+		this.publishProjectsAndDomains();
+	}
+
+	/** Create a new domain file (next order = current count). */
+	async createDomain(name: string): Promise<void> {
+		const domain = newDomain(name, this.today(), this.state.domains.size);
+		const path = `${this.deps.settings.domainsFolder}/${name}.md`;
+		domain.source = { path, line: 0 };
+		await this.deps.write(path, serializeDomainFile(domain));
+		const domains = new Map(this.state.domains);
+		domains.set(domain.name, domain);
+		this.state = deriveLookups({ ...this.state, domains });
+		this.publishProjectsAndDomains();
+	}
+
+	/**
+	 * Rename a project/domain: the entity already carries its new name + the old
+	 * name pushed into `aliases` (`renameWithAlias`). Because the name is the
+	 * filename, this moves the file, then rewrites frontmatter (the aliases
+	 * changed) and rekeys the in-memory map. The caller must have cleared the
+	 * collision guard (`renameGuard`) first.
+	 */
+	async renameProject(oldName: string, renamed: Project): Promise<void> {
+		const oldPath = renamed.source.path;
+		const newPath = `${this.deps.settings.projectsFolder}/${renamed.name}.md`;
+		renamed.source = { path: newPath, line: 0 };
+		await this.deps.rename(oldPath, newPath);
+		await this.deps.write(newPath, replaceFrontmatter(
+			await this.safeRead(newPath),
+			serializeProjectFrontmatter(renamed),
+		));
+		const projects = new Map(this.state.projects);
+		projects.delete(oldName);
+		projects.set(renamed.name, renamed);
+		this.state = deriveLookups({ ...this.state, projects });
+		this.publishProjectsAndDomains();
+	}
+
+	async renameDomain(oldName: string, renamed: Domain): Promise<void> {
+		const oldPath = renamed.source.path;
+		const newPath = `${this.deps.settings.domainsFolder}/${renamed.name}.md`;
+		renamed.source = { path: newPath, line: 0 };
+		await this.deps.rename(oldPath, newPath);
+		await this.deps.write(newPath, replaceFrontmatter(
+			await this.safeRead(newPath),
+			serializeDomainFrontmatter(renamed),
+		));
+		const domains = new Map(this.state.domains);
+		domains.delete(oldName);
+		domains.set(renamed.name, renamed);
+		this.state = deriveLookups({ ...this.state, domains });
+		this.publishProjectsAndDomains();
+	}
+
+	/**
+	 * Delete a project/domain file (spec §4.4). Tags still naming it become
+	 * dangling associations — the resolver renders them by literal name with no
+	 * color, exactly as before any file existed, so nothing breaks. The UI owns
+	 * the "archiving is usually better" warning.
+	 */
+	async deleteProject(name: string): Promise<void> {
+		const project = this.state.projects.get(name);
+		if (!project) return;
+		await this.deps.remove(project.source.path);
+		const projects = new Map(this.state.projects);
+		projects.delete(name);
+		this.state = deriveLookups({ ...this.state, projects });
+		this.publishProjectsAndDomains();
+	}
+
+	async deleteDomain(name: string): Promise<void> {
+		const domain = this.state.domains.get(name);
+		if (!domain) return;
+		await this.deps.remove(domain.source.path);
+		const domains = new Map(this.state.domains);
+		domains.delete(name);
+		this.state = deriveLookups({ ...this.state, domains });
+		this.publishProjectsAndDomains();
+	}
+
+	/** Collision check for a create/rename (spec §4.4). Exposes the pure guard
+	 *  to the UI so it can warn before committing. Returns the clashing name or null. */
+	nameCollision(name: string, self?: Project | Domain): string | null {
+		return renameGuard(name, this.state.projects, this.state.domains, self);
+	}
+
+	private today(): ISODate {
+		const d = new Date(this.deps.now());
+		const p = (n: number) => String(n).padStart(2, "0");
+		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+	}
+
+	private async safeRead(path: string): Promise<string> {
+		try {
+			return await this.deps.read(path);
+		} catch {
+			return "";
+		}
+	}
+
+	/** Splice a new frontmatter fence into an existing file, preserving its body. */
+	private async writeFrontmatter(path: string, fence: string): Promise<void> {
+		const current = await this.safeRead(path);
+		await this.deps.write(path, replaceFrontmatter(current, fence));
 	}
 
 	private scheduleBacklogWrite(): void {
