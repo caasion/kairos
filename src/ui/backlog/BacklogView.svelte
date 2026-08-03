@@ -29,13 +29,20 @@
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 
+	interface BacklogFilter {
+		names: string[];
+		label: string;
+		nonce: number;
+	}
+
 	interface Props {
 		app: App;
 		index: KairosIndex;
 		settings$: Readable<KairosSettings>;
+		filter$: Readable<BacklogFilter | null>;
 	}
 
-	let { app, index, settings$ }: Props = $props();
+	let { app, index, settings$, filter$ }: Props = $props();
 	const settings = $derived($settings$);
 
 	// ── The backlog feed ──
@@ -43,7 +50,27 @@
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 	let sort = $state<BacklogSort>("manual");
 
-	const groups = $derived<BacklogGroup[]>(groupBacklog(entries, resolve, sort));
+	// ── Project/domain filter (pushed by the Projects & Domains page) ──
+	// An allow-list of association names; only entries whose association resolves
+	// to (or literally names) one of them are shown. Matched against both the raw
+	// tag id and its resolved display name so aliases still hit. Cleared on a plain
+	// Backlog open.
+	let filter = $state<BacklogFilter | null>(null);
+
+	function entryMatchesFilter(entry: BacklogEntry, names: Set<string>): boolean {
+		if (!entry.assoc) return false; // a name filter can't match an unassociated entry
+		if (names.has(entry.assoc.id)) return true;
+		const display = resolve(entry.assoc).displayName;
+		return display !== "" && names.has(display);
+	}
+
+	const visibleEntries = $derived.by(() => {
+		if (!filter) return entries;
+		const names = new Set(filter.names);
+		return entries.filter((e) => entryMatchesFilter(e, names));
+	});
+
+	const groups = $derived<BacklogGroup[]>(groupBacklog(visibleEntries, resolve, sort));
 
 	// ── Entry identity ──
 	// Entries have no persistent id; a source line uniquely names one within the
@@ -206,9 +233,13 @@
 		const unsubResolver: Unsubscriber = index.resolver().subscribe((r) => {
 			resolve = r;
 		});
+		const unsubFilter: Unsubscriber = filter$.subscribe((f) => {
+			filter = f;
+		});
 		return () => {
 			unsubBacklog();
 			unsubResolver();
+			unsubFilter();
 		};
 	});
 </script>
@@ -218,6 +249,16 @@
 <div class="backlog-view" onclick={handleClickOutside}>
 	<div class="backlog-header">
 		<span class="backlog-title">Backlog</span>
+		{#if filter}
+			<button
+				class="filter-pill"
+				title="Filtered to {filter.label} — click to clear"
+				onclick={(e) => { e.stopPropagation(); filter = null; }}
+			>
+				<span>{filter.label}</span>
+				<span class="filter-x">×</span>
+			</button>
+		{/if}
 		<span class="backlog-header-spacer"></span>
 		<button
 			class="sort-btn"
@@ -392,6 +433,29 @@
 	}
 	.backlog-header-spacer {
 		flex: 1;
+	}
+	.filter-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 22px;
+		padding: 0 8px;
+		margin-left: 8px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-on-accent);
+		background: var(--interactive-accent);
+		border: none;
+		border-radius: 11px;
+		cursor: pointer;
+	}
+	.filter-x {
+		font-size: 14px;
+		line-height: 1;
+		opacity: 0.85;
+	}
+	.filter-pill:hover .filter-x {
+		opacity: 1;
 	}
 	.sort-btn {
 		display: flex;

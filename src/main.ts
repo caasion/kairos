@@ -35,6 +35,19 @@ export interface RevealRequest {
 	nonce: number;
 }
 
+/**
+ * A filtered-backlog request from the Projects & Domains page. `names` is the
+ * allow-list of association names an entry may carry to be shown (the domain
+ * plus its child projects for a domain button; just the project for a project
+ * button — spec §5, settled rule). `label` names the filter for the header
+ * ("Health", "Learn Spanish"). `nonce` makes repeat clicks distinct.
+ */
+export interface BacklogFilter {
+	names: string[];
+	label: string;
+	nonce: number;
+}
+
 export default class Kairos extends Plugin {
 	/**
 	 * The canonical settings object. Synchronous, non-UI code (the index, path
@@ -64,6 +77,16 @@ export default class Kairos extends Plugin {
 	private pushReveal!: (r: RevealRequest | null) => void;
 	private revealNonce = 0;
 
+	/**
+	 * Backlog filter channel. The Projects & Domains page pushes an allow-list of
+	 * association names here (a domain + its child projects, or one project) and
+	 * opens the Backlog view; the Backlog view subscribes and shows only matching
+	 * entries. `null` means "no filter — show everything" (the normal open path).
+	 * A store keeps the two leaves decoupled, exactly like `reveal$`.
+	 */
+	backlogFilter$!: Readable<BacklogFilter | null>;
+	private pushBacklogFilter!: (f: BacklogFilter | null) => void;
+
 	async onload() {
 		await this.loadSettings();
 
@@ -71,6 +94,11 @@ export default class Kairos extends Plugin {
 		const revealStore: Writable<RevealRequest | null> = writable(null);
 		this.reveal$ = { subscribe: revealStore.subscribe };
 		this.pushReveal = revealStore.set;
+
+		// The backlog-filter channel (Projects page → filtered Backlog view).
+		const filterStore: Writable<BacklogFilter | null> = writable(null);
+		this.backlogFilter$ = { subscribe: filterStore.subscribe };
+		this.pushBacklogFilter = filterStore.set;
 
 		// Build the index now; cold-start it once the vault is fully loaded so
 		// the seed sees every file (and doesn't race Obsidian's own indexing).
@@ -242,7 +270,11 @@ export default class Kairos extends Plugin {
 	}
 
 	// Reveal the Backlog view in the right sidebar, reusing a leaf if one is open.
-	async activateBacklogView() {
+	// `clearFilter` (the default) resets any project/domain filter so a plain open
+	// from the ribbon/command shows the whole backlog; `openBacklogFiltered` opens
+	// without clearing, then pushes its own filter.
+	async activateBacklogView(clearFilter = true) {
+		if (clearFilter) this.pushBacklogFilter(null);
 		const { workspace } = this.app;
 
 		const existing = workspace.getLeavesOfType(KAIROS_BACKLOG_VIEW_TYPE);
@@ -258,6 +290,17 @@ export default class Kairos extends Plugin {
 		}
 
 		if (leaf) void workspace.revealLeaf(leaf);
+	}
+	/**
+	 * Open the Backlog view filtered to a set of association names — the Projects
+	 * page's "view backlog" button lands here. Activating first guarantees a
+	 * subscriber exists; the filter is pushed after so a freshly-opened Backlog
+	 * view (which subscribes on mount) still receives it. Passing `null` clears
+	 * any prior filter, so a plain Backlog open always shows everything.
+	 */
+	async openBacklogFiltered(names: string[], label: string) {
+		await this.activateBacklogView(false);
+		this.pushBacklogFilter({ names, label, nonce: ++this.revealNonce });
 	}
 
 	private async testParse() {
