@@ -10,7 +10,7 @@
 // it always yields the same groups, so the grouping/sorting is unit-testable
 // without Svelte or Obsidian.
 
-import type { BacklogEntry } from "./types";
+import type { BacklogEntry, ISODate } from "./types";
 import type { Resolver } from "./index";
 
 // ─── group types ───────────────────────────────────────────────
@@ -120,3 +120,46 @@ export function sortEntries(
 			});
 	}
 }
+
+// ─── resurfacing (nudges in the day / grid) ─────────────────────
+//
+// A backlog entry with a resurface date "surfaces" as a nudge on exactly one
+// day: `max(resurface, today)`. An overdue entry (resurface in the past)
+// collapses onto today rather than smearing across every intervening day, and a
+// future entry surfaces on its resurface date. Entries with no resurface date
+// never surface. Surfacing is display-only — the entry stays in the backlog file
+// until the user inserts it (scheduleEntry), at which point it becomes a real
+// day task. All pure, so the day/grid views share one selector.
+
+/**
+ * The single day an entry surfaces on, or null if it carries no resurface date.
+ * `max(resurface, today)`: overdue entries surface today; future ones on their
+ * date. Both args are ISO `YYYY-MM-DD`, which compare correctly as strings.
+ */
+export function surfaceDate(
+	entry: BacklogEntry,
+	today: ISODate,
+): ISODate | null {
+	if (!entry.resurface) return null;
+	return entry.resurface > today ? entry.resurface : today;
+}
+
+/**
+ * The entries that surface on `date` given the current `today`. This is the one
+ * selector the Day and Grid views call to render nudges for a given day cell.
+ * Ordered by resurface date (oldest intent first), then file order.
+ */
+export function surfacedOn(
+	entries: BacklogEntry[],
+	date: ISODate,
+	today: ISODate,
+): BacklogEntry[] {
+	return entries
+		.filter((e) => surfaceDate(e, today) === date)
+		.sort(
+			(a, b) =>
+				(a.resurface ?? "").localeCompare(b.resurface ?? "") ||
+				a.source.line - b.source.line,
+		);
+}
+

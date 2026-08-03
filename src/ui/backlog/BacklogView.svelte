@@ -19,19 +19,13 @@
 	import type { KairosSettings } from "../../settings";
 	import type { Association, BacklogEntry, ISODate } from "../../types";
 	import type { KairosIndex, Resolver } from "../../index";
-	import { addTaskToUnscheduled } from "../../writer";
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		groupBacklog,
 		type BacklogGroup,
 		type BacklogSort,
 	} from "../../backlogModel";
-	import {
-		dateFromISO,
-		ensureNoteForDate,
-		isoFromDate,
-		todayISO,
-	} from "../../dayNote";
+	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 
@@ -122,18 +116,9 @@
 		navigateToAssociation(app, resolve(assoc));
 	}
 
-	// ── Schedule an entry into a day (spec §2.6) ──
-	// Removes the entry from the backlog and drops a task into the chosen day's
-	// Unscheduled block, carrying the association forward. The engine commits both
-	// files as one optimistic unit.
-
-	async function onSchedule(entry: BacklogEntry, date: ISODate) {
-		const path = await ensureNoteForDate(date);
-		index.scheduleEntry(entry, date, path, (blocks) =>
-			addTaskToUnscheduled(blocks, path, entry.text, entry.assoc, nextDraftLine--),
-		);
-		closeSchedule();
-	}
+	// Scheduling an entry into a day is no longer done from here: an entry with a
+	// resurface date surfaces as a nudge in the Day/Grid view on its due day, and
+	// the user inserts it there. The backlog view owns capture + resurface only.
 
 	// ── Inline text editing ──
 	let editingLine = $state<number | null>(null);
@@ -190,27 +175,9 @@
 		onSetResurface(entry, null);
 	}
 
-	// ── Schedule datepicker popup ──
-	let scheduleEntryTarget = $state<BacklogEntry | null>(null);
-	let scheduleValue = $state<Date>(dateFromISO(todayISO()));
-
-	function openSchedule(entry: BacklogEntry, event: MouseEvent) {
-		event.stopPropagation();
-		scheduleEntryTarget = entry;
-		scheduleValue = dateFromISO(todayISO());
-	}
-	function closeSchedule() {
-		scheduleEntryTarget = null;
-	}
-	function onScheduleSelect(picked: Date) {
-		const entry = scheduleEntryTarget;
-		if (entry) void onSchedule(entry, isoFromDate(picked));
-	}
-
 	// ── Dismiss popups on outside click ──
 	function handleClickOutside() {
 		closeResurface();
-		closeSchedule();
 	}
 
 	function formatResurface(date: ISODate): string {
@@ -368,16 +335,6 @@
 									{/if}
 								</button>
 
-								<!-- Schedule into a day -->
-								<button
-									class="chip schedule-chip"
-									title="Schedule into a day"
-									onclick={(e) => openSchedule(entry, e)}
-									aria-label="Schedule"
-								>
-									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-								</button>
-
 								<!-- Delete -->
 								<button
 									class="chip delete-chip"
@@ -392,12 +349,6 @@
 								{#if resurfaceEntry && sameEntry(resurfaceEntry, entry)}
 									<div class="popup datepicker-popup" onclick={(e) => e.stopPropagation()}>
 										<Datepicker inline bind:value={resurfaceValue} onselect={onResurfaceSelect} />
-									</div>
-								{/if}
-								{#if scheduleEntryTarget && sameEntry(scheduleEntryTarget, entry)}
-									<div class="popup datepicker-popup" onclick={(e) => e.stopPropagation()}>
-										<div class="popup-label">Schedule to which day?</div>
-										<Datepicker inline bind:value={scheduleValue} onselect={onScheduleSelect} />
 									</div>
 								{/if}
 							</li>
@@ -602,7 +553,6 @@
 	}
 	/* Icon-only chips are square-ish. */
 	.chip-ghost,
-	.schedule-chip,
 	.delete-chip {
 		padding: 0 6px;
 	}
@@ -648,11 +598,5 @@
 	}
 	.datepicker-popup {
 		padding: 4px;
-	}
-	.popup-label {
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--text-muted);
-		padding: 8px 10px 4px;
 	}
 </style>

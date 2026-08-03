@@ -6,6 +6,7 @@
 	import { resolveBlocks } from "../../resolver";
 	import type { KairosSettings } from "../../settings";
 	import type {
+		BacklogEntry,
 		Block,
 		Day,
 		ISODate,
@@ -15,6 +16,13 @@
 		TimeRange,
 	} from "../../types";
 	import { makeBlock, nestTaskUnderBlock } from "../../writer";
+	import { surfacedOn } from "../../backlogModel";
+	import {
+		insertEntry,
+		resurfaceTomorrow,
+		setResurface,
+	} from "../../backlogActions";
+	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import type { Association } from "../../types";
@@ -87,6 +95,38 @@
 		navigateToAssociation(app, resolve(assoc));
 	}
 
+	// ── Resurfaced backlog nudges ──
+	// Entries with a resurface date surface as nudges on one day (max(resurface,
+	// today)). They live in the backlog file, not this day, until inserted.
+	let backlogEntries = $state<BacklogEntry[]>([]);
+
+	function onNudgeInsert(entry: BacklogEntry) {
+		void insertEntry(index, entry, date);
+	}
+	function onNudgeResurfaceTomorrow(entry: BacklogEntry) {
+		resurfaceTomorrow(index, backlogEntries, entry);
+	}
+
+	// Resurface-at: a portal'd inline datepicker anchored to the nudge's snooze
+	// button. Reuses the same float-at-a-rect approach as the association picker.
+	let resurfaceEntry = $state<BacklogEntry | null>(null);
+	let resurfaceAnchor = $state<DOMRect | null>(null);
+	let resurfaceValue = $state<Date>(dateFromISO(todayISO()));
+	function onNudgeResurfaceAt(entry: BacklogEntry, anchor: DOMRect) {
+		resurfaceEntry = entry;
+		resurfaceAnchor = anchor;
+		resurfaceValue = dateFromISO(entry.resurface ?? todayISO());
+	}
+	function closeResurfaceAt() {
+		resurfaceEntry = null;
+		resurfaceAnchor = null;
+	}
+	function onResurfaceAtSelect(picked: Date) {
+		const entry = resurfaceEntry;
+		closeResurfaceAt();
+		if (entry) setResurface(index, backlogEntries, entry, isoFromDate(picked));
+	}
+
 	// Geometry follows the persisted hour-range / zoom settings, live.
 	const geo = $derived(geometryFromSettings(settings));
 	const hours = $derived(visibleHours(geo));
@@ -139,6 +179,8 @@
 	// The view owns a date, defaulting to today, independent of the active file.
 	// Navigation (arrows / calendar) changes this; nothing else does.
 	let date = $state<ISODate>(todayISO());
+	// Backlog nudges surfacing on the shown day (declared here, after `date`).
+	const surfaced = $derived(surfacedOn(backlogEntries, date, todayISO()));
 	// The daily note backing `date`, or null when that day has no note yet. An
 	// empty day still renders (an empty timeline) — the note is created lazily on
 	// the first write (see `notePathForWrite`).
@@ -857,6 +899,12 @@
 			resolve = r;
 		});
 
+		// Track the backlog so resurfaced entries surface as nudges (and update
+		// live when the backlog file changes or an entry is inserted/snoozed).
+		const unsubscribeBacklog = index.backlog().subscribe((e) => {
+			backlogEntries = e;
+		});
+
 		// React to Grid block-badge clicks: jump to the date + scroll to the block.
 		const unsubscribeReveal = reveal$.subscribe((req) => handleReveal(req));
 
@@ -885,6 +933,7 @@
 		return () => {
 			unsubscribeDay?.();
 			unsubscribeResolver();
+			unsubscribeBacklog();
 			unsubscribeReveal();
 			window.clearInterval(tick);
 			window.removeEventListener("pointermove", move);
@@ -1059,6 +1108,29 @@
 				{/if}
 			</div>
 		{/if}
+
+		<!-- Resurfacing: backlog nudges due on this day. A separate section, like
+		     Unscheduled, but the items live in the backlog until inserted. -->
+		{#if surfaced.length > 0}
+			<div class="day-resurfacing">
+				<div class="rs-header">
+					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+					<span>Resurfacing</span>
+					<span class="rs-count">{surfaced.length}</span>
+				</div>
+				{#each surfaced as entry (entry.source.line)}
+					<BacklogNudge
+						{entry}
+						resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+						onInsert={onNudgeInsert}
+						onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+						onResurfaceAt={onNudgeResurfaceAt}
+						{onNavigate}
+					/>
+				{/each}
+			</div>
+		{/if}
+
 		<div class="day-body" style={`height: ${bodyHeight}px;`}>
 				<!-- Hour gutter -->
 				<div class="day-gutter">
@@ -1153,6 +1225,19 @@
 		onPick={onPickBlock}
 		onClose={closeBlockPicker}
 	/>
+{/if}
+
+{#if resurfaceEntry && resurfaceAnchor}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="resurface-popup"
+		use:portal
+		style={`left: ${resurfaceAnchor.left}px; top: ${resurfaceAnchor.bottom + 4}px;`}
+		onclick={(e) => e.stopPropagation()}
+	>
+		<Datepicker inline bind:value={resurfaceValue} onselect={onResurfaceAtSelect} />
+	</div>
 {/if}
 
 {#if taskDrag}
@@ -1476,5 +1561,43 @@
 		font-weight: 400;
 		color: var(--text-faint);
 		margin-left: 2px;
+	}
+
+	/* ── Resurfacing (backlog nudges due today) ── */
+	.day-resurfacing {
+		border-bottom: 1px solid var(--background-modifier-border);
+		padding: 2px 8px 6px;
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.rs-header {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 5px 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		user-select: none;
+	}
+	.rs-header svg {
+		flex-shrink: 0;
+	}
+	.rs-count {
+		font-size: 10px;
+		font-weight: 400;
+		color: var(--text-faint);
+		margin-left: 2px;
+	}
+
+	:global(.resurface-popup) {
+		position: fixed;
+		z-index: 1000;
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 8px;
+		box-shadow: var(--shadow-s);
+		padding: 4px;
 	}
 </style>

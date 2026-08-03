@@ -18,6 +18,7 @@
 	import type { KairosSettings } from "../../settings";
 	import type {
 		Association,
+		BacklogEntry,
 		Block,
 		ISODate,
 		ResolvedTask,
@@ -43,6 +44,12 @@
 		rowAssociation,
 		type GridRow,
 	} from "../../gridModel";
+	import { surfacedOn } from "../../backlogModel";
+	import {
+		insertEntry,
+		resurfaceTomorrow,
+		setResurface,
+	} from "../../backlogActions";
 	import {
 		dateFromISO,
 		ensureNoteForDate,
@@ -53,6 +60,7 @@
 	import GridCell from "./GridCell.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 
 	interface Props {
 		app: App;
@@ -143,6 +151,57 @@
 
 	function tasksFor(row: GridRow, day: GridDay): ResolvedTask[] {
 		return snapshot ? cellTasks(row, day.tasks, snapshot) : [];
+	}
+
+	// ── Resurfaced backlog nudges ──
+	// Entries with a resurface date surface as nudges in one day's cell
+	// (max(resurface, today)), under the row matching their association. An
+	// untagged entry surfaces in the Unassociated row.
+	let backlogEntries = $state<BacklogEntry[]>([]);
+
+	// The nudges for a given (row, date): entries surfacing on `date` whose
+	// association matches this row. Association match reuses the same canonical
+	// resolution the row grouping uses, so an aliased tag lands in the right row.
+	function nudgesFor(row: GridRow, date: ISODate): BacklogEntry[] {
+		const due = surfacedOn(backlogEntries, date, todayISO());
+		return due.filter((e) => rowMatchesEntry(row, e));
+	}
+
+	function rowMatchesEntry(row: GridRow, entry: BacklogEntry): boolean {
+		if (!entry.assoc) return row.kind === "unassigned";
+		if (row.kind === "unassigned") return false;
+		if (row.kind !== entry.assoc.kind) return false;
+		// Compare on canonical name so an alias-tagged entry matches its row.
+		const name = snapshot
+			? snapshot.resolve(entry.assoc).displayName || entry.assoc.id
+			: entry.assoc.id;
+		return name === row.name;
+	}
+
+	function onNudgeInsert(entry: BacklogEntry, date: ISODate) {
+		void insertEntry(index, entry, date);
+	}
+	function onNudgeResurfaceTomorrow(entry: BacklogEntry) {
+		resurfaceTomorrow(index, backlogEntries, entry);
+	}
+
+	// Resurface-at datepicker (parent-owned so it isn't clipped by a cell).
+	let resurfaceEntry = $state<BacklogEntry | null>(null);
+	let resurfaceAnchor = $state<DOMRect | null>(null);
+	let resurfaceValue = $state<Date>(dateFromISO(todayISO()));
+	function onNudgeResurfaceAt(entry: BacklogEntry, anchor: DOMRect) {
+		resurfaceEntry = entry;
+		resurfaceAnchor = anchor;
+		resurfaceValue = dateFromISO(entry.resurface ?? todayISO());
+	}
+	function closeResurfaceAt() {
+		resurfaceEntry = null;
+		resurfaceAnchor = null;
+	}
+	function onResurfaceAtSelect(picked: Date) {
+		const entry = resurfaceEntry;
+		closeResurfaceAt();
+		if (entry) setResurface(index, backlogEntries, entry, isoFromDate(picked));
 	}
 
 	// ── Edit routing (task writes → index) ──
@@ -528,6 +587,9 @@
 		const unsub = index.resolver().subscribe((r) => {
 			resolve = r;
 		});
+		const unsubBacklog = index.backlog().subscribe((e) => {
+			backlogEntries = e;
+		});
 
 		const move = (e: PointerEvent) => {
 			if (taskDrag) onTaskDragMove(e);
@@ -542,6 +604,7 @@
 
 		return () => {
 			unsub();
+			unsubBacklog();
 			unsubscribeGrid?.();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
@@ -669,11 +732,26 @@
 
 				{#each dates as date (date)}
 					{@const day = dayOf(date)}
+					{@const nudges = nudgesFor(row, date)}
 					<div
 						class="grid-datacell"
 						data-grid-date={date}
 						data-grid-row-key={row.key}
 					>
+						{#if nudges.length > 0}
+							<div class="grid-nudges">
+								{#each nudges as entry (entry.source.line)}
+									<BacklogNudge
+										{entry}
+										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+										onInsert={(e) => onNudgeInsert(e, date)}
+										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+										onResurfaceAt={onNudgeResurfaceAt}
+										{onNavigate}
+									/>
+								{/each}
+							</div>
+						{/if}
 						{#if day}
 							<GridCell
 								tasks={tasksFor(row, day)}
@@ -694,7 +772,7 @@
 								dragBlockLine={blockDrag?.block.source.line}
 								isDropTarget={isDropTargetFor(date, row.key)}
 							/>
-						{:else}
+						{:else if nudges.length === 0}
 							<div class="grid-datacell-empty"></div>
 						{/if}
 					</div>
@@ -718,6 +796,19 @@
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}
 	/>
+{/if}
+
+{#if resurfaceEntry && resurfaceAnchor}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="resurface-popup"
+		use:portal
+		style={`left: ${resurfaceAnchor.left}px; top: ${resurfaceAnchor.bottom + 4}px;`}
+		onclick={(e) => e.stopPropagation()}
+	>
+		<Datepicker inline bind:value={resurfaceValue} onselect={onResurfaceAtSelect} />
+	</div>
 {/if}
 
 {#if taskDrag}
@@ -969,6 +1060,23 @@
 	.row-kind-icon {
 		flex-shrink: 0;
 		color: var(--text-faint);
+	}
+
+	.grid-nudges {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding: 4px;
+	}
+
+	:global(.resurface-popup) {
+		position: fixed;
+		z-index: 1000;
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 8px;
+		box-shadow: var(--shadow-s);
+		padding: 4px;
 	}
 
 	.grid-datacell {
