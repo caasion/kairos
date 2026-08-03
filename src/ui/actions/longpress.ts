@@ -7,8 +7,26 @@
 //   <button use:longpress={500} onlongpresscapture={...}>…</button>
 // or listen for the raw event:
 //   node.addEventListener("longpress", handler)
+//
+// Because Svelte's typed DOM attributes don't cover custom events, callers that
+// prefer a direct callback (no `addEventListener` plumbing) can pass options:
+//   <button use:longpress={{ duration: 450, onLongpress: () => … }}>…</button>
 
-export function longpress(node: HTMLElement, duration = 500) {
+interface LongpressOptions {
+	duration?: number;
+	/** Called when the press matures — an alternative to listening for the event. */
+	onLongpress?: () => void;
+}
+
+type LongpressParam = number | LongpressOptions;
+
+function normalize(param: LongpressParam): Required<LongpressOptions> {
+	if (typeof param === "number") return { duration: param, onLongpress: () => {} };
+	return { duration: param.duration ?? 500, onLongpress: param.onLongpress ?? (() => {}) };
+}
+
+export function longpress(node: HTMLElement, param: LongpressParam = 500) {
+	let { duration, onLongpress } = normalize(param);
 	let timer: number | undefined;
 	let fired = false;
 
@@ -17,6 +35,7 @@ export function longpress(node: HTMLElement, duration = 500) {
 		timer = window.setTimeout(() => {
 			fired = true;
 			node.dispatchEvent(new CustomEvent("longpress"));
+			onLongpress();
 		}, duration);
 	}
 
@@ -44,8 +63,8 @@ export function longpress(node: HTMLElement, duration = 500) {
 	node.addEventListener("click", onClick, true);
 
 	return {
-		update(next: number) {
-			duration = next;
+		update(next: LongpressParam) {
+			({ duration, onLongpress } = normalize(next));
 		},
 		destroy() {
 			cancel();

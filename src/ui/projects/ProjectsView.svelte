@@ -19,6 +19,7 @@
 	import type { Unsubscriber } from "svelte/store";
 	import type {
 		Domain,
+		ISODate,
 		LifecycleState,
 		Project,
 	} from "../../types";
@@ -32,7 +33,11 @@
 		setProjectDomain,
 		setProjectStatus,
 	} from "../../projectActions";
-	import { todayISO } from "../../dayNote";
+	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
+	import { longpress } from "../actions/longpress";
+	import { DomainReorderModal } from "./DomainReorderModal";
+	import Datepicker from "../components/Datepicker.svelte";
+	import Portal from "../components/Portal.svelte";
 
 	interface Props {
 		app: App;
@@ -95,9 +100,6 @@
 
 	// ── Editing state ──
 	let editingName = $state<string | null>(null); // source.path of the row being renamed
-	let colorDomain = $state<Domain | null>(null); // domain whose color popup is open
-	let statusRow = $state<Project | Domain | null>(null); // status popup target
-	let statusRowPath = $state<string | null>(null);
 	let domainPickerPath = $state<string | null>(null); // project row whose domain popup is open
 
 	// ── Rename ──
@@ -123,40 +125,72 @@
 	}
 
 	// ── Status ──
-	function openStatus(e: Project | Domain) {
-		statusRow = e;
-		statusRowPath = e.source.path;
+	// A single click toggles between active and its opposite (spec §4.4: additive
+	// history, always stamped today). Projects remember the last non-active state
+	// they were in so a project that was archived toggles back to archived, not
+	// inactive; domains only ever swing active⇄inactive (they can't archive).
+	// Reaching a *specific* state at a *specific* date is the history overlay's job.
+	function lastNonActive(e: Project | Domain): LifecycleState {
+		for (let i = e.history.length - 1; i >= 0; i--) {
+			const s = e.history[i]?.status;
+			if (s && s !== "active") return s;
+		}
+		return "inactive";
 	}
-	function closeStatus() {
-		statusRow = null;
-		statusRowPath = null;
+	function toggleStatus(e: Project | Domain, isDomain: boolean) {
+		const next: LifecycleState =
+			statusOf(e) === "active" ? (isDomain ? "inactive" : lastNonActive(e)) : "active";
+		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
+		else setProjectStatus(index, e as Project, todayISO(), next);
 	}
-	function pickStatus(e: Project | Domain, isDomain: boolean, status: LifecycleState) {
-		closeStatus();
-		if (statusOf(e) === status) return;
-		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), status);
-		else setProjectStatus(index, e as Project, todayISO(), status);
+
+	// ── Status history overlay (in-view portal) ──
+	// Read-only view of the append-only history, plus the ability to add a new
+	// record at a chosen date. We never edit or delete past records: an out-of-
+	// order date later than an existing one would break the "latest = current"
+	// rule (spec §4.4). Power users can hand-edit the frontmatter JSON if needed.
+	let historyRow = $state<Project | Domain | null>(null);
+	let historyIsDomain = $state(false);
+	let historyDate = $state<Date>(dateFromISO(todayISO()));
+	let historyPickDate = $state(false);
+
+	function openHistory(e: Project | Domain) {
+		historyRow = e;
+		historyIsDomain = feed.domains.some((d) => d.source.path === e.source.path);
+		historyDate = dateFromISO(todayISO());
+		historyPickDate = false;
 	}
+	function closeHistory() {
+		historyRow = null;
+		historyPickDate = false;
+	}
+	function addStatusRecord(status: LifecycleState) {
+		const e = historyRow;
+		if (!e) return;
+		const date = isoFromDate(historyDate);
+		closeHistory();
+		if (historyIsDomain) setDomainStatus(index, e as Domain, date, status);
+		else setProjectStatus(index, e as Project, date, status);
+	}
+
+	// The states offered when adding a record: domains can't archive.
+	const historyStates = $derived<LifecycleState[]>(
+		historyIsDomain ? ["active", "inactive"] : ["active", "inactive", "archived"],
+	);
 
 	// ── Domain color ──
 	function pickColor(domain: Domain, color: string) {
 		setDomainColor(index, domain, color);
 	}
 
-	// A small preset palette; the native color input covers everything else.
-	const PALETTE = [
-		"#e05555", "#e0a355", "#e0d355", "#8ac555",
-		"#55c5a3", "#55a3e0", "#8a55e0", "#c555b0",
-	];
-
-	// ── Domain reorder ──
-	function moveDomain(row: DomainRow, delta: number) {
-		const idx = feed.domains.findIndex((d) => d.id === row.domain.id);
-		const swapWith = feed.domains[idx + delta];
-		if (!swapWith) return;
-		// Swap orders so the two adjacent rows trade places.
-		setDomainOrder(index, row.domain, swapWith.order);
-		setDomainOrder(index, swapWith, row.domain.order);
+	// ── Domain reorder (global, via a modal) ──
+	function openReorder() {
+		new DomainReorderModal(app, feed.domains, (ordered) => {
+			// Persist the new global order: renumber sequentially so gaps/dupes clear.
+			ordered.forEach((d, i) => {
+				if (d.order !== i) setDomainOrder(index, d, i);
+			});
+		}).open();
 	}
 
 	// ── Domain link (project → domain) ──
@@ -247,9 +281,16 @@
 
 	function handleClickOutside() {
 		editingName = null;
-		colorDomain = null;
-		closeStatus();
 		closeDomainPicker();
+		closeHistory();
+	}
+
+	function formatDate(date: ISODate): string {
+		return dateFromISO(date).toLocaleDateString(undefined, {
+			year: "numeric",
+			month: "short",
+			day: "numeric",
+		});
 	}
 
 	onMount(() => {
@@ -286,6 +327,17 @@
 			{/each}
 		</div>
 
+		<!-- Reorder domains — global order, so it opens a modal for the whole list
+		     (there are no per-row up/down arrows; projects aren't reorderable). -->
+		<button
+			class="add-btn"
+			title="Reorder domains"
+			onclick={(e) => { e.stopPropagation(); openReorder(); }}
+			aria-label="Reorder domains"
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/></svg>
+		</button>
+
 		<button
 			class="add-btn"
 			title="New domain"
@@ -300,7 +352,7 @@
 	</div>
 
 	<div class="pv-scroll">
-		{#each domainRows as row, i (row.domain.id)}
+		{#each domainRows as row (row.domain.id)}
 			<section class="domain-group">
 				<header class="domain-header">
 					<span
@@ -308,10 +360,16 @@
 						style={`background-color: ${row.domain.color || "var(--text-faint)"};`}
 					></span>
 
+					<!-- Kind icon: this page's top-level rows are always domains. Same
+					     icon the grid/timeline/backlog use for a domain association. -->
+					<span class="kind-icon" title="Domain">
+						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+					</span>
+
 					{#if isEditing(row.domain)}
 						<!-- svelte-ignore a11y_autofocus -->
 						<input
-							class="name-input"
+							class="name-input domain"
 							value={row.domain.name}
 							autofocus
 							onclick={(e) => e.stopPropagation()}
@@ -337,26 +395,20 @@
 					<span class="domain-count">{row.projects.length}</span>
 					<span class="pv-spacer"></span>
 
-					<!-- Reorder -->
-					<button class="icon-btn" title="Move up" disabled={i === 0}
-						onclick={(e) => { e.stopPropagation(); moveDomain(row, -1); }} aria-label="Move up">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
-					</button>
-					<button class="icon-btn" title="Move down" disabled={i === domainRows.length - 1}
-						onclick={(e) => { e.stopPropagation(); moveDomain(row, 1); }} aria-label="Move down">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-					</button>
-
-					<!-- Color -->
-					<button class="icon-btn color-btn" title="Set color"
-						onclick={(e) => { e.stopPropagation(); colorDomain = colorDomain?.id === row.domain.id ? null : row.domain; }}
-						aria-label="Set color">
+					<!-- Color: a plain native color input. Clicking it opens the OS
+					     picker; the swatch shows the current color. -->
+					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<label class="icon-btn color-btn" title="Set color" onclick={(e) => e.stopPropagation()}>
 						<span class="swatch" style={`background:${row.domain.color || "var(--text-faint)"};`}></span>
-					</button>
+						<input class="color-native" type="color" value={row.domain.color || "#888888"}
+							oninput={(e) => pickColor(row.domain, e.currentTarget.value)} />
+					</label>
 
-					<!-- Status -->
-					<button class="icon-btn" title="Change status"
-						onclick={(e) => { e.stopPropagation(); openStatus(row.domain); }} aria-label="Change status">
+					<!-- Status: click toggles active⇄inactive (today); long-press opens
+					     the history overlay. Domains never archive. -->
+					<button class="icon-btn" title="Toggle status · long-press for history"
+						use:longpress={{ duration: 450, onLongpress: () => openHistory(row.domain) }}
+						onclick={(e) => { e.stopPropagation(); toggleStatus(row.domain, true); }} aria-label="Change status">
 						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
 					</button>
 
@@ -377,32 +429,6 @@
 						onclick={(e) => { e.stopPropagation(); deleteDomain(row.domain); }} aria-label="Delete domain">
 						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 					</button>
-
-					<!-- Color popup -->
-					{#if colorDomain?.id === row.domain.id}
-						<div class="popup color-popup" onclick={(e) => e.stopPropagation()}>
-							<div class="palette">
-								{#each PALETTE as c}
-									<button class="palette-swatch" style={`background:${c};`}
-										onclick={() => { pickColor(row.domain, c); colorDomain = null; }} aria-label={c}></button>
-								{/each}
-							</div>
-							<input class="color-input" type="color" value={row.domain.color || "#888888"}
-								oninput={(e) => pickColor(row.domain, e.currentTarget.value)} />
-							<button class="clear-link" onclick={() => { pickColor(row.domain, ""); colorDomain = null; }}>Clear</button>
-						</div>
-					{/if}
-
-					<!-- Status popup -->
-					{#if statusRowPath === row.domain.source.path}
-						<div class="popup status-popup" onclick={(e) => e.stopPropagation()}>
-							{#each ["active", "inactive"] as const as s}
-								<button class="status-opt" class:sel={statusOf(row.domain) === s}
-									onclick={() => pickStatus(row.domain, true, s)}>{STATUS_LABEL[s]}</button>
-							{/each}
-							<span class="status-note">Domains don't archive</span>
-						</div>
-					{/if}
 				</header>
 
 				{#if row.projects.length === 0}
@@ -445,6 +471,63 @@
 	</div>
 </div>
 
+<!-- Status history overlay (portal) — read-only past records + add-at-date. -->
+{#if historyRow}
+	<Portal>
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="history-scrim" onclick={closeHistory}>
+			<div class="history-card" onclick={(e) => e.stopPropagation()}>
+				<div class="history-head">
+					<span class="history-title">{historyRow.name}</span>
+					<span class="history-sub">Status history</span>
+					<span class="pv-spacer"></span>
+					<button class="history-x" title="Close" aria-label="Close" onclick={closeHistory}>
+						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+					</button>
+				</div>
+
+				{#if historyRow.history.length === 0}
+					<div class="history-empty">No status changes recorded — defaults to Active.</div>
+				{:else}
+					<ul class="history-list">
+						{#each [...historyRow.history].reverse() as rec, i}
+							<li class="history-item" class:current={i === 0}>
+								<span class="history-dot" class:active={rec.status === "active"}></span>
+								<span class="history-status">{STATUS_LABEL[rec.status]}</span>
+								<span class="pv-spacer"></span>
+								<span class="history-date">{formatDate(rec.date)}</span>
+								{#if i === 0}<span class="history-badge">current</span>{/if}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+
+				<!-- Add a new record. Past records are read-only (append-only history):
+				     to correct one, edit the frontmatter JSON directly. -->
+				<div class="history-add">
+					<span class="history-add-label">Add change</span>
+					<div class="history-add-row">
+						<button class="history-date-btn" onclick={() => (historyPickDate = !historyPickDate)}>
+							<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+							<span>{formatDate(isoFromDate(historyDate))}</span>
+						</button>
+						<span class="pv-spacer"></span>
+						{#each historyStates as s}
+							<button class="history-set" onclick={() => addStatusRecord(s)}>{STATUS_LABEL[s]}</button>
+						{/each}
+					</div>
+					{#if historyPickDate}
+						<div class="history-datepicker">
+							<Datepicker inline bind:value={historyDate} onselect={() => (historyPickDate = false)} />
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+	</Portal>
+{/if}
+
 {#snippet projectRow(project: Project, inDomain: boolean)}
 	<li class="project-row">
 		<span class="project-bullet"></span>
@@ -477,46 +560,39 @@
 
 		<span class="pv-spacer"></span>
 
-		<!-- Domain link chip -->
-		<button class="chip domain-chip" class:ghost={!currentDomainName(project)}
-			title="Change domain"
-			onclick={(e) => openDomainPicker(project, e)}>
-			{#if currentDomainName(project)}
-				{currentDomainName(project)}
-			{:else}
-				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-			{/if}
-		</button>
+		<!-- Property controls — always visible. On this page the properties (status,
+		     domain link) are the point, not the name, so unlike the backlog these
+		     don't hide until hover. -->
+		<div class="row-actions">
+			<!-- Domain link. A project nested under its domain group carries that
+			     context, so this icon is the way to re-home it (or assign one to an
+			     orphan). The domain name itself isn't shown — the group heading is. -->
+			<button class="icon-btn" class:assigned={currentDomainName(project)}
+				title={currentDomainName(project) ? "Change domain" : "Assign a domain"}
+				onclick={(e) => openDomainPicker(project, e)} aria-label="Change domain">
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+			</button>
 
-		<!-- Status -->
-		<button class="icon-btn" title="Change status"
-			onclick={(e) => { e.stopPropagation(); openStatus(project); }} aria-label="Change status">
-			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-		</button>
+			<!-- Status: click toggles active⇄non-active (today); long-press opens
+			     the full history overlay. -->
+			<button class="icon-btn" title="Toggle status · long-press for history"
+				use:longpress={{ duration: 450, onLongpress: () => openHistory(project) }}
+				onclick={(e) => { e.stopPropagation(); toggleStatus(project, false); }} aria-label="Change status">
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+			</button>
 
-		<!-- Backlog -->
-		<button class="icon-btn" title="View this project's backlog"
-			onclick={(e) => { e.stopPropagation(); backlogForProject(project); }} aria-label="View backlog">
-			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-		</button>
+			<!-- Backlog -->
+			<button class="icon-btn" title="View this project's backlog"
+				onclick={(e) => { e.stopPropagation(); backlogForProject(project); }} aria-label="View backlog">
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+			</button>
 
-		<!-- Delete -->
-		<button class="icon-btn danger" title="Delete project"
-			onclick={(e) => { e.stopPropagation(); deleteProject(project); }} aria-label="Delete project">
-			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-		</button>
-
-		<!-- Status popup -->
-		{#if statusRowPath === project.source.path}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="popup status-popup" onclick={(e) => e.stopPropagation()}>
-				{#each ["active", "inactive", "archived"] as const as s}
-					<button class="status-opt" class:sel={statusOf(project) === s}
-						onclick={() => pickStatus(project, false, s)}>{STATUS_LABEL[s]}</button>
-				{/each}
-			</div>
-		{/if}
+			<!-- Delete -->
+			<button class="icon-btn danger" title="Delete project"
+				onclick={(e) => { e.stopPropagation(); deleteProject(project); }} aria-label="Delete project">
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			</button>
+		</div>
 
 		<!-- Domain-link popup -->
 		{#if domainPickerPath === project.source.path}
@@ -713,21 +789,62 @@
 		color: var(--text-normal);
 		background: transparent;
 		border: none;
-		padding: 2px 0;
+		box-shadow: none;
+		padding: 0;
 		cursor: pointer;
 		text-align: left;
 	}
 	.project-name:hover {
 		color: var(--interactive-accent);
 	}
+	/* Rename inputs (project + domain) are styled to be indistinguishable from the
+	   static name — no box, no border, no box-shadow — so renaming feels like
+	   putting the cursor on the name, matching the backlog/task rows. The domain
+	   variant keeps the heading's uppercase weight so it doesn't jump on edit. */
 	.name-input {
 		font-size: 13px;
+		font-family: inherit;
 		color: var(--text-normal);
-		background: var(--background-primary);
-		border: 1px solid var(--interactive-accent);
-		border-radius: 5px;
-		padding: 2px 6px;
-		min-width: 160px;
+		background: transparent;
+		border: none;
+		border-radius: 0;
+		box-shadow: none;
+		outline: none;
+		padding: 0;
+		margin: 0;
+		min-width: 0;
+		flex: 1;
+	}
+	.name-input:focus,
+	.name-input:focus-visible {
+		border: none;
+		box-shadow: none;
+		outline: none;
+	}
+	.name-input.domain {
+		font-size: 13px;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+	}
+
+	/* ── Kind icon (domain marker in the header) ── */
+	.kind-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--text-muted);
+		flex-shrink: 0;
+		/* Obsidian's base styling can collapse an inline SVG to 0 width; pin it. */
+		min-width: min-content;
+	}
+
+	/* ── Row action bar (always visible on this page) ── */
+	.row-actions {
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		flex-shrink: 0;
 	}
 
 	/* ── Icon buttons ── */
@@ -737,8 +854,12 @@
 		justify-content: center;
 		height: 24px;
 		width: 24px;
+		/* Pin the intrinsic size so Obsidian's button styling can't collapse the
+		   icon (the SVG otherwise vanishes without a min-width). */
+		min-width: min-content;
 		border: 1px solid transparent;
 		border-radius: 6px;
+		box-shadow: none;
 		background: transparent;
 		color: var(--text-faint);
 		cursor: pointer;
@@ -757,43 +878,39 @@
 		opacity: 0.3;
 		cursor: default;
 	}
+	.icon-btn.assigned {
+		color: var(--text-muted);
+	}
 	.icon-btn.danger:hover {
 		color: var(--text-error, #e05555);
 		border-color: var(--text-error, #e05555);
 	}
+
+	/* Color control: the swatch sits in an icon-btn; the native <input type=color>
+	   is stretched invisibly over it so a click opens the OS picker directly. */
+	.color-btn {
+		position: relative;
+		overflow: hidden;
+	}
 	.color-btn .swatch {
-		width: 13px;
-		height: 13px;
+		width: 14px;
+		height: 14px;
 		border-radius: 4px;
 		border: 1px solid var(--background-modifier-border);
 	}
-
-	/* ── Chips (domain link) ── */
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		height: 22px;
-		padding: 0 8px;
-		font-size: 11px;
-		font-weight: 500;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 11px;
-		background: var(--background-primary-alt);
-		color: var(--text-normal);
+	.color-native {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		opacity: 0;
+		border: none;
+		padding: 0;
+		margin: 0;
 		cursor: pointer;
-		flex-shrink: 0;
-		white-space: nowrap;
-	}
-	.chip:hover {
-		background: var(--background-modifier-hover);
-	}
-	.domain-chip.ghost {
-		color: var(--text-faint);
-		padding: 0 6px;
 	}
 
-	/* ── Popups ── */
+	/* ── Popups (domain-link picker) ── */
 	.popup {
 		position: absolute;
 		top: calc(100% + 4px);
@@ -804,51 +921,6 @@
 		border-radius: 8px;
 		box-shadow: var(--shadow-s);
 		padding: 8px;
-	}
-	.color-popup {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		width: 168px;
-	}
-	.palette {
-		display: grid;
-		grid-template-columns: repeat(8, 1fr);
-		gap: 4px;
-	}
-	.palette-swatch {
-		width: 100%;
-		aspect-ratio: 1;
-		border-radius: 4px;
-		border: 1px solid var(--background-modifier-border);
-		cursor: pointer;
-		padding: 0;
-	}
-	.color-input {
-		width: 100%;
-		height: 26px;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary-alt);
-		cursor: pointer;
-	}
-	.clear-link {
-		font-size: 11px;
-		color: var(--text-muted);
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		text-align: left;
-		padding: 0;
-	}
-	.clear-link:hover {
-		color: var(--text-error, #e05555);
-	}
-	.status-popup {
-		display: flex;
-		flex-direction: column;
-		min-width: 110px;
-		padding: 4px;
 	}
 	.status-opt {
 		font-size: 12px;
@@ -866,12 +938,6 @@
 	.status-opt.sel {
 		color: var(--interactive-accent);
 		font-weight: 600;
-	}
-	.status-note {
-		font-size: 10px;
-		color: var(--text-faint);
-		font-style: italic;
-		padding: 4px 10px 2px;
 	}
 	.domain-popup {
 		display: flex;
@@ -891,5 +957,166 @@
 		height: 10px;
 		border-radius: 3px;
 		flex-shrink: 0;
+	}
+
+	/* ── Status history overlay ── */
+	.history-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 200;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(0, 0, 0, 0.35);
+	}
+	.history-card {
+		width: 340px;
+		max-width: calc(100vw - 32px);
+		max-height: 70vh;
+		overflow: auto;
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 10px;
+		box-shadow: var(--shadow-l, 0 8px 30px rgba(0, 0, 0, 0.3));
+		padding: 14px 14px 12px;
+	}
+	.history-head {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		margin-bottom: 10px;
+	}
+	.history-title {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--text-normal);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.history-sub {
+		font-size: 11px;
+		color: var(--text-faint);
+	}
+	.history-x {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		min-width: min-content;
+		border: none;
+		box-shadow: none;
+		border-radius: 5px;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+		align-self: center;
+	}
+	.history-x:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
+	}
+	.history-empty {
+		font-size: 12px;
+		color: var(--text-faint);
+		font-style: italic;
+		padding: 4px 0 10px;
+	}
+	.history-list {
+		list-style: none;
+		margin: 0 0 10px;
+		padding: 0;
+	}
+	.history-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 4px;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+	.history-item.current {
+		font-weight: 600;
+	}
+	.history-dot {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--text-faint);
+		flex-shrink: 0;
+	}
+	.history-dot.active {
+		background: var(--interactive-accent);
+	}
+	.history-status {
+		font-size: 12px;
+		color: var(--text-normal);
+	}
+	.history-date {
+		font-size: 11px;
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+	.history-badge {
+		font-size: 9px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-on-accent);
+		background: var(--interactive-accent);
+		border-radius: 4px;
+		padding: 1px 5px;
+	}
+	.history-add {
+		border-top: 1px solid var(--background-modifier-border);
+		padding-top: 10px;
+	}
+	.history-add-label {
+		font-size: 10px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--text-faint);
+	}
+	.history-add-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		margin-top: 6px;
+	}
+	.history-date-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		height: 26px;
+		padding: 0 8px;
+		font-size: 11px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 6px;
+		background: var(--background-primary-alt);
+		color: var(--text-normal);
+		cursor: pointer;
+	}
+	.history-date-btn:hover {
+		background: var(--background-modifier-hover);
+	}
+	.history-set {
+		height: 26px;
+		padding: 0 10px;
+		font-size: 11px;
+		font-weight: 600;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 6px;
+		background: var(--background-primary-alt);
+		color: var(--text-normal);
+		cursor: pointer;
+	}
+	.history-set:hover {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+		border-color: var(--interactive-accent);
+	}
+	.history-datepicker {
+		margin-top: 8px;
 	}
 </style>

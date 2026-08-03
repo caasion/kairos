@@ -6,3 +6,45 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+/* ── Domain reorder modal (DomainReorderModal.ts) ── */
+.kairos-reorder-hint {
+	margin-top: 0;
+	color: var(--text-muted);
+	font-size: 12px;
+}
+.kairos-reorder-list {
+	margin-bottom: 4px;
+}
+.kairos-reorder-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 8px;
+	margin-bottom: 4px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	cursor: grab;
+}
+.kairos-reorder-row.is-dragging {
+	opacity: 0.5;
+}
+.kairos-reorder-swatch {
+	width: 10px;
+	height: 10px;
+	flex-shrink: 0;
+	border-radius: 3px;
+	background: var(--swatch, var(--text-faint));
+}
+.kairos-reorder-name {
+	flex: 1;
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.kairos-reorder-move {
+	padding: 0 6px;
+	line-height: 1.4;
+}
