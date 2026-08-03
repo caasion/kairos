@@ -12,6 +12,7 @@ vi.mock("obsidian-daily-notes-interface", () => ({
 
 import {
 	KairosIndex,
+	backlogSignature,
 	classify,
 	daySignature,
 	deriveLookups,
@@ -22,6 +23,8 @@ import {
 	type IndexPaths,
 } from "./index";
 import { parseSchedule } from "./parser";
+import { addTaskToUnscheduled } from "./writer";
+import type { BacklogEntry } from "./types";
 
 const PATHS: IndexPaths = {
 	projectsFolder: "Projects",
@@ -196,6 +199,8 @@ describe("KairosIndex", () => {
 			write: async (path, content) => {
 				writes.push({ path, content });
 			},
+			rename: async () => {},
+			remove: async () => {},
 			now: () => 1000,
 			settings: PATHS,
 			writeDebounceMs: 500,
@@ -272,6 +277,8 @@ describe("KairosIndex", () => {
 			write: async (_path, content) => {
 				file = content;
 			},
+			rename: async () => {},
+			remove: async () => {},
 			now: () => 1000,
 			settings: PATHS,
 			writeDebounceMs: 500,
@@ -303,6 +310,8 @@ describe("KairosIndex", () => {
 			write: async (_path, content) => {
 				file = content;
 			},
+			rename: async () => {},
+			remove: async () => {},
 			now: () => 1000,
 			settings: mutablePaths,
 			writeDebounceMs: 500,
@@ -403,6 +412,8 @@ describe("KairosIndex project/domain stores", () => {
 	const deps: IndexDeps = {
 		read: async () => "",
 		write: async () => {},
+		rename: async () => {},
+		remove: async () => {},
 		now: () => 1000,
 		settings: PATHS,
 		writeDebounceMs: 500,
@@ -444,5 +455,267 @@ describe("KairosIndex project/domain stores", () => {
 		const store = idx.project("Alpha");
 		idx.onFileDeleted("Projects/Alpha.md");
 		expect(get(store)).toBeUndefined();
+	});
+});
+
+// ─── projects & domains page feed ──────────────────────────────
+
+const DOMAIN_HEALTH = `---
+tags:
+  - kairos/domain
+id: d-health
+aliases: []
+order: 1
+color: "#55c5a3"
+status:
+  2026-07-01: active
+---
+`;
+const DOMAIN_CAREER = `---
+tags:
+  - kairos/domain
+id: d-career
+aliases: []
+order: 0
+color: "#55a3e0"
+status:
+  2026-07-01: active
+---
+`;
+// A project linked to Health (by the domain's stable id).
+const PROJECT_LINKED = `---
+tags:
+  - kairos/project
+id: p-run
+aliases: []
+domain_id: d-health
+status:
+  2026-07-01: active
+---
+`;
+
+describe("KairosIndex projectsDomains feed", () => {
+	const deps: IndexDeps = {
+		read: async () => "",
+		write: async () => {},
+		rename: async () => {},
+		remove: async () => {},
+		now: () => 1000,
+		settings: PATHS,
+		writeDebounceMs: 500,
+	};
+
+	function seeded() {
+		const idx = new KairosIndex(deps);
+		idx.seed([
+			{ path: "Domains/Health.md", content: DOMAIN_HEALTH, mtime: 1 },
+			{ path: "Domains/Career.md", content: DOMAIN_CAREER, mtime: 1 },
+			{ path: "Projects/Run.md", content: PROJECT_LINKED, mtime: 1 },
+			{ path: "Projects/Alpha.md", content: PROJECT_FILE, mtime: 1 },
+		]);
+		return idx;
+	}
+
+	it("orders domains by order, nests linked projects, orphans the rest", () => {
+		const feed = get(seeded().projectsDomains());
+		// Career (order 0) before Health (order 1).
+		expect(feed.domains.map((d) => d.name)).toEqual(["Career", "Health"]);
+		// Run links to Health by id; Alpha (empty domain_id) is an orphan.
+		expect(feed.projectsByDomain.get("d-health")?.map((p) => p.name)).toEqual([
+			"Run",
+		]);
+		expect(feed.orphans.map((p) => p.name)).toEqual(["Alpha"]);
+	});
+
+	it("re-emits when a project/domain edit lands", () => {
+		const idx = seeded();
+		const store = idx.projectsDomains();
+		let feed = get(store);
+		const health = feed.domains.find((d) => d.name === "Health")!;
+		let ticks = 0;
+		const unsub = store.subscribe(() => {
+			ticks++;
+		});
+		idx.applyDomainEdit({ ...health, color: "#000000" });
+		feed = get(store);
+		expect(feed.domains.find((d) => d.name === "Health")?.color).toBe("#000000");
+		expect(ticks).toBeGreaterThan(1); // initial + at least one update
+		unsub();
+	});
+
+	it("nameCollision flags an existing name/alias, excluding self", () => {
+		const idx = seeded();
+		expect(idx.nameCollision("Health")).toBe("Health");
+		expect(idx.nameCollision("Free Name")).toBeNull();
+		const health = get(idx.projectsDomains()).domains.find(
+			(d) => d.name === "Health",
+		)!;
+		expect(idx.nameCollision("Health", health)).toBeNull();
+	});
+});
+
+// ─── backlog ───────────────────────────────────────────────────
+
+describe("backlogSignature", () => {
+	it("ignores source lines but reflects text/assoc/resurface", () => {
+		const a: BacklogEntry[] = [
+			{ source: { path: "Backlog.md", line: 0 }, text: "Buy milk" },
+		];
+		const b: BacklogEntry[] = [
+			{ source: { path: "Backlog.md", line: 9 }, text: "Buy milk" },
+		];
+		expect(backlogSignature(a)).toBe(backlogSignature(b));
+
+		const c: BacklogEntry[] = [
+			{
+				source: { path: "Backlog.md", line: 0 },
+				text: "Buy milk",
+				resurface: "2026-09-01",
+			},
+		];
+		expect(backlogSignature(a)).not.toBe(backlogSignature(c));
+	});
+});
+
+describe("KairosIndex backlog", () => {
+	let writes: { path: string; content: string }[];
+	let deps: IndexDeps;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		writes = [];
+		deps = {
+			read: async () => "",
+			write: async (path, content) => {
+				writes.push({ path, content });
+			},
+			rename: async () => {},
+			remove: async () => {},
+			now: () => 1000,
+			settings: PATHS,
+			writeDebounceMs: 500,
+		};
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("seeds the backlog file into the backlog store", () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([
+			{ path: "Backlog.md", content: "- Buy milk\n- Draft [Thesis]\n", mtime: 1 },
+		]);
+		const entries = get(idx.backlog());
+		expect(entries.map((e) => e.text)).toEqual(["Buy milk", "Draft"]);
+		expect(entries[1]?.assoc).toEqual({ kind: "project", id: "Thesis" });
+	});
+
+	it("applyBacklogEdit notifies immediately and debounces the write", async () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([]);
+		const store = idx.backlog();
+
+		idx.applyBacklogEdit([
+			{ source: { path: "Backlog.md", line: -1 }, text: "New idea" },
+		]);
+		// Optimistic: store updated, no write yet.
+		expect(get(store).map((e) => e.text)).toEqual(["New idea"]);
+		expect(writes).toHaveLength(0);
+
+		await vi.advanceTimersByTimeAsync(500);
+		expect(writes).toHaveLength(1);
+		expect(writes[0]?.path).toBe("Backlog.md");
+		expect(writes[0]?.content).toBe("- New idea\n");
+	});
+
+	it("drops the echo of its own write (signature match)", () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([{ path: "Backlog.md", content: "- A\n", mtime: 1 }]);
+		const store = idx.backlog();
+		let notifications = 0;
+		store.subscribe(() => notifications++); // fires once on subscribe
+		const before = notifications;
+
+		// Same list, different formatting/line: no observable change.
+		idx.onFileChanged("Backlog.md", "\n- A\n", 2);
+		expect(notifications).toBe(before);
+
+		// A genuine change notifies.
+		idx.onFileChanged("Backlog.md", "- A\n- B\n", 3);
+		expect(notifications).toBe(before + 1);
+		expect(get(store).map((e) => e.text)).toEqual(["A", "B"]);
+	});
+
+	it("scheduleEntry removes the entry and adds an Unscheduled task", () => {
+		const idx = new KairosIndex(deps);
+		idx.seed([
+			{
+				path: "Backlog.md",
+				content: "- Write intro [Thesis]\n- Other\n",
+				mtime: 1,
+			},
+		]);
+		const [entry] = get(idx.backlog());
+		expect(entry).toBeDefined();
+
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.scheduleEntry(entry!, date, path, (blocks) =>
+			addTaskToUnscheduled(blocks, path, entry!.text, entry!.assoc),
+		);
+
+		// Removed from the backlog…
+		expect(get(idx.backlog()).map((e) => e.text)).toEqual(["Other"]);
+		// …and present as an Unscheduled task carrying the association forward.
+		const day = get(idx.day(date));
+		const inbox = day?.blocks.find((b) => b.title === "Unscheduled");
+		expect(inbox?.tasks[0]?.text).toBe("Write intro");
+		expect(inbox?.tasks[0]?.assoc).toEqual({ kind: "project", id: "Thesis" });
+	});
+
+	it("returnToBacklog appends a new entry and drops the day task", () => {
+		const idx = new KairosIndex(deps);
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.seed([
+			{
+				path,
+				content: note("- Unscheduled\n\t- [ ] Loose thing [Life]"),
+				mtime: 1,
+			},
+			{ path: "Backlog.md", content: "- Existing\n", mtime: 1 },
+		]);
+
+		const day = get(idx.day(date));
+		const inbox = day!.blocks.find((b) => b.title === "Unscheduled")!;
+		const task = inbox.tasks[0]!;
+
+		const newEntry: BacklogEntry = {
+			source: { path: "Backlog.md", line: -1 },
+			text: task.text,
+			...(task.assoc ? { assoc: task.assoc } : {}),
+		};
+		idx.returnToBacklog(
+			date,
+			path,
+			(blocks) =>
+				blocks.map((b) =>
+					b.title === "Unscheduled"
+						? { ...b, tasks: b.tasks.filter((t) => t !== task) }
+						: b,
+				),
+			newEntry,
+		);
+
+		// New backlog entry appended…
+		expect(get(idx.backlog()).map((e) => e.text)).toEqual([
+			"Existing",
+			"Loose thing",
+		]);
+		// …and the day task is gone.
+		const after = get(idx.day(date));
+		const inboxAfter = after?.blocks.find((b) => b.title === "Unscheduled");
+		expect(inboxAfter?.tasks ?? []).toHaveLength(0);
 	});
 });
