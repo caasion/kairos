@@ -48,3 +48,21 @@ If your plugin does not need CSS, delete this file.
 	padding: 0 6px;
 	line-height: 1.4;
 }
+
+/* ── Prompt / Confirm modals (modals.ts) ── */
+.kairos-modal-field {
+	border-top: none;
+	padding-top: 0;
+}
+.kairos-modal-input {
+	width: 100%;
+}
+.kairos-modal-message p {
+	margin: 0 0 8px;
+	color: var(--text-muted);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.kairos-modal-message p:last-child {
+	margin-bottom: 0;
+}

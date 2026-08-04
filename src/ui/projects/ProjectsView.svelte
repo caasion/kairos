@@ -28,14 +28,16 @@
 		renameDomain,
 		renameProject,
 		setDomainColor,
+		setDomainDescription,
 		setDomainOrder,
 		setDomainStatus,
+		setProjectDescription,
 		setProjectDomain,
 		setProjectStatus,
 	} from "../../projectActions";
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
-	import { longpress } from "../actions/longpress";
 	import { DomainReorderModal } from "./DomainReorderModal";
+	import { ConfirmModal, PromptModal } from "./modals";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
 
@@ -193,36 +195,131 @@
 	}
 
 	// ── Domain link (project → domain) ──
-	// Obsidian's native context menu listing every domain (durable, so none are
-	// archived) plus "None" to clear. The project stores the domain's stable id.
-	// The current selection is shown checked.
-	function openDomainPicker(project: Project, e: MouseEvent) {
-		e.stopPropagation();
-		const menu = new Menu();
-		menu.addItem((item) =>
+	// A submenu listing every domain (durable, so none are archived) plus "None"
+	// to clear. The project stores the domain's stable id; the current selection
+	// is shown checked.
+	function addDomainPickerItems(submenu: Menu, project: Project) {
+		submenu.addItem((item) =>
 			item
 				.setTitle("None")
 				.setChecked(!project.domain)
 				.onClick(() => pickDomain(project, undefined)),
 		);
 		for (const d of feed.domains) {
-			menu.addItem((item) =>
+			submenu.addItem((item) =>
 				item
 					.setTitle(d.name)
 					.setChecked(project.domain === d.id)
 					.onClick(() => pickDomain(project, d.id)),
 			);
 		}
-		menu.showAtMouseEvent(e);
 	}
 	function pickDomain(project: Project, domainId: string | undefined) {
 		if (project.domain === domainId) return;
 		setProjectDomain(index, project, domainId);
 	}
 
-	function currentDomainName(project: Project): string | undefined {
-		if (!project.domain) return undefined;
-		return feed.domains.find((d) => d.id === project.domain)?.name;
+	// ── Context menus (spec §5): the destructive / less-frequent actions live here
+	// rather than as always-visible icons, keeping the rows clean. ──
+	function openDomainMenu(domain: Domain, e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("Rename")
+				.setIcon("pencil")
+				.onClick(() => startRename(domain)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(domain.description ? "Edit description" : "Add description")
+				.setIcon("text")
+				.onClick(() => editDescription(domain, true)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Add project")
+				.setIcon("plus")
+				.onClick(() => createProject(domain.id)),
+		);
+		menu.addSeparator();
+		// Domains never archive: the only status swing is active⇄inactive.
+		menu.addItem((item) =>
+			item
+				.setTitle(
+					statusOf(domain) === "active" ? "Set inactive" : "Set active",
+				)
+				.setIcon("circle-dot")
+				.onClick(() => toggleStatus(domain, true)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Status history…")
+				.setIcon("history")
+				.onClick(() => openHistory(domain)),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Delete")
+				.setIcon("trash-2")
+				.setWarning(true)
+				.onClick(() => deleteDomain(domain)),
+		);
+		menu.showAtMouseEvent(e);
+	}
+
+	function openProjectMenu(project: Project, e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("Rename")
+				.setIcon("pencil")
+				.onClick(() => startRename(project)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle(project.description ? "Edit description" : "Add description")
+				.setIcon("text")
+				.onClick(() => editDescription(project, false)),
+		);
+		// Change domain — a nested submenu of every domain (+ None).
+		menu.addItem((item) => {
+			item.setTitle("Change domain").setIcon("panel-top");
+			// @ts-expect-error setSubmenu is available on Obsidian's MenuItem.
+			addDomainPickerItems(item.setSubmenu(), project);
+		});
+		menu.addSeparator();
+		// The toggle target mirrors toggleStatus: an active project drops to the
+		// last non-active state it held (inactive by default), else back to active.
+		menu.addItem((item) =>
+			item
+				.setTitle(
+					statusOf(project) === "active"
+						? `Set ${STATUS_LABEL[lastNonActive(project)].toLowerCase()}`
+						: "Set active",
+				)
+				.setIcon("circle-dot")
+				.onClick(() => toggleStatus(project, false)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Status history…")
+				.setIcon("history")
+				.onClick(() => openHistory(project)),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Delete")
+				.setIcon("trash-2")
+				.setWarning(true)
+				.onClick(() => deleteProject(project)),
+		);
+		menu.showAtMouseEvent(e);
 	}
 
 	// ── Open the markdown file (ctrl/⌘-click) ──
@@ -244,46 +341,79 @@
 		openBacklogFiltered([project.name], project.name);
 	}
 
-	// ── Create ──
-	async function createDomain() {
-		const name = window.prompt("New domain name")?.trim();
-		if (!name) return;
-		const clash = index.nameCollision(name);
-		if (clash) {
-			window.alert(`"${name}" collides with "${clash}".`);
-			return;
-		}
-		await index.createDomain(name);
+	// ── Create ── (native modals — Obsidian's sandbox disables window.prompt)
+	function createDomain() {
+		new PromptModal(app, {
+			title: "New domain",
+			placeholder: "Domain name",
+			cta: "Create",
+			onSubmit: (name) => {
+				const clash = index.nameCollision(name);
+				if (clash) {
+					window.alert(`"${name}" collides with "${clash}".`);
+					return;
+				}
+				void index.createDomain(name);
+			},
+		}).open();
 	}
-	async function createProject(domainId?: string) {
-		const name = window.prompt("New project name")?.trim();
-		if (!name) return;
-		const clash = index.nameCollision(name);
-		if (clash) {
-			window.alert(`"${name}" collides with "${clash}".`);
-			return;
-		}
-		await index.createProject(name, domainId);
+	function createProject(domainId?: string) {
+		new PromptModal(app, {
+			title: "New project",
+			placeholder: "Project name",
+			cta: "Create",
+			onSubmit: (name) => {
+				const clash = index.nameCollision(name);
+				if (clash) {
+					window.alert(`"${name}" collides with "${clash}".`);
+					return;
+				}
+				void index.createProject(name, domainId);
+			},
+		}).open();
+	}
+
+	// ── Description (either kind) — edited via a native prompt modal. ──
+	function editDescription(e: Project | Domain, isDomain: boolean) {
+		new PromptModal(app, {
+			title: `Description — ${e.name}`,
+			placeholder: "A short blurb",
+			initial: e.description,
+			cta: "Save",
+			allowEmpty: true,
+			onSubmit: (desc) => {
+				if (isDomain) setDomainDescription(index, e as Domain, desc);
+				else setProjectDescription(index, e as Project, desc);
+			},
+		}).open();
 	}
 
 	// ── Delete (spec §4.4 — allowed, with a dangling-reference warning) ──
+	// Obsidian's sandbox disables window.confirm, so both route through a native
+	// ConfirmModal.
 	function deleteProject(project: Project) {
-		const ok = window.confirm(
-			`Delete project "${project.name}"?\n\n` +
+		new ConfirmModal(app, {
+			title: `Delete project "${project.name}"?`,
+			message:
 				`Archiving is usually better. Any daily-note tags naming this ` +
 				`project (including its aliases) will become dangling references — ` +
 				`they'll still show by name but lose their color.`,
-		);
-		if (ok) void index.deleteProject(project.name);
+			cta: "Delete",
+			danger: true,
+			onConfirm: () => void index.deleteProject(project.name),
+		}).open();
 	}
 	function deleteDomain(domain: Domain) {
-		const ok = window.confirm(
-			`Delete domain "${domain.name}"?\n\n` +
+		new ConfirmModal(app, {
+			title: `Delete domain "${domain.name}"?`,
+			message:
 				`Archiving is usually better. Any daily-note tags naming this ` +
 				`domain (including its aliases), and projects linked to it, will ` +
 				`become dangling references.`,
-		);
-		if (ok) void index.deleteDomain(domain.name);
+			cta: "Delete",
+			danger: true,
+			onConfirm: () => void index.deleteDomain(domain.name),
+		}).open();
 	}
 
 	function isEditing(e: Project | Domain): boolean {
@@ -353,7 +483,7 @@
 			title="New domain"
 			onclick={(e) => {
 				e.stopPropagation();
-				void createDomain();
+				createDomain();
 			}}
 			aria-label="New domain"
 		>
@@ -364,7 +494,15 @@
 	<div class="pv-scroll">
 		{#each domainRows as row (row.domain.id)}
 			<section class="domain-group">
-				<header class="domain-header">
+				<!-- The whole header is one interactive object: hovering highlights the
+				     full line, right-click opens the context menu (change status, add
+				     project, delete, …). Only color and backlog stay as inline icons. -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<header
+					class="domain-header"
+					class:dim={statusOf(row.domain) !== "active"}
+					oncontextmenu={(e) => openDomainMenu(row.domain, e)}
+				>
 					<span
 						class="domain-accent"
 						style={`background-color: ${row.domain.color || "var(--text-faint)"};`}
@@ -392,10 +530,13 @@
 					{:else}
 						<button
 							class="domain-name"
-							class:dim={statusOf(row.domain) !== "active"}
-							title="Click to rename · Ctrl/⌘-click to open file"
+							title="Click to rename · Ctrl/Cmd-click to open file · Right-click for more"
 							onclick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) openFile(row.domain, e); else startRename(row.domain); }}
 						>{row.domain.name}</button>
+					{/if}
+
+					{#if row.domain.description}
+						<span class="row-desc" title={row.domain.description}>{row.domain.description}</span>
 					{/if}
 
 					{#if statusOf(row.domain) !== "active"}
@@ -414,30 +555,16 @@
 							oninput={(e) => pickColor(row.domain, e.currentTarget.value)} />
 					</label>
 
-					<!-- Status: click toggles active⇄inactive (today); long-press opens
-					     the history overlay. Domains never archive. -->
-					<button class="icon-btn" title="Toggle status · long-press for history"
-						use:longpress={{ duration: 450, onLongpress: () => openHistory(row.domain) }}
-						onclick={(e) => { e.stopPropagation(); toggleStatus(row.domain, true); }} aria-label="Change status">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-					</button>
-
 					<!-- Backlog -->
 					<button class="icon-btn" title="View this domain's backlog"
 						onclick={(e) => { e.stopPropagation(); backlogForDomain(row); }} aria-label="View backlog">
 						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
 					</button>
 
-					<!-- Add project to this domain -->
-					<button class="icon-btn" title="New project in this domain"
-						onclick={(e) => { e.stopPropagation(); void createProject(row.domain.id); }} aria-label="New project">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-					</button>
-
-					<!-- Delete -->
-					<button class="icon-btn danger" title="Delete domain"
-						onclick={(e) => { e.stopPropagation(); deleteDomain(row.domain); }} aria-label="Delete domain">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+					<!-- More actions (also available via right-click on the row) -->
+					<button class="icon-btn" title="More actions"
+						onclick={(e) => openDomainMenu(row.domain, e)} aria-label="More actions">
+						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
 					</button>
 				</header>
 
@@ -446,7 +573,7 @@
 				{:else}
 					<ul class="project-list">
 						{#each row.projects as project (project.source.path)}
-							{@render projectRow(project, true)}
+							{@render projectRow(project)}
 						{/each}
 					</ul>
 				{/if}
@@ -461,13 +588,13 @@
 					<span class="domain-count">{orphanRows.length}</span>
 					<span class="pv-spacer"></span>
 					<button class="icon-btn" title="New project"
-						onclick={(e) => { e.stopPropagation(); void createProject(undefined); }} aria-label="New project">
+						onclick={(e) => { e.stopPropagation(); createProject(undefined); }} aria-label="New project">
 						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 					</button>
 				</header>
 				<ul class="project-list">
 					{#each orphanRows as project (project.source.path)}
-						{@render projectRow(project, false)}
+						{@render projectRow(project)}
 					{/each}
 				</ul>
 			</section>
@@ -538,8 +665,9 @@
 	</Portal>
 {/if}
 
-{#snippet projectRow(project: Project, inDomain: boolean)}
-	<li class="project-row">
+{#snippet projectRow(project: Project)}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<li class="project-row" oncontextmenu={(e) => openProjectMenu(project, e)}>
 		<span class="project-bullet"></span>
 
 		{#if isEditing(project)}
@@ -559,9 +687,13 @@
 			<button
 				class="project-name"
 				class:dim={statusOf(project) !== "active"}
-				title="Click to rename · Ctrl/⌘-click to open file"
+				title="Click to rename · Ctrl/Cmd-click to open file · Right-click for more"
 				onclick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) openFile(project, e); else startRename(project); }}
 			>{project.name}</button>
+		{/if}
+
+		{#if project.description}
+			<span class="row-desc" title={project.description}>{project.description}</span>
 		{/if}
 
 		{#if statusOf(project) !== "active"}
@@ -570,37 +702,20 @@
 
 		<span class="pv-spacer"></span>
 
-		<!-- Property controls — always visible. On this page the properties (status,
-		     domain link) are the point, not the name, so unlike the backlog these
-		     don't hide until hover. -->
+		<!-- The frequent action (open backlog) stays inline; the rest — change
+		     domain, change status, delete — live in the context menu (right-click
+		     the row, or the ⋯ button). -->
 		<div class="row-actions">
-			<!-- Domain link. A project nested under its domain group carries that
-			     context, so this icon is the way to re-home it (or assign one to an
-			     orphan). The domain name itself isn't shown — the group heading is. -->
-			<button class="icon-btn" class:assigned={currentDomainName(project)}
-				title={currentDomainName(project) ? "Change domain" : "Assign a domain"}
-				onclick={(e) => openDomainPicker(project, e)} aria-label="Change domain">
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-			</button>
-
-			<!-- Status: click toggles active⇄non-active (today); long-press opens
-			     the full history overlay. -->
-			<button class="icon-btn" title="Toggle status · long-press for history"
-				use:longpress={{ duration: 450, onLongpress: () => openHistory(project) }}
-				onclick={(e) => { e.stopPropagation(); toggleStatus(project, false); }} aria-label="Change status">
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-			</button>
-
 			<!-- Backlog -->
 			<button class="icon-btn" title="View this project's backlog"
 				onclick={(e) => { e.stopPropagation(); backlogForProject(project); }} aria-label="View backlog">
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
 			</button>
 
-			<!-- Delete -->
-			<button class="icon-btn danger" title="Delete project"
-				onclick={(e) => { e.stopPropagation(); deleteProject(project); }} aria-label="Delete project">
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			<!-- More (context menu) -->
+			<button class="icon-btn" title="More actions"
+				onclick={(e) => openProjectMenu(project, e)} aria-label="More actions">
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
 			</button>
 		</div>
 	</li>
@@ -670,6 +785,12 @@
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 	}
+	/* Obsidian's base button styling can collapse an inline SVG to 0 width; pin
+	   the icon so the reorder/add-domain glyphs actually render. */
+	.add-btn svg {
+		min-width: min-content;
+		flex-shrink: 0;
+	}
 
 	/* ── Scroll body ── */
 	.pv-scroll {
@@ -693,11 +814,19 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 7px 4px;
+		padding: 7px 8px;
+		border-radius: 7px;
 		position: sticky;
 		top: 0;
 		background: var(--background-primary);
 		z-index: 1;
+	}
+	/* The whole domain row is one hover object (spec §5). */
+	.domain-header:hover {
+		background: var(--background-modifier-hover);
+	}
+	.domain-header.dim {
+		opacity: 0.55;
 	}
 	.domain-accent {
 		width: 4px;
@@ -726,7 +855,6 @@
 		letter-spacing: 0;
 		cursor: default;
 	}
-	.domain-name.dim,
 	.project-name.dim {
 		opacity: 0.55;
 	}
@@ -734,6 +862,20 @@
 		font-size: 11px;
 		color: var(--text-faint);
 		font-variant-numeric: tabular-nums;
+	}
+	/* Inline description blurb (domains + projects), shown right after the name.
+	   Truncates so a long blurb never pushes the action icons off the row. */
+	.row-desc {
+		font-size: 12px;
+		font-weight: 400;
+		color: var(--text-muted);
+		text-transform: none;
+		letter-spacing: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+		flex: 0 1 auto;
 	}
 	.status-tag {
 		font-size: 10px;
@@ -870,13 +1012,6 @@
 	.icon-btn:disabled {
 		opacity: 0.3;
 		cursor: default;
-	}
-	.icon-btn.assigned {
-		color: var(--text-muted);
-	}
-	.icon-btn.danger:hover {
-		color: var(--text-error, #e05555);
-		border-color: var(--text-error, #e05555);
 	}
 
 	/* Color control: the swatch sits in an icon-btn; the native <input type=color>

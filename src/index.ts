@@ -887,8 +887,8 @@ export class KairosIndex {
 	 * path from the name, writes the file, and folds it into state so the page
 	 * shows it before the vault event echoes back.
 	 */
-	async createProject(name: string, domainId?: string): Promise<void> {
-		const project = newProject(name, this.today(), domainId);
+	async createProject(name: string, domainId?: string, description = ""): Promise<void> {
+		const project = newProject(name, this.today(), domainId, description);
 		const path = `${this.deps.settings.projectsFolder}/${name}.md`;
 		project.source = { path, line: 0 };
 		await this.deps.write(path, serializeProjectFile(project));
@@ -899,8 +899,8 @@ export class KairosIndex {
 	}
 
 	/** Create a new domain file (next order = current count). */
-	async createDomain(name: string): Promise<void> {
-		const domain = newDomain(name, this.today(), this.state.domains.size);
+	async createDomain(name: string, description = ""): Promise<void> {
+		const domain = newDomain(name, this.today(), this.state.domains.size, description);
 		const path = `${this.deps.settings.domainsFolder}/${name}.md`;
 		domain.source = { path, line: 0 };
 		await this.deps.write(path, serializeDomainFile(domain));

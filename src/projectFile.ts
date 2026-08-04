@@ -53,6 +53,7 @@ interface RawFrontmatter {
 	tags?: unknown;
 	id?: unknown;
 	aliases?: unknown;
+	description?: unknown;
 	domain_id?: unknown;
 	order?: unknown;
 	color?: unknown;
@@ -151,6 +152,7 @@ export function parseProject(content: string, path: string): Project | null {
 		id: asString(fm.id) ?? "",
 		name: nameFromPath(path),
 		aliases: asStringList(fm.aliases),
+		description: asString(fm.description) ?? "",
 		...(domain ? { domain } : {}),
 		history,
 		archived: deriveArchived(history),
@@ -173,6 +175,7 @@ export function parseDomain(content: string, path: string): Domain | null {
 		id: asString(fm.id) ?? "",
 		name: nameFromPath(path),
 		aliases: asStringList(fm.aliases),
+		description: asString(fm.description) ?? "",
 		order,
 		color: asString(fm.color) ?? "",
 		history,
@@ -199,6 +202,7 @@ export function serializeProjectFrontmatter(project: Project): string {
 		tags: [PROJECT_TAG],
 		id: project.id,
 		aliases: project.aliases,
+		description: project.description,
 		domain_id: project.domain ?? null,
 		status: statusMap(project.history),
 	};
@@ -211,6 +215,7 @@ export function serializeDomainFrontmatter(domain: Domain): string {
 		tags: [DOMAIN_TAG],
 		id: domain.id,
 		aliases: domain.aliases,
+		description: domain.description,
 		order: domain.order,
 		color: domain.color,
 		status: statusMap(domain.history),
@@ -238,12 +243,18 @@ function freshId(): string {
  * A newly-created project, initialized `active` as of `today` (spec §4.4). Name
  * is the caller's responsibility to keep collision-free (`renameGuard`).
  */
-export function newProject(name: string, today: ISODate, domainId?: string): Project {
+export function newProject(
+	name: string,
+	today: ISODate,
+	domainId?: string,
+	description = "",
+): Project {
 	const history: StatusRecord[] = [{ date: today, status: "active" }];
 	return {
 		id: freshId(),
 		name: name.trim(),
 		aliases: [],
+		description,
 		...(domainId ? { domain: domainId } : {}),
 		history,
 		archived: false,
@@ -252,12 +263,18 @@ export function newProject(name: string, today: ISODate, domainId?: string): Pro
 }
 
 /** A newly-created domain, initialized `active` as of `today`. Durable: never archived. */
-export function newDomain(name: string, today: ISODate, order: number): Domain {
+export function newDomain(
+	name: string,
+	today: ISODate,
+	order: number,
+	description = "",
+): Domain {
 	const history: StatusRecord[] = [{ date: today, status: "active" }];
 	return {
 		id: freshId(),
 		name: name.trim(),
 		aliases: [],
+		description,
 		order,
 		color: "",
 		history,
@@ -375,6 +392,14 @@ export function renameGuard(
 		if (hit) return hit;
 	}
 	return null;
+}
+
+/** Set an entity's free-text description ("" clears it). Works for either kind. */
+export function setDescription<T extends Project | Domain>(
+	entity: T,
+	description: string,
+): T {
+	return { ...entity, description: description.trim() };
 }
 
 /** Set a domain's color (any CSS color string; "" clears it). */

@@ -16,6 +16,7 @@ import {
 	appendStatus,
 	renameWithAlias,
 	setColor,
+	setDescription,
 	setDomain,
 	setOrder,
 } from "./projectFile";
@@ -40,6 +41,24 @@ export function setDomainStatus(
 	status: LifecycleState,
 ): void {
 	index.applyDomainEdit(appendStatus(domain, date, status));
+}
+
+// ── description (either kind) ──
+
+export function setProjectDescription(
+	index: KairosIndex,
+	project: Project,
+	description: string,
+): void {
+	index.applyProjectEdit(setDescription(project, description));
+}
+
+export function setDomainDescription(
+	index: KairosIndex,
+	domain: Domain,
+	description: string,
+): void {
+	index.applyDomainEdit(setDescription(domain, description));
 }
 
 // ── domain-only metadata ──
