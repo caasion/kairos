@@ -89,6 +89,7 @@ interface Project {
   id: string;
   name: string;
   aliases: string[];
+  description: string; // free-text blurb, shown inline on the projects page
   domain?: string; // at most one, by name
   history: StatusRecord[];
   archived: boolean;
@@ -99,6 +100,7 @@ interface Domain {
   id: string;
   name: string;
   aliases: string[];
+  description: string; // free-text blurb, shown inline on the projects page
   order: number;
   color: string;
   history: StatusRecord[];
