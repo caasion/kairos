@@ -804,6 +804,7 @@
 		font-style: italic;
 		padding: 30px 8px;
 		text-align: center;
+		pointer-events: none;
 	}
 
 	/* ── Domain group ── */
