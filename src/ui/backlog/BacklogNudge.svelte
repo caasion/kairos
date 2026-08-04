@@ -176,6 +176,7 @@
 		background: transparent;
 		color: var(--nudge-accent);
 		cursor: pointer;
+		box-shadow: none;
 	}
 	.nudge-insert:hover {
 		background: var(--nudge-accent);

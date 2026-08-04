@@ -23,10 +23,11 @@
 		onEditAssoc: (task: ResolvedTask, anchor: DOMRect) => void;
 		onNavigate: (assoc: Association) => void;
 		onCreate: () => void;
-		// Jump to this task's block in the Day view (badge click).
+		// Jump to this task's block in the Day view (badge ctrl+click).
 		onReveal: (task: ResolvedTask) => void;
-		// Unnest: move this task out of its timed block into Unscheduled.
-		onUnnest: (task: ResolvedTask) => void;
+		// Open the block picker to change a nested task's parent block, anchored at
+		// `rect`. Wired only for non-colocated tasks (a checkable block can't move).
+		onNest: (task: ResolvedTask, anchor: DOMRect) => void;
 		// A long-press on a regular task began a grid drag-to-reschedule.
 		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
 		// A long-press on a colocated task (checkable block) began a block drag.
@@ -51,7 +52,7 @@
 		onNavigate,
 		onCreate,
 		onReveal,
-		onUnnest,
+		onNest,
 		onTaskGrab,
 		onBlockGrab,
 		dragTaskLine,
@@ -111,50 +112,46 @@
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
+				onNest={!task.colocated && onNest ? (rect) => onNest(task, rect) : undefined}
+				nestLabel="Change parent block"
+				meta={task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
 				onGrab={task.colocated
 					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined
 					: onTaskGrab ? (e) => grabOf(task, e) : undefined}
 			/>
 
-			{#if task.colocated}
-				<!-- Colocated = a checkable block. Long-press starts a block drag
-				     that carries the block + its children to the new day/row. -->
-				<div class="grid-cell-badge-row">
-					<button
-						class="grid-cell-badge grid-cell-badge-block"
-						title="Open in Day view"
-						onclick={() => onReveal(task)}
-					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-						<span class="grid-cell-badge-label">
-							{badgeLabel(task)}
-							<span class="grid-cell-badge-block-number">
-								{task.block.tasks.length > 0 ? ` +${task.block.tasks.length}` : ""}
-							</span>
+			<!-- The block-nesting badge renders inside the Task (via its `meta`
+			     snippet) so it shares the row's hover region and lines up with the
+			     association line. Styled with `.grid-cell-badge` to mirror it. -->
+			{#snippet blockBadge()}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="grid-cell-badge linked"
+					title="Ctrl+click to open in Day view"
+					onclick={(e) => { if (e.ctrlKey || e.metaKey) onReveal(task); }}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+					<span class="grid-cell-badge-label">
+						{badgeLabel(task)}
+						<span class="grid-cell-badge-block-number">
+							{task.block.tasks.length > 0 ? ` +${task.block.tasks.length}` : ""}
 						</span>
-					</button>
+					</span>
 				</div>
-			{:else if isNested(task)}
-				<!-- Nested task: show the block time badge + unnest button. -->
-				<div class="grid-cell-badge-row">
-					<button
-						class="grid-cell-badge"
-						title="Open in Day view"
-						onclick={() => onReveal(task)}
-					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-						<span class="grid-cell-badge-label">{badgeLabel(task)}</span>
-					</button>
-					<button
-						class="grid-cell-unnest"
-						title="Unnest — move to Unscheduled"
-						aria-label="Unnest task"
-						onclick={() => onUnnest(task)}
-					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-					</button>
+			{/snippet}
+			{#snippet nestedBadge()}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="grid-cell-badge linked"
+					title="Ctrl+click to open in Day view"
+					onclick={(e) => { if (e.ctrlKey || e.metaKey) onReveal(task); }}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+					<span class="grid-cell-badge-label">{badgeLabel(task)}</span>
 				</div>
-			{/if}
+			{/snippet}
 		</div>
 	{/each}
 
@@ -193,17 +190,16 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
-		align-self: flex-start;
 		margin-top: 2px;
 		padding: 2px 6px;
 		font-size: 11px;
 		color: var(--text-muted);
 		background: transparent;
-		border: 1px dashed var(--background-modifier-border);
 		border-radius: 5px;
 		cursor: pointer;
 		opacity: 0;
 		transition: opacity 0.1s;
+		box-shadow: none;
 	}
 
 	.grid-cell:hover .grid-cell-add {
@@ -220,50 +216,32 @@
 		flex-shrink: 0;
 	}
 
-	/* ── Nested-task block badge + unnest ── */
+	/* ── Nested-task block badge ── */
 	.grid-cell-item {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
 	}
 
-	.grid-cell-badge-row {
+	/* The block association mirrors Task's association line (.k-task-assoc): a
+	   flat icon + label in muted text, aligned under the task text past the
+	   checkbox. Ctrl+click reveals it in the Day view — signalled, like the assoc
+	   line, by a pointer cursor and a hover underline on `.linked`. No pill, no
+	   hover fill — it reads as the same kind of metadata as the assoc tag. */
+	.grid-cell-badge {
 		display: flex;
 		align-items: center;
 		gap: 3px;
-		/* Align under the task text, past the checkbox (matches Task's assoc line). */
-		padding-left: 28px;
-		min-width: 0;
-	}
-
-	.grid-cell-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		max-width: 100%;
-		padding: 0 0;
-		height: 16px;
+		padding-left: 24px;
 		font-size: 10px;
 		color: var(--text-muted);
-		background: transparent;
-		box-shadow: none;
-		border: none;
-		border-radius: 7px;
-		cursor: pointer;
 		min-width: 0;
 	}
-	.grid-cell-badge:hover {
-		color: var(--text-normal);
-		background: var(--background-modifier-hover);
+	.grid-cell-badge.linked {
+		cursor: pointer;
 	}
-
-	/* Colocated block badge gets a slightly warmer tint to distinguish it
-	   from a plain nested-task time badge. */
-	.grid-cell-badge-block {
-		background: transparent;
-	}
-	.grid-cell-badge-block:hover {
-		background: var(--background-modifier-hover);
+	.grid-cell-badge.linked:hover .grid-cell-badge-label {
+		text-decoration: underline;
 	}
 	.grid-cell-badge svg {
 		flex-shrink: 0;
@@ -280,29 +258,5 @@
 			var(--interactive-accent) 20%,
 			var(--background-modifier-border)
 		);
-	}
-
-	.grid-cell-unnest {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 16px;
-		height: 16px;
-		padding: 0;
-		border: none;
-		background: transparent;
-		color: var(--text-faint);
-		cursor: pointer;
-		flex-shrink: 0;
-		opacity: 0;
-		transition: opacity 0.1s;
-	}
-	.grid-cell-item:hover .grid-cell-unnest {
-		opacity: 1;
-	}
-	.grid-cell-unnest:hover {
-		color: var(--text-error);
-		background: var(--background-modifier-hover);
-		border-radius: 4px;
 	}
 </style>

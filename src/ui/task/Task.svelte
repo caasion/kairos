@@ -14,6 +14,7 @@
 	// must survive that reparse except the transient "am I editing" flag.
 
 	import { Menu, Notice } from "obsidian";
+	import type { Snippet } from "svelte";
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
@@ -43,6 +44,14 @@
 		// `rect`. Omitted for a colocated (checkable-block) task, which can't be
 		// lifted off its line — the parent leaves it undefined there.
 		onNest?: (rect: DOMRect) => void;
+		// Menu/tooltip label for the nest action. Callers where the task already has
+		// a parent block (e.g. the grid's scheduled tasks) pass "Change parent
+		// block"; the default fits a task being nested for the first time.
+		nestLabel?: string;
+		// Extra metadata rendered inside the row, beneath the text on the same line
+		// as the association (so it shares the row's hover region). The grid uses
+		// this for the block-nesting badge; it styles it with `.k-task-assoc`.
+		meta?: Snippet;
 		// A long-press on the task body (never the checkbox) began a drag-to-nest.
 		// The parent takes over from here. Omitted where dragging isn't supported
 		// (e.g. a colocated task, or the grid) — then the body is just static.
@@ -66,6 +75,8 @@
 		onNavigate,
 		onEditAssoc,
 		onNest,
+		nestLabel = "Nest under block",
+		meta,
 		onGrab,
 		onSetStatus,
 		onSetText,
@@ -218,7 +229,7 @@
 		if (onNest) {
 			menu.addItem((item) =>
 				item
-					.setTitle("Nest under block")
+					.setTitle(nestLabel)
 					.setIcon("between-vertical-start")
 					.onClick(() => requestNest()),
 			);
@@ -282,8 +293,8 @@
 		{#if onNest}
 			<button
 				class="k-task-action"
-				title="Nest under block"
-				aria-label="Nest under block"
+				title={nestLabel}
+				aria-label={nestLabel}
 				onclick={requestNest}
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 12H9"/><path d="m9 12 3-3"/><path d="m9 12 3 3"/></svg>
@@ -357,6 +368,10 @@
 			<span class="k-task-assoc-label">{assocLabel}</span>
 		</div>
 	{/if}
+
+	<!-- Extra metadata (e.g. the grid's block-nesting badge), inside the row so it
+	     shares the hover region and sits on the same line as the association. -->
+	{@render meta?.()}
 </div>
 
 <style>

@@ -30,11 +30,13 @@
 		deleteTask,
 		moveBlockAcrossDays,
 		moveTaskAcrossDays,
+		nestTaskUnderBlock,
 		setBlockAssoc,
 		setTaskStatus,
 		setTaskText,
 		unnestTask,
 	} from "../../writer";
+	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import type { GridDay, GridSnapshot, KairosIndex, Resolver } from "../../index";
 	import { hitTestGridCell, type BlockDragState, type GridDropSlot, type TaskDragState } from "../timeline/taskDrag";
 	import { navigateToAssociation } from "../../navigate";
@@ -59,6 +61,7 @@
 	} from "../../dayNote";
 	import GridCell from "./GridCell.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
@@ -261,15 +264,6 @@
 	// Jump to a nested task's block in the Day view (badge click).
 	function onReveal(task: ResolvedTask) {
 		reveal(task.date, task.block.source.line);
-	}
-
-	// Unnest a task: move it out of its timed block into that day's Unscheduled.
-	// The pure transform materializes any inherited association, so the task stays
-	// in this same grid row afterward.
-	function onUnnest(task: ResolvedTask) {
-		const day = dayOf(task.date);
-		if (!day || day.path === null) return;
-		commit(task.date, day.path, unnestTask(day.blocks, task.block, task, day.path));
 	}
 
 	// A unique negative line per unsaved task so keyed rendering doesn't collide
@@ -544,6 +538,41 @@
 		return rest as T;
 	}
 
+	// ── Block picker ("change parent block" — parent-owned like the assoc one) ──
+	// Opened from a nested task's context menu; picking a block moves the task into
+	// it via nestTaskUnderBlock. Held here (not in the cell) so it isn't clipped.
+	let blockPickerTask = $state<ResolvedTask | null>(null);
+	let blockPickerAnchor = $state<DOMRect | null>(null);
+
+	// The candidate blocks for the picked task's day, minus its current owner
+	// (nesting where it already lives is a no-op the picker shouldn't offer).
+	const blockPickerOptions = $derived.by<BlockOption[]>(() => {
+		if (!blockPickerTask) return [];
+		const day = dayOf(blockPickerTask.date);
+		return day ? blockOptions(day.blocks, blockPickerTask.block.source.line) : [];
+	});
+
+	function openBlockPicker(task: ResolvedTask, anchor: DOMRect) {
+		blockPickerTask = task;
+		blockPickerAnchor = anchor;
+	}
+	function closeBlockPicker() {
+		blockPickerTask = null;
+		blockPickerAnchor = null;
+	}
+	function onPickBlock(option: BlockOption) {
+		const task = blockPickerTask;
+		closeBlockPicker();
+		if (!task) return;
+		const day = dayOf(task.date);
+		if (!day || day.path === null) return;
+		commit(
+			task.date,
+			day.path,
+			nestTaskUnderBlock(day.blocks, task.block, task, option.block),
+		);
+	}
+
 	// ── Header popovers (calendar + span controls) ──
 	let showCalendar = $state(false);
 	let calendarValue = $state<Date>(dateFromISO(todayISO()));
@@ -781,7 +810,7 @@
 								onEditAssoc={openTaskAssoc}
 								{onNavigate}
 								{onReveal}
-								{onUnnest}
+								onNest={openBlockPicker}
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
 								onBlockGrab={onBlockGrab}
@@ -812,6 +841,15 @@
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}
+	/>
+{/if}
+
+{#if blockPickerTask && blockPickerAnchor}
+	<BlockPicker
+		options={blockPickerOptions}
+		anchor={blockPickerAnchor}
+		onPick={onPickBlock}
+		onClose={closeBlockPicker}
 	/>
 {/if}
 
