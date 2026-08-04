@@ -8,10 +8,14 @@
 	// arrow. Its background carries a ~10% accent tint so surfaced intentions are
 	// deliberately in-your-face.
 	//
-	// Purely presentational: it owns no data and no writes. Every action is an
-	// intent forwarded to the parent view, which holds the day + index and
-	// persists. The parent supplies the resolved association for display/tint.
+	// Presentation deliberately mirrors the task row (Task.svelte): the text uses
+	// the same font size, the association shows on its own line beneath the text
+	// (icon + canonical name, ctrl-click to open), and the snooze action lives in
+	// a hover-revealed action bar top-right — not a persistent chip. Purely
+	// presentational: it owns no data and no writes; every action is an intent
+	// forwarded to the parent, which holds the day + index and persists.
 
+	import { Menu } from "obsidian";
 	import type { Association, BacklogEntry } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 
@@ -25,7 +29,7 @@
 		onResurfaceTomorrow: (entry: BacklogEntry) => void;
 		/** Open a datepicker to resurface at a chosen date; anchored to the rect. */
 		onResurfaceAt: (entry: BacklogEntry, anchor: DOMRect) => void;
-		/** Ctrl-click the association chip → open its project/domain. */
+		/** Ctrl-click the association line → open its project/domain. */
 		onNavigate?: (assoc: Association) => void;
 	}
 
@@ -40,23 +44,31 @@
 
 	const accent = $derived(resolved?.color || "var(--interactive-accent)");
 
-	let menuOpen = $state(false);
-	let menuAnchor = $state<HTMLElement>();
+	// Prefer the resolved canonical name (never an alias); fall back to the raw
+	// tag id — same rule as the task row's association label.
+	const assocLabel = $derived(resolved?.displayName || entry.assoc?.id || "");
+	const canNavigate = $derived(!!(entry.assoc && resolved?.resolved && onNavigate));
 
-	function toggleMenu(event: MouseEvent) {
+	// The snooze button opens Obsidian's native context menu, so it looks and
+	// behaves like every other menu in the app rather than a bespoke popup. The
+	// "at date…" item still hands off to the parent's anchored datepicker.
+	function openSnoozeMenu(event: MouseEvent) {
 		event.stopPropagation();
-		menuAnchor = event.currentTarget as HTMLElement;
-		menuOpen = !menuOpen;
-	}
-	function pickTomorrow(event: MouseEvent) {
-		event.stopPropagation();
-		menuOpen = false;
-		onResurfaceTomorrow(entry);
-	}
-	function pickAtDate(event: MouseEvent) {
-		event.stopPropagation();
-		menuOpen = false;
-		if (menuAnchor) onResurfaceAt(entry, menuAnchor.getBoundingClientRect());
+		const anchor = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("Resurface tomorrow")
+				.setIcon("calendar-arrow-up")
+				.onClick(() => onResurfaceTomorrow(entry)),
+		);
+		menu.addItem((item) =>
+			item
+				.setTitle("Resurface at date…")
+				.setIcon("calendar")
+				.onClick(() => onResurfaceAt(entry, anchor)),
+		);
+		menu.showAtMouseEvent(event);
 	}
 
 	function clickAssoc(event: MouseEvent) {
@@ -75,71 +87,80 @@
 	style={`--nudge-accent: ${accent};`}
 	title="Resurfaced backlog item — click the arrow to schedule it into this day"
 >
-	<!-- The arrow replaces the checkbox: it schedules the entry into the day. -->
-	<button
-		class="nudge-insert"
-		title="Schedule into this day"
-		aria-label="Schedule into this day"
-		onclick={(e) => {
-			e.stopPropagation();
-			onInsert(entry);
-		}}
-	>
-		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-	</button>
+	<!-- Hover action bar, floating top-right over the row — mirrors the task
+	     row's action bar (revealed only on hover). Holds the snooze action. -->
+	<div class="nudge-actions">
+		<button
+			class="nudge-action"
+			title="Resurface later"
+			aria-label="Resurface later"
+			onclick={openSnoozeMenu}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+		</button>
+	</div>
 
-	<span class="nudge-text">{entry.text}</span>
+	<div class="nudge-row">
+		<!-- The arrow replaces the checkbox: it schedules the entry into the day. -->
+		<button
+			class="nudge-insert"
+			title="Schedule into this day"
+			aria-label="Schedule into this day"
+			onclick={(e) => {
+				e.stopPropagation();
+				onInsert(entry);
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+		</button>
 
-	<span class="nudge-spacer"></span>
+		<span class="nudge-text">{entry.text}</span>
+	</div>
 
 	{#if entry.assoc}
-		<button
+		<!-- Association line beneath the text — icon + canonical name, aligned
+		     under the text past the arrow, ctrl-click to open. Same as the task
+		     row's association line. -->
+		<div
 			class="nudge-assoc"
-			title={onNavigate ? "Ctrl-click to open" : undefined}
+			class:domain={entry.assoc.kind === "domain"}
+			class:linked={canNavigate}
+			title={canNavigate ? "Ctrl+click to open" : undefined}
 			onclick={clickAssoc}
 		>
-			{resolved?.displayName || entry.assoc.id}
-		</button>
-	{/if}
-
-	<!-- Resurface (snooze) menu. -->
-	<button
-		class="nudge-snooze"
-		title="Resurface later"
-		aria-label="Resurface later"
-		onclick={toggleMenu}
-	>
-		<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-	</button>
-
-	{#if menuOpen}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="snooze-menu" onclick={(e) => e.stopPropagation()}>
-			<button class="snooze-item" onclick={pickTomorrow}>Resurface tomorrow</button>
-			<button class="snooze-item" onclick={pickAtDate}>Resurface at date…</button>
+			{#if entry.assoc.kind === "domain"}
+				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+			{:else}
+				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+			{/if}
+			<span class="nudge-assoc-label">{assocLabel}</span>
 		</div>
 	{/if}
 </div>
 
-<svelte:window
-	onclick={() => {
-		if (menuOpen) menuOpen = false;
-	}}
-/>
-
 <style>
 	.nudge {
 		display: flex;
-		align-items: center;
-		gap: 6px;
+		flex-direction: column;
+		gap: 1px;
+		padding: 2px 4px;
 		border-radius: 7px;
 		position: relative;
+		min-width: 0;
 		/* ~10% accent tint so surfaced intentions are in-your-face. */
 		background: color-mix(in srgb, var(--nudge-accent) 10%, var(--background-primary));
 		border: 1px solid color-mix(in srgb, var(--nudge-accent) 22%, transparent);
 	}
 	.nudge:hover {
 		background: color-mix(in srgb, var(--nudge-accent) 16%, var(--background-primary));
+	}
+
+	/* ── Row: arrow + text ── */
+	.nudge-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
 	}
 
 	.nudge-insert {
@@ -162,76 +183,78 @@
 	}
 
 	.nudge-text {
-		font-size: 13px;
+		flex: 1;
+		font-size: 12px;
+		line-height: 1.4;
 		color: var(--text-normal);
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.nudge-spacer {
-		flex: 1;
+
+	/* ── Hover action bar (snooze) — mirrors the task row's action bar. ── */
+	.nudge-actions {
+		position: absolute;
+		top: 0;
+		right: 0;
+		display: flex;
+		gap: 2px;
+		padding: 2px;
+		/* Blend into the tinted nudge background so it reads through cleanly. */
+		background: color-mix(in srgb, var(--nudge-accent) 10%, var(--background-primary));
+		opacity: 0;
+		transition: opacity 0.1s;
+		z-index: 2;
+	}
+	.nudge:hover .nudge-actions {
+		opacity: 0.96;
 	}
 
-	.nudge-assoc {
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--text-muted);
-		background: transparent;
-		border: none;
-		padding: 0 2px;
-		cursor: default;
-		max-width: 120px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-
-	.nudge-snooze {
+	.nudge-action {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 20px;
 		width: 20px;
-		flex-shrink: 0;
+		height: 20px;
+		padding: 0;
 		border: none;
-		border-radius: 5px;
+		box-shadow: none;
 		background: transparent;
-		color: var(--text-faint);
+		color: var(--text-muted);
 		cursor: pointer;
 	}
-	.nudge-snooze:hover {
-		background: var(--background-modifier-hover);
+	.nudge-action:hover {
 		color: var(--text-normal);
+		background: var(--background-modifier-hover);
 	}
 
-	.snooze-menu {
-		position: absolute;
-		top: calc(100% + 2px);
-		right: 4px;
-		z-index: 100;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		padding: 4px;
+	/* ── Association line (small text + icon under the text) ── */
+	.nudge-assoc {
 		display: flex;
-		flex-direction: column;
-		min-width: 160px;
+		align-items: center;
+		gap: 3px;
+		padding-left: 24px; /* align under the text, past the 18px arrow + gap */
+		font-size: 10px;
+		color: var(--text-muted);
+		min-width: 0;
 	}
-	.snooze-item {
-		text-align: left;
-		font-size: 12px;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		border-radius: 5px;
-		padding: 6px 8px;
+
+	.nudge-assoc.linked {
 		cursor: pointer;
-		white-space: nowrap;
 	}
-	.snooze-item:hover {
-		background: var(--background-modifier-hover);
+
+	.nudge-assoc.linked:hover .nudge-assoc-label {
+		text-decoration: underline;
+	}
+
+	.nudge-assoc svg {
+		flex-shrink: 0;
+	}
+
+	.nudge-assoc-label {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 </style>

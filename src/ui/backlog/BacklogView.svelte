@@ -570,6 +570,7 @@
 		justify-content: center;
 		height: 22px;
 		width: 22px;
+		min-width: min-content;
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 6px;
 		background: var(--background-primary-alt);
