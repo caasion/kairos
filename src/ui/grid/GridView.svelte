@@ -61,6 +61,7 @@
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
+	import { placeUnderAnchor } from "../floating";
 
 	interface Props {
 		app: App;
@@ -189,7 +190,12 @@
 	let resurfaceEntry = $state<BacklogEntry | null>(null);
 	let resurfaceAnchor = $state<DOMRect | null>(null);
 	let resurfaceValue = $state<Date>(dateFromISO(todayISO()));
+	// Placed off-screen until measured so it never flashes at the anchor before
+	// being clamped into the viewport.
+	let resurfacePopupEl = $state<HTMLElement>();
+	let resurfaceStyle = $state("left: -9999px; top: -9999px;");
 	function onNudgeResurfaceAt(entry: BacklogEntry, anchor: DOMRect) {
+		resurfaceStyle = "left: -9999px; top: -9999px;"; // hide until measured
 		resurfaceEntry = entry;
 		resurfaceAnchor = anchor;
 		resurfaceValue = dateFromISO(entry.resurface ?? todayISO());
@@ -198,6 +204,17 @@
 		resurfaceEntry = null;
 		resurfaceAnchor = null;
 	}
+	// Once the popup renders, measure its real size and clamp it inside the
+	// viewport (flipping above the anchor when a below placement would overflow).
+	$effect(() => {
+		const el = resurfacePopupEl;
+		const anchor = resurfaceAnchor;
+		if (!el || !anchor) return;
+		resurfaceStyle = placeUnderAnchor(anchor, {
+			width: el.offsetWidth,
+			height: el.offsetHeight,
+		});
+	});
 	function onResurfaceAtSelect(picked: Date) {
 		const entry = resurfaceEntry;
 		closeResurfaceAt();
@@ -804,7 +821,8 @@
 	<div
 		class="resurface-popup"
 		use:portal
-		style={`left: ${resurfaceAnchor.left}px; top: ${resurfaceAnchor.bottom + 4}px;`}
+		bind:this={resurfacePopupEl}
+		style={resurfaceStyle}
 		onclick={(e) => e.stopPropagation()}
 	>
 		<Datepicker inline bind:value={resurfaceValue} onselect={onResurfaceAtSelect} />
