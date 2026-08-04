@@ -36,6 +36,7 @@
 		setProjectStatus,
 	} from "../../projectActions";
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
+	import { effectiveStatus } from "../../projectFile";
 	import { DomainReorderModal } from "./DomainReorderModal";
 	import { ConfirmModal, PromptModal } from "./modals";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -69,9 +70,10 @@
 		filter = next;
 	}
 
-	/** An entity's current lifecycle state: the latest status record, or active. */
+	/** An entity's lifecycle state in effect today (future-dated records don't
+	    take effect until their date), or active when none applies. */
 	function statusOf(e: Project | Domain): LifecycleState {
-		return e.history.at(-1)?.status ?? "active";
+		return effectiveStatus(e.history, todayISO());
 	}
 
 	function passesFilter(e: Project | Domain): boolean {
@@ -627,14 +629,19 @@
 				{#if historyRow.history.length === 0}
 					<div class="history-empty">No status changes recorded — defaults to Active.</div>
 				{:else}
+					{@const today = todayISO()}
+					{@const effective = historyRow.history.filter((r) => r.date <= today).at(-1)}
 					<ul class="history-list">
-						{#each [...historyRow.history].reverse() as rec, i}
-							<li class="history-item" class:current={i === 0}>
+						{#each [...historyRow.history].reverse() as rec}
+							{@const isCurrent = rec === effective}
+							{@const isFuture = rec.date > today}
+							<li class="history-item" class:current={isCurrent}>
 								<span class="history-dot" class:active={rec.status === "active"}></span>
 								<span class="history-status">{STATUS_LABEL[rec.status]}</span>
 								<span class="pv-spacer"></span>
 								<span class="history-date">{formatDate(rec.date)}</span>
-								{#if i === 0}<span class="history-badge">current</span>{/if}
+								{#if isCurrent}<span class="history-badge">current</span>
+								{:else if isFuture}<span class="history-badge">scheduled</span>{/if}
 							</li>
 						{/each}
 					</ul>

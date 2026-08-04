@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	appendStatus,
+	effectiveStatus,
 	extractFrontmatter,
 	isDomainFile,
 	isProjectFile,
@@ -19,7 +20,7 @@ import {
 	setDomain,
 	setOrder,
 } from "./projectFile";
-import type { Domain, Project } from "./types";
+import type { Domain, Project, StatusRecord } from "./types";
 
 const PROJECT = `---
 tags:
@@ -96,6 +97,40 @@ describe("parseProject", () => {
 
 	it("returns null for a non-project file", () => {
 		expect(parseProject(DOMAIN, "Domains/X.md")).toBeNull();
+	});
+});
+
+describe("effectiveStatus", () => {
+	const hist = (
+		...rs: [string, "active" | "inactive" | "archived"][]
+	): StatusRecord[] =>
+		rs.map(([date, status]) => ({ date: date as StatusRecord["date"], status }));
+
+	it("defaults to active with no records", () => {
+		expect(effectiveStatus([], "2026-08-04")).toBe("active");
+	});
+
+	it("uses the most recent record on-or-before the as-of date", () => {
+		const h = hist(["2026-01-01", "active"], ["2026-06-01", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("inactive");
+	});
+
+	it("ignores records dated after the as-of date (scheduled changes)", () => {
+		// Currently active; an inactive change is scheduled for Aug 7. As of Aug 4
+		// it must still read active — the future record has not taken effect.
+		const h = hist(["2026-01-01", "active"], ["2026-08-07", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("active");
+		expect(effectiveStatus(h, "2026-08-07")).toBe("inactive");
+	});
+
+	it("treats a record dated exactly on the as-of date as in effect", () => {
+		const h = hist(["2026-08-04", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("inactive");
+	});
+
+	it("returns active when the only records are in the future", () => {
+		const h = hist(["2026-08-07", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("active");
 	});
 });
 

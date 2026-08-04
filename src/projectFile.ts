@@ -8,8 +8,9 @@
 // The `yaml` library is a plain-JS dependency, so this runs under vitest.
 //
 // Status is stored as a `YYYY-MM-DD: state` map in frontmatter and parsed into a
-// chronologically-sorted `StatusRecord[]`. `archived` is derived: a project or
-// domain is archived iff its most recent status record is `archived`.
+// chronologically-sorted `StatusRecord[]`. The state *in effect* is the most
+// recent record dated on-or-before today (future-dated records are scheduled,
+// not yet active); `archived` is derived from that effective state.
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {
@@ -122,9 +123,38 @@ export function parseStatus(v: unknown): StatusRecord[] {
 	return records;
 }
 
-/** Archived iff the most recent status record is `archived`. */
+/**
+ * Today's date as `YYYY-MM-DD` in local time. Kept local rather than imported
+ * from `dayNote` so this module stays vault-free (obsidian-dependency-free) and
+ * runnable under vitest — see the file header.
+ */
+function localTodayISO(): ISODate {
+	const d = new Date();
+	const p = (n: number) => String(n).padStart(2, "0");
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` as ISODate;
+}
+
+/**
+ * The lifecycle state in effect as of `asOf` (default: today): the most recent
+ * record dated on-or-before `asOf`, or "active" when none applies yet. Records
+ * dated in the future are ignored so scheduling a change (e.g. "inactive on
+ * Aug 7") doesn't take effect until that date arrives. History is stored
+ * oldest→newest, so we scan from the end for the first in-range record.
+ */
+export function effectiveStatus(
+	history: StatusRecord[],
+	asOf: ISODate = localTodayISO(),
+): LifecycleState {
+	for (let i = history.length - 1; i >= 0; i--) {
+		const r = history[i];
+		if (r && r.date <= asOf) return r.status;
+	}
+	return "active";
+}
+
+/** Archived iff the status in effect today is `archived`. */
 function deriveArchived(history: StatusRecord[]): boolean {
-	return history.at(-1)?.status === "archived";
+	return effectiveStatus(history) === "archived";
 }
 
 /** Base name of a file path, without extension — the project/domain name. */
