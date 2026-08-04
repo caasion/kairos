@@ -211,6 +211,7 @@
 
 	function openContextMenu(event: MouseEvent) {
 		event.preventDefault();
+		event.stopPropagation();
 		const menu = new Menu();
 
 		menu.addItem((item) =>
