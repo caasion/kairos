@@ -15,6 +15,7 @@ import {
 	serializeDomainFrontmatter,
 	serializeProjectFrontmatter,
 	setColor,
+	setDescription,
 	setDomain,
 	setOrder,
 } from "./projectFile";
@@ -135,21 +136,23 @@ describe("caveat: tab-indented status is invalid YAML", () => {
 
 describe("serialization round-trip", () => {
 	it("project frontmatter round-trips through parse", () => {
-		const original = parseProject(PROJECT, "Projects/Alpha.md")!;
+		const original = { ...parseProject(PROJECT, "Projects/Alpha.md")!, description: "a blurb" };
 		const fm = serializeProjectFrontmatter(original);
 		const reparsed = parseProject(fm, "Projects/Alpha.md")!;
 		expect(reparsed.id).toBe(original.id);
 		expect(reparsed.aliases).toEqual(original.aliases);
 		expect(reparsed.domain).toBe(original.domain);
+		expect(reparsed.description).toBe("a blurb");
 		expect(reparsed.history).toEqual(original.history);
 	});
 
 	it("domain frontmatter round-trips through parse", () => {
-		const original = parseDomain(DOMAIN, "Domains/Health.md")!;
+		const original = { ...parseDomain(DOMAIN, "Domains/Health.md")!, description: "keeping fit" };
 		const fm = serializeDomainFrontmatter(original);
 		const reparsed = parseDomain(fm, "Domains/Health.md")!;
 		expect(reparsed.color).toBe(original.color);
 		expect(reparsed.order).toBe(original.order);
+		expect(reparsed.description).toBe("keeping fit");
 		expect(reparsed.history).toEqual(original.history);
 	});
 });
@@ -279,6 +282,24 @@ describe("file creation", () => {
 		expect(d.order).toBe(2);
 		expect(d.history.at(-1)?.status).toBe("active");
 		expect(d.archived).toBe(false);
+	});
+	it("newProject/newDomain default to an empty description, and accept one", () => {
+		expect(newProject("Solo", "2026-08-03").description).toBe("");
+		expect(newDomain("Craft", "2026-08-03", 0).description).toBe("");
+		expect(newProject("Solo", "2026-08-03", "d-9", "blurb").description).toBe("blurb");
+		expect(newDomain("Craft", "2026-08-03", 0, "blurb").description).toBe("blurb");
+	});
+});
+
+describe("setDescription", () => {
+	it("sets and trims the description without mutating the input", () => {
+		const before = proj();
+		const after = setDescription(before, "  a blurb  ");
+		expect(after.description).toBe("a blurb");
+		expect(before).not.toBe(after);
+	});
+	it('clears with ""', () => {
+		expect(setDescription(dom(), "").description).toBe("");
 	});
 });
 
