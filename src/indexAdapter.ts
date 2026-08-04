@@ -89,8 +89,21 @@ export class IndexAdapter {
 		if (file instanceof TFile) {
 			await app.vault.modify(file, content);
 		} else {
+			// `vault.create` does not create intermediate folders: creating a
+			// project/domain when its folder doesn't exist yet would throw. Ensure
+			// the parent folder first.
+			await this.ensureFolder(app, path);
 			await app.vault.create(path, content);
 		}
+	}
+
+	/** Create the parent folder of `path` if it doesn't already exist. */
+	private async ensureFolder(app: App, path: string): Promise<void> {
+		const slash = path.lastIndexOf("/");
+		if (slash < 0) return; // vault root — always exists
+		const folder = path.slice(0, slash);
+		if (app.vault.getAbstractFileByPath(folder)) return;
+		await app.vault.createFolder(folder);
 	}
 
 	private async renamePath(
