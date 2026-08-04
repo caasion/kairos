@@ -101,6 +101,7 @@
 
 <div class="grid-cell" class:drop-target={isDropTarget}>
 	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
+		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
 			class:dragging-origin={dragTaskLine === task.source.line || (task.colocated && dragBlockLine === task.block.source.line)}
@@ -108,7 +109,12 @@
 		>
 			<Task_
 				{task}
-				{color}
+				color={color ?? tr?.color}
+				association={task.owner}
+				inherited={task.assoc === undefined}
+				resolved={tr}
+				onNavigate={() => task.owner && onNavigate(task.owner)}
+				onEditAssoc={(rect) => onEditAssoc(task, rect)}
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
