@@ -14,7 +14,7 @@
 	// active/inactive for them and the Archived filter shows projects only.
 
 	import type { App } from "obsidian";
-	import { TFile } from "obsidian";
+	import { Menu, TFile } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Unsubscriber } from "svelte/store";
 	import type {
@@ -100,7 +100,6 @@
 
 	// ── Editing state ──
 	let editingName = $state<string | null>(null); // source.path of the row being renamed
-	let domainPickerPath = $state<string | null>(null); // project row whose domain popup is open
 
 	// ── Rename ──
 	function startRename(e: Project | Domain) {
@@ -194,17 +193,29 @@
 	}
 
 	// ── Domain link (project → domain) ──
-	// A small inline popup listing every domain (durable, so none are archived)
-	// plus "None" to clear. The project stores the domain's stable id.
+	// Obsidian's native context menu listing every domain (durable, so none are
+	// archived) plus "None" to clear. The project stores the domain's stable id.
+	// The current selection is shown checked.
 	function openDomainPicker(project: Project, e: MouseEvent) {
 		e.stopPropagation();
-		domainPickerPath = project.source.path;
-	}
-	function closeDomainPicker() {
-		domainPickerPath = null;
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle("None")
+				.setChecked(!project.domain)
+				.onClick(() => pickDomain(project, undefined)),
+		);
+		for (const d of feed.domains) {
+			menu.addItem((item) =>
+				item
+					.setTitle(d.name)
+					.setChecked(project.domain === d.id)
+					.onClick(() => pickDomain(project, d.id)),
+			);
+		}
+		menu.showAtMouseEvent(e);
 	}
 	function pickDomain(project: Project, domainId: string | undefined) {
-		closeDomainPicker();
 		if (project.domain === domainId) return;
 		setProjectDomain(index, project, domainId);
 	}
@@ -281,7 +292,6 @@
 
 	function handleClickOutside() {
 		editingName = null;
-		closeDomainPicker();
 		closeHistory();
 	}
 
@@ -593,23 +603,6 @@
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 			</button>
 		</div>
-
-		<!-- Domain-link popup -->
-		{#if domainPickerPath === project.source.path}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="popup domain-popup" onclick={(e) => e.stopPropagation()}>
-				<button class="status-opt" class:sel={!project.domain}
-					onclick={() => pickDomain(project, undefined)}>None</button>
-				{#each feed.domains as d (d.id)}
-					<button class="status-opt" class:sel={project.domain === d.id}
-						onclick={() => pickDomain(project, d.id)}>
-						<span class="opt-swatch" style={`background:${d.color || "var(--text-faint)"};`}></span>
-						{d.name}
-					</button>
-				{/each}
-			</div>
-		{/if}
 	</li>
 {/snippet}
 
@@ -908,55 +901,6 @@
 		padding: 0;
 		margin: 0;
 		cursor: pointer;
-	}
-
-	/* ── Popups (domain-link picker) ── */
-	.popup {
-		position: absolute;
-		top: calc(100% + 4px);
-		right: 8px;
-		z-index: 100;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		padding: 8px;
-	}
-	.status-opt {
-		font-size: 12px;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		border-radius: 5px;
-		padding: 6px 10px;
-		text-align: left;
-		cursor: pointer;
-	}
-	.status-opt:hover {
-		background: var(--background-modifier-hover);
-	}
-	.status-opt.sel {
-		color: var(--interactive-accent);
-		font-weight: 600;
-	}
-	.domain-popup {
-		display: flex;
-		flex-direction: column;
-		min-width: 150px;
-		max-height: 260px;
-		overflow: auto;
-		padding: 4px;
-	}
-	.domain-popup .status-opt {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-	}
-	.opt-swatch {
-		width: 10px;
-		height: 10px;
-		border-radius: 3px;
-		flex-shrink: 0;
 	}
 
 	/* ── Status history overlay ── */
