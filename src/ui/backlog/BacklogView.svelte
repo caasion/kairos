@@ -343,10 +343,8 @@
 										</button>
 									{/if}
 
-									<span class="entry-spacer"></span>
-
-								<!-- Hover action bar — rectangular, revealed on row hover,
-								     mirroring the task row's action bar. -->
+								<!-- Hover action bar — overlaid on top of the (full-width) text,
+								     revealed on row hover, mirroring the task row's action bar. -->
 								<div class="entry-actions">
 									<!-- Resurface date -->
 									<button
@@ -623,6 +621,8 @@
 	   edit feels like putting the cursor on the item name — no box, no border,
 	   no box-shadow (Obsidian's default button shadow is explicitly killed). */
 	.entry-text {
+		display: block;
+		flex: 1;
 		min-width: 0;
 		font-size: 13px;
 		line-height: 1.4;
@@ -660,10 +660,6 @@
 		box-shadow: none;
 		outline: none;
 	}
-	.entry-spacer {
-		flex: 1;
-	}
-
 	/* ── Resurface metadata line (under the item text) ── */
 	/* Modeled on the task row's association line: a small, muted line indented to
 	   sit under the text (past the bullet). A due date stands out in orange. It's
@@ -701,18 +697,27 @@
 	}
 
 	/* ── Hover action bar (resurface, associate, delete) ── */
-	/* Revealed only on row hover, mirroring the task row. Rectangular-ish and
-	   free of Obsidian's default button box-shadow. */
+	/* Overlaid on top of the full-width text and revealed only on row hover,
+	   mirroring the task row's action bar (same background + opacity). */
 	.entry-actions {
+		position: absolute;
+		top: 50%;
+		right: 8px;
+		transform: translateY(-50%);
 		display: flex;
 		align-items: center;
 		gap: 2px;
 		flex-shrink: 0;
+		padding: 2px;
+		border-radius: 4px;
+		background: var(--background-primary);
 		opacity: 0;
 		transition: opacity 0.1s;
+		pointer-events: none;
 	}
 	.entry-row:hover .entry-actions {
-		opacity: 1;
+		opacity: 0.96;
+		pointer-events: auto;
 	}
 	.entry-action {
 		display: flex;
