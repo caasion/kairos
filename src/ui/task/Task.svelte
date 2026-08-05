@@ -430,6 +430,7 @@
 	.k-task-action:hover {
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+		box-shadow: none;
 	}
 
 	.k-task-action-danger:hover {

@@ -731,6 +731,7 @@
 	.entry-action:hover {
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
+		box-shadow: none;
 	}
 	.entry-action.active {
 		color: var(--text-normal);

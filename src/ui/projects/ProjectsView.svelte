@@ -1016,6 +1016,7 @@
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 		border-color: var(--background-modifier-border);
+		box-shadow: none;
 	}
 	.icon-btn:disabled {
 		opacity: 0.3;
@@ -1103,6 +1104,7 @@
 	.history-x:hover {
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
+		box-shadow: none;
 	}
 	.history-empty {
 		font-size: 12px;
