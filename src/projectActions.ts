@@ -52,6 +52,36 @@ export function setDomainStatus(
 	index.applyDomainEdit(appendStatus(domain, date, status, note));
 }
 
+/**
+ * Author a *bounded* active period on the Gantt in one write: an `active` record
+ * at `start` (carrying the intensity `note`) and an `inactive` record at `end`
+ * that closes it. Composed as nested pure edits so the two records land in a
+ * single entity replacement — no interleaved async writes, and `normalizeHistory`
+ * still owns the invariants (order, one-per-date, consecutive-duplicate collapse).
+ * `end` must be after `start`; the caller (the drag gesture) guarantees that.
+ */
+export function setProjectActivePeriod(
+	index: KairosIndex,
+	project: Project,
+	start: ISODate,
+	end: ISODate,
+	note?: string,
+): void {
+	const withActive = appendStatus(project, start, "active", note);
+	index.applyProjectEdit(appendStatus(withActive, end, "inactive"));
+}
+
+export function setDomainActivePeriod(
+	index: KairosIndex,
+	domain: Domain,
+	start: ISODate,
+	end: ISODate,
+	note?: string,
+): void {
+	const withActive = appendStatus(domain, start, "active", note);
+	index.applyDomainEdit(appendStatus(withActive, end, "inactive"));
+}
+
 export function editProjectStatusRecord(
 	index: KairosIndex,
 	project: Project,
