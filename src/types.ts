@@ -83,6 +83,10 @@ type LifecycleState = "active" | "inactive" | "archived";
 interface StatusRecord {
   date: ISODate;
   status: LifecycleState;
+  // Freeform open-label annotation (e.g. "baseline"/"hard"/"taper"), carrying
+  // intensity or intent. Never logic — same principle as a task's metadata tag.
+  // Meaningful only on `active` records by convention; parsed/serialized verbatim.
+  note?: string;
 }
 
 interface Project {

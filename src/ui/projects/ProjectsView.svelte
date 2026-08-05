@@ -22,9 +22,14 @@
 		ISODate,
 		LifecycleState,
 		Project,
+		StatusRecord,
 	} from "../../types";
 	import type { KairosIndex, ProjectsDomains } from "../../index";
 	import {
+		editDomainStatusRecord,
+		editProjectStatusRecord,
+		removeDomainStatusRecord,
+		removeProjectStatusRecord,
 		renameDomain,
 		renameProject,
 		setDomainColor,
@@ -148,35 +153,87 @@
 	}
 
 	// ── Status history overlay (in-view portal) ──
-	// Read-only view of the append-only history, plus the ability to add a new
-	// record at a chosen date. We never edit or delete past records: an out-of-
-	// order date later than an existing one would break the "latest = current"
-	// rule (spec §4.4). Power users can hand-edit the frontmatter JSON if needed.
-	let historyRow = $state<Project | Domain | null>(null);
+	// The history is an editable log. Adding a record, editing a prior record's
+	// date/status/note, and deleting a record all route through the pure edit
+	// functions in projectFile.ts, which own the invariants (chronological order,
+	// one record per date, no consecutive duplicates) — the overlay is a guardrail,
+	// not a raw editor. `note` is a freeform open-label annotation (never logic),
+	// meaningful on active records (e.g. baseline / hard / taper).
+	let historyPath = $state<string | null>(null); // source.path of the open row
 	let historyIsDomain = $state(false);
 	let historyDate = $state<Date>(dateFromISO(todayISO()));
 	let historyPickDate = $state(false);
+	let historyNote = $state(""); // note for the add-a-record form
+	let editingDate = $state<ISODate | null>(null); // record being edited (its original date)
+
+	// Resolve the open row from the live feed so it re-renders after every edit
+	// (the feed republishes on each applyProjectEdit/applyDomainEdit).
+	const historyRow = $derived.by<Project | Domain | null>(() => {
+		if (!historyPath) return null;
+		if (historyIsDomain) return feed.domains.find((d) => d.source.path === historyPath) ?? null;
+		for (const list of feed.projectsByDomain.values()) {
+			const hit = list.find((p) => p.source.path === historyPath);
+			if (hit) return hit;
+		}
+		return feed.orphans.find((p) => p.source.path === historyPath) ?? null;
+	});
 
 	function openHistory(e: Project | Domain) {
-		historyRow = e;
 		historyIsDomain = feed.domains.some((d) => d.source.path === e.source.path);
+		historyPath = e.source.path;
 		historyDate = dateFromISO(todayISO());
 		historyPickDate = false;
+		historyNote = "";
+		editingDate = null;
 	}
 	function closeHistory() {
-		historyRow = null;
+		historyPath = null;
 		historyPickDate = false;
+		editingDate = null;
 	}
 	function addStatusRecord(status: LifecycleState) {
 		const e = historyRow;
 		if (!e) return;
 		const date = isoFromDate(historyDate);
-		closeHistory();
-		if (historyIsDomain) setDomainStatus(index, e as Domain, date, status);
-		else setProjectStatus(index, e as Project, date, status);
+		const note = historyNote.trim();
+		historyNote = "";
+		if (historyIsDomain) setDomainStatus(index, e as Domain, date, status, note);
+		else setProjectStatus(index, e as Project, date, status, note);
 	}
 
-	// The states offered when adding a record: domains can't archive.
+	// Editing a prior record: seed a small inline form, then commit through the
+	// edit action (or delete). The row re-resolves from the feed, so the list
+	// refreshes in place.
+	let editDate = $state<Date>(dateFromISO(todayISO()));
+	let editStatus = $state<LifecycleState>("active");
+	let editNote = $state("");
+	let editPickDate = $state(false);
+
+	function startEditRecord(rec: StatusRecord) {
+		editingDate = rec.date;
+		editDate = dateFromISO(rec.date);
+		editStatus = rec.status;
+		editNote = rec.note ?? "";
+		editPickDate = false;
+	}
+	function commitEditRecord() {
+		const e = historyRow;
+		if (!e || !editingDate) return;
+		const next = { date: isoFromDate(editDate), status: editStatus, note: editNote.trim() };
+		const original = editingDate;
+		editingDate = null;
+		if (historyIsDomain) editDomainStatusRecord(index, e as Domain, original, next);
+		else editProjectStatusRecord(index, e as Project, original, next);
+	}
+	function deleteRecord(date: ISODate) {
+		const e = historyRow;
+		if (!e) return;
+		if (editingDate === date) editingDate = null;
+		if (historyIsDomain) removeDomainStatusRecord(index, e as Domain, date);
+		else removeProjectStatusRecord(index, e as Project, date);
+	}
+
+	// The states offered when adding/editing a record: domains can't archive.
 	const historyStates = $derived<LifecycleState[]>(
 		historyIsDomain ? ["active", "inactive"] : ["active", "inactive", "archived"],
 	);
@@ -610,7 +667,7 @@
 	</div>
 </div>
 
-<!-- Status history overlay (portal) — read-only past records + add-at-date. -->
+<!-- Status history overlay (portal) — editable log + add-at-date. -->
 {#if historyRow}
 	<Portal>
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -632,23 +689,63 @@
 					{@const today = todayISO()}
 					{@const effective = historyRow.history.filter((r) => r.date <= today).at(-1)}
 					<ul class="history-list">
-						{#each [...historyRow.history].reverse() as rec}
+						{#each [...historyRow.history].reverse() as rec (rec.date)}
 							{@const isCurrent = rec === effective}
 							{@const isFuture = rec.date > today}
-							<li class="history-item" class:current={isCurrent}>
-								<span class="history-dot" class:active={rec.status === "active"}></span>
-								<span class="history-status">{STATUS_LABEL[rec.status]}</span>
-								<span class="pv-spacer"></span>
-								<span class="history-date">{formatDate(rec.date)}</span>
-								{#if isCurrent}<span class="history-badge">current</span>
-								{:else if isFuture}<span class="history-badge">scheduled</span>{/if}
-							</li>
+							{#if editingDate === rec.date}
+								<!-- Inline edit form for this record. -->
+								<li class="history-item editing">
+									<div class="history-edit-row">
+										<button class="history-date-btn" onclick={() => (editPickDate = !editPickDate)}>
+											<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+											<span>{formatDate(isoFromDate(editDate))}</span>
+										</button>
+										<select class="history-select" bind:value={editStatus}>
+											{#each historyStates as s}
+												<option value={s}>{STATUS_LABEL[s]}</option>
+											{/each}
+										</select>
+									</div>
+									{#if editStatus === "active"}
+										<input
+											class="history-note-input"
+											placeholder="note (e.g. baseline / hard / taper)"
+											bind:value={editNote}
+											onkeydown={(e) => { if (e.key === "Enter") commitEditRecord(); }}
+										/>
+									{/if}
+									{#if editPickDate}
+										<div class="history-datepicker">
+											<Datepicker inline bind:value={editDate} onselect={() => (editPickDate = false)} />
+										</div>
+									{/if}
+									<div class="history-edit-actions">
+										<button class="history-set" onclick={commitEditRecord}>Save</button>
+										<button class="history-link" onclick={() => (editingDate = null)}>Cancel</button>
+										<span class="pv-spacer"></span>
+										<button class="history-link danger" onclick={() => deleteRecord(rec.date)}>Delete</button>
+									</div>
+								</li>
+							{:else}
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+								<li class="history-item" class:current={isCurrent} onclick={() => startEditRecord(rec)} title="Click to edit">
+									<span class="history-dot" class:active={rec.status === "active"}></span>
+									<span class="history-status">{STATUS_LABEL[rec.status]}</span>
+									{#if rec.note}<span class="history-note">{rec.note}</span>{/if}
+									<span class="pv-spacer"></span>
+									<span class="history-date">{formatDate(rec.date)}</span>
+									{#if isCurrent}<span class="history-badge">current</span>
+									{:else if isFuture}<span class="history-badge">scheduled</span>{/if}
+								</li>
+							{/if}
 						{/each}
 					</ul>
 				{/if}
 
-				<!-- Add a new record. Past records are read-only (append-only history):
-				     to correct one, edit the frontmatter JSON directly. -->
+				<!-- Add a new record. Editing/deleting a prior record is inline above
+				     (click a row); invariants are enforced by the pure edit functions. -->
 				<div class="history-add">
 					<span class="history-add-label">Add change</span>
 					<div class="history-add-row">
@@ -656,6 +753,11 @@
 							<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
 							<span>{formatDate(isoFromDate(historyDate))}</span>
 						</button>
+						<input
+							class="history-note-input"
+							placeholder="note (optional)"
+							bind:value={historyNote}
+						/>
 						<span class="pv-spacer"></span>
 						{#each historyStates as s}
 							<button class="history-set" onclick={() => addStatusRecord(s)}>{STATUS_LABEL[s]}</button>
@@ -1126,6 +1228,74 @@
 	}
 	.history-item.current {
 		font-weight: 600;
+	}
+	.history-item:not(.editing) {
+		cursor: pointer;
+	}
+	.history-item:not(.editing):hover {
+		background: var(--background-modifier-hover);
+	}
+	.history-item.editing {
+		display: block;
+		background: var(--background-secondary);
+		border-radius: 6px;
+		padding: 8px;
+	}
+	.history-note {
+		font-size: 11px;
+		color: var(--text-muted);
+		font-style: italic;
+		background: var(--background-modifier-border);
+		border-radius: 4px;
+		padding: 1px 6px;
+	}
+	.history-note-input {
+		flex: 1;
+		min-width: 0;
+		height: 26px;
+		padding: 0 8px;
+		font-size: 11px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 6px;
+		background: var(--background-primary);
+		color: var(--text-normal);
+	}
+	.history-edit-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.history-select {
+		height: 26px;
+		font-size: 11px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 6px;
+		background: var(--background-primary);
+		color: var(--text-normal);
+	}
+	.history-item.editing .history-note-input {
+		margin-top: 6px;
+		width: 100%;
+	}
+	.history-edit-actions {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 8px;
+	}
+	.history-link {
+		background: none;
+		border: none;
+		padding: 0;
+		font-size: 11px;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.history-link:hover {
+		color: var(--text-normal);
+	}
+	.history-link.danger:hover {
+		color: var(--text-error);
 	}
 	.history-dot {
 		width: 7px;
