@@ -17,6 +17,7 @@ import {
 	KAIROS_PROJECTS_VIEW_TYPE,
 	KairosProjectsView,
 } from './KairosProjectsView';
+import { KAIROS_GANTT_VIEW_TYPE, KairosGanttView } from './KairosGanttView';
 import { IndexAdapter } from './indexAdapter';
 
 // Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
@@ -136,6 +137,11 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosProjectsView(leaf, this),
 		);
 
+		this.registerView(
+			KAIROS_GANTT_VIEW_TYPE,
+			(leaf) => new KairosGanttView(leaf, this),
+		);
+
 		this.addRibbonIcon('clock', 'Open Kairos Day view', () => {
 			void this.activateView();
 		});
@@ -154,6 +160,10 @@ export default class Kairos extends Plugin {
 
 		this.addRibbonIcon('folder-kanban', 'Open Kairos Projects view', () => {
 			void this.activateProjectsView();
+		});
+
+		this.addRibbonIcon('gantt-chart', 'Open Kairos Strength (Gantt) view', () => {
+			void this.activateGanttView();
 		});
 
 		this.addCommand({
@@ -184,6 +194,12 @@ export default class Kairos extends Plugin {
 			id: 'open-kairos-projects-view',
 			name: 'Open Projects & domains view',
 			callback: () => void this.activateProjectsView(),
+		});
+
+		this.addCommand({
+			id: 'open-kairos-gantt-view',
+			name: 'Open Strength (Gantt) view',
+			callback: () => void this.activateGanttView(),
 		});
 
 		// Dev command: parse the active note's Schedule section and log the JSON.
@@ -323,6 +339,25 @@ export default class Kairos extends Plugin {
 			leaf = workspace.getLeaf('tab');
 			await leaf.setViewState({
 				type: KAIROS_PROJECTS_VIEW_TYPE,
+				active: true,
+			});
+		}
+
+		if (leaf) void workspace.revealLeaf(leaf);
+	}
+
+	// Reveal the Strength (Gantt) view in a main (center) leaf, reusing one.
+	async activateGanttView() {
+		const { workspace } = this.app;
+
+		const existing = workspace.getLeavesOfType(KAIROS_GANTT_VIEW_TYPE);
+		let leaf: WorkspaceLeaf | null =
+			existing.length > 0 ? existing[0] ?? null : null;
+
+		if (!leaf) {
+			leaf = workspace.getLeaf('tab');
+			await leaf.setViewState({
+				type: KAIROS_GANTT_VIEW_TYPE,
 				active: true,
 			});
 		}
