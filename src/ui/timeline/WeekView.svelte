@@ -577,7 +577,7 @@
 				<div class="week-us-body">
 					<div class="week-us-gutter-spacer"></div>
 					{#each dates as date (date)}
-						<div class="week-us-col">
+						<div class="week-us-col" class:today={isToday(date)}>
 							{#each unscheduledByDate[date] ?? [] as { block, task } (task.source.line)}
 								{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}
 								<TaskRow
@@ -625,6 +625,7 @@
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						class="week-col"
+						class:today={isToday(date)}
 						class:drop-target={hoverDate === date && dragFromDate !== null && dragFromDate !== date}
 						class:drag-source={dragFromDate === date}
 						bind:this={columnEls[date]}
@@ -855,6 +856,7 @@
 
 	.col-head.today {
 		color: var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
 	}
 
 	/* ── Body ── */
@@ -918,6 +920,11 @@
 
 	.week-col:first-child {
 		border-left: none;
+	}
+
+	/* Faint tint marking the currently active day's column. */
+	.week-col.today {
+		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
 	}
 
 	/* Cross-day drag affordances. */
@@ -1003,5 +1010,9 @@
 
 	.week-us-col:first-child {
 		border-left: none;
+	}
+
+	.week-us-col.today {
+		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
 	}
 </style>

@@ -781,6 +781,7 @@
 					{@const nudges = nudgesFor(row, date)}
 					<div
 						class="grid-datacell"
+						class:today={isToday(date)}
 						data-grid-date={date}
 						data-grid-row-key={row.key}
 					>
@@ -1071,6 +1072,11 @@
 	}
 	.grid-colhead.today {
 		color: var(--interactive-accent);
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 5%,
+			var(--background-secondary)
+		);
 	}
 
 	.grid-rowlabel {
@@ -1139,6 +1145,10 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
 		min-width: 0;
+	}
+	/* Faint tint marking the currently active day's column. */
+	.grid-datacell.today {
+		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
 	}
 	.grid-datacell-empty {
 		height: 100%;
