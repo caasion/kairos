@@ -152,6 +152,15 @@
 		else setProjectStatus(index, e as Project, todayISO(), next);
 	}
 
+	// Archive (projects only — domains are durable and can't archive). A one-click
+	// path to the archived state, stamped today; if already archived it swings
+	// back to active, mirroring toggleStatus's shape.
+	function archiveProject(project: Project) {
+		const next: LifecycleState =
+			statusOf(project) === "archived" ? "active" : "archived";
+		setProjectStatus(index, project, todayISO(), next);
+	}
+
 	// ── Status history overlay (in-view portal) ──
 	// The history is an editable log. Adding a record, editing a prior record's
 	// date/status/note, and deleting a record all route through the pure edit
@@ -363,6 +372,17 @@
 				)
 				.setIcon("circle-dot")
 				.onClick(() => toggleStatus(project, false)),
+		);
+		// Archive is a one-click shortcut to the archived state (spec §4.4:
+		// archiving is the preferred alternative to deletion). Toggles back to
+		// active when the project is already archived.
+		menu.addItem((item) =>
+			item
+				.setTitle(
+					statusOf(project) === "archived" ? "Unarchive" : "Archive",
+				)
+				.setIcon("archive")
+				.onClick(() => archiveProject(project)),
 		);
 		menu.addItem((item) =>
 			item
