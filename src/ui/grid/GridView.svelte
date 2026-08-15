@@ -803,7 +803,7 @@
 								tasks={tasksFor(row, day)}
 								{resolve}
 								color={"color" in row ? row.color : undefined}
-								allowCreate={row.kind !== "unassigned" && row.kind !== "domain"}
+								allowCreate={row.kind !== "unassigned"}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
 								onDelete={onDelete}
