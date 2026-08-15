@@ -43,6 +43,7 @@
 	import {
 		buildRows,
 		cellTasks,
+		dayStatus,
 		rowAssociation,
 		type GridRow,
 	} from "../../gridModel";
@@ -155,6 +156,13 @@
 
 	function tasksFor(row: GridRow, day: GridDay): ResolvedTask[] {
 		return snapshot ? cellTasks(row, day.tasks, snapshot) : [];
+	}
+
+	// The row's entity was inactive/archived on this day — the cell is read-only
+	// history (dimmed, no create, no drop). Drives both the cell's presentation
+	// and the drag guard below.
+	function isCellInactive(row: GridRow, date: ISODate): boolean {
+		return snapshot ? dayStatus(row, date, snapshot) !== "active" : false;
 	}
 
 	// ── Resurfaced backlog nudges ──
@@ -331,6 +339,8 @@
 
 		// Resolve the target row's association from the drop's row key.
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
+		// Never drop into a read-only history cell (row inactive/archived that day).
+		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
 		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
 		// Convert RowAssociation → Association (or null to clear).
 		const newAssoc: Association | null | undefined = targetAssoc
@@ -437,6 +447,8 @@
 
 		// Resolve the target row's association.
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
+		// Never drop into a read-only history cell (row inactive/archived that day).
+		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
 		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
 		const newAssoc: Association | null | undefined = targetAssoc
 			? { kind: targetAssoc.kind, id: targetAssoc.id }
@@ -757,11 +769,13 @@
 
 			<!-- Body rows -->
 			{#each rows as row (row.key)}
+				{@const rowArchived = isCellInactive(row, todayISO())}
 				<div
 					class="grid-rowlabel"
 					class:child={row.depth > 0}
 					class:domain={row.kind === "domain"}
 					class:unassigned={row.kind === "unassigned"}
+					class:dim={rowArchived}
 				>
 					{#if row.kind !== "unassigned"}
 						<span
@@ -779,6 +793,7 @@
 				{#each dates as date (date)}
 					{@const day = dayOf(date)}
 					{@const nudges = nudgesFor(row, date)}
+					{@const inactive = isCellInactive(row, date)}
 					<div
 						class="grid-datacell"
 						class:today={isToday(date)}
@@ -805,6 +820,7 @@
 								{resolve}
 								color={"color" in row ? row.color : undefined}
 								allowCreate={row.kind !== "unassigned"}
+								{inactive}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
 								onDelete={onDelete}
@@ -1095,6 +1111,13 @@
 	.grid-rowlabel.child {
 		padding-left: 22px;
 		background: var(--background-secondary-alt);
+	}
+	/* A row for an entity that is inactive/archived today — present for its
+	   history, but dimmed to read as past (mirrors the Projects page). */
+	.grid-rowlabel.dim .row-name,
+	.grid-rowlabel.dim .row-accent,
+	.grid-rowlabel.dim .row-kind-icon {
+		opacity: 0.5;
 	}
 	.grid-rowlabel.unassigned .row-name {
 		color: var(--text-faint);

@@ -17,6 +17,12 @@
 		color?: string;
 		/** True on the Unassigned row, where "+" would have no association. */
 		allowCreate: boolean;
+		/**
+		 * The row's entity was inactive/archived on this day: the cell is history,
+		 * shown dimmed and read-only (existing tasks visible, no "+" to add work to
+		 * a period the project/domain wasn't active in).
+		 */
+		inactive?: boolean;
 		onSetStatus: (task: ResolvedTask, status: TaskStatus) => void;
 		onSetText: (task: ResolvedTask, text: string) => void;
 		onDelete: (task: ResolvedTask) => void;
@@ -45,6 +51,7 @@
 		resolve,
 		color,
 		allowCreate,
+		inactive = false,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -99,7 +106,12 @@
 	}
 </script>
 
-<div class="grid-cell" class:drop-target={isDropTarget}>
+<div class="grid-cell" class:drop-target={isDropTarget} class:inactive>
+	{#if inactive}
+		<!-- Read-only history: a project/domain that wasn't active on this day. The
+		     dim/hatch reads the column as past context, not a place to add work. -->
+		<div class="grid-cell-inactive-badge" title="Not active on this day"></div>
+	{/if}
 	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
 		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
@@ -161,7 +173,7 @@
 		</div>
 	{/each}
 
-	{#if allowCreate}
+	{#if allowCreate && !inactive}
 		<button class="grid-cell-add" title="Add task" onclick={onCreate}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
 			<span>Task</span>
@@ -183,6 +195,30 @@
 	   Inset box-shadow instead of outline so it isn't clipped by the grid table's overflow:hidden. */
 	.grid-cell.drop-target {
 		box-shadow: inset 0 0 0 2px var(--interactive-accent);
+	}
+
+	/* Read-only history: the entity wasn't active on this day. Dim the existing
+	   tasks and lay a faint hatch behind them (matching the empty-cell hatch) so
+	   the column reads as past context, not an editable slot. Pointer events on
+	   the tasks stay live so the user can still open/inspect them. */
+	.grid-cell.inactive {
+		position: relative;
+	}
+	.grid-cell.inactive .grid-cell-item {
+		opacity: 0.4;
+	}
+	.grid-cell-inactive-badge {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		background: repeating-linear-gradient(
+			45deg,
+			transparent,
+			transparent 6px,
+			var(--background-modifier-border) 6px,
+			var(--background-modifier-border) 7px
+		);
+		opacity: 0.25;
 	}
 
 	/* Dim the row whose task is being dragged. */

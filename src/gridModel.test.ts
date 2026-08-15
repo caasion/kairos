@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveAssociation } from "./association";
-import { buildRows, cellTasks, rowAssociation } from "./gridModel";
+import { buildRows, cellTasks, dayStatus, rowAssociation } from "./gridModel";
 import type { GridDay, GridSnapshot } from "./index";
 import type {
 	Association,
@@ -64,6 +64,7 @@ function snap(
 	projects: Project[],
 	domains: Domain[],
 	tasks: ResolvedTask[],
+	dates: string[] = ["2026-08-01"],
 ): GridSnapshot {
 	const projectMap = new Map(projects.map((p) => [p.name, p]));
 	const domainMap = new Map(domains.map((d) => [d.name, d]));
@@ -74,14 +75,14 @@ function snap(
 			projects.filter((p) => p.domain === d.id),
 		);
 	}
-	const day: GridDay = {
-		date: "2026-08-01",
-		path: "2026-08-01.md",
+	const days: GridDay[] = dates.map((date) => ({
+		date,
+		path: `${date}.md`,
 		blocks: [],
-		tasks,
-	};
+		tasks: tasks.filter((t) => t.date === date),
+	}));
 	return {
-		days: [day],
+		days,
 		projects: projectMap,
 		domains: domainMap,
 		byDomainProjects,
@@ -124,13 +125,85 @@ describe("buildRows", () => {
 		expect(buildRows(owned).some((r) => r.kind === "unassigned")).toBe(false);
 	});
 
-	it("omits archived projects and domains", () => {
+	it("omits projects/domains that were never active and carry no task in the window", () => {
+		// Archived before the window, no tasks in it → nothing historic to show.
+		const archived = [
+			{ date: "2026-07-01", status: "archived" as const },
+		];
 		const s = snap(
-			[project({ name: "Old", archived: true })],
-			[domain({ name: "Gone", archived: true })],
+			[project({ name: "Old", archived: true, history: archived })],
+			[domain({ name: "Gone", archived: true, history: archived })],
 			[],
+			["2026-08-01"],
 		);
 		expect(buildRows(s)).toHaveLength(0);
+	});
+
+	it("keeps an archived project for days it was active earlier in the window", () => {
+		// Active through Aug 2, archived from Aug 3. Window spans Aug 1–3, so the
+		// project earns a row (active on Aug 1–2) even though it's archived today.
+		const p = project({
+			name: "Wrapped",
+			archived: true,
+			history: [
+				{ date: "2026-07-01", status: "active" },
+				{ date: "2026-08-03", status: "archived" },
+			],
+		});
+		const s = snap([p], [], [], ["2026-08-01", "2026-08-02", "2026-08-03"]);
+		expect(buildRows(s).map((r) => r.name)).toEqual(["Wrapped"]);
+	});
+
+	it("keeps an archived project that still carries a task in the window", () => {
+		// Archived across the whole window, but a task is tagged to it → keep the
+		// row so that historic instance doesn't vanish.
+		const p = project({
+			name: "Ghost",
+			archived: true,
+			history: [{ date: "2026-07-01", status: "archived" }],
+		});
+		const t = task({ owner: proj("Ghost"), date: "2026-08-01" });
+		const s = snap([p], [], [t], ["2026-08-01"]);
+		expect(buildRows(s).map((r) => r.name)).toEqual(["Ghost"]);
+	});
+
+	it("keeps a domain header when a child project is visible in the window", () => {
+		// The domain is archived today, but a child project is active in the
+		// window — the header stays so the child row isn't orphaned.
+		const d = domain({
+			name: "Health",
+			archived: true,
+			history: [{ date: "2026-07-01", status: "archived" }],
+		});
+		const child = project({ name: "Alpha", domain: "d-health" });
+		const s = snap([child], [d], [], ["2026-08-01"]);
+		expect(buildRows(s).map((r) => [r.kind, r.name])).toEqual([
+			["domain", "Health"],
+			["project", "Alpha"],
+		]);
+	});
+});
+
+describe("dayStatus", () => {
+	it("reports the row entity's effective status per day", () => {
+		const p = project({
+			name: "Wrapped",
+			archived: true,
+			history: [
+				{ date: "2026-07-01", status: "active" },
+				{ date: "2026-08-03", status: "archived" },
+			],
+		});
+		const s = snap([p], [], [], ["2026-08-02", "2026-08-03"]);
+		const row = buildRows(s)[0]!;
+		expect(dayStatus(row, "2026-08-02", s)).toBe("active");
+		expect(dayStatus(row, "2026-08-03", s)).toBe("archived");
+	});
+
+	it("treats the unassigned row as always active", () => {
+		const s = snap([], [], [task({})]);
+		const row = buildRows(s).find((r) => r.kind === "unassigned")!;
+		expect(dayStatus(row, "2026-08-01", s)).toBe("active");
 	});
 });
 
