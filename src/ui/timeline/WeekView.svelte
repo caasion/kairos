@@ -117,11 +117,15 @@
 		return `${first} – ${last}`;
 	});
 
-	function columnLabel(date: ISODate): string {
-		return dateFromISO(date).toLocaleDateString(undefined, {
-			weekday: "short",
-			day: "numeric",
-		});
+	// A date card's two lines: an uppercase day-of-week label over the day number
+	// (Holos-style header), stacked in the column head markup.
+	function dowLabel(date: ISODate): string {
+		return dateFromISO(date)
+			.toLocaleDateString(undefined, { weekday: "short" })
+			.toUpperCase();
+	}
+	function dayNumber(date: ISODate): string {
+		return dateFromISO(date).toLocaleDateString(undefined, { day: "numeric" });
 	}
 	function isToday(date: ISODate): boolean {
 		return date === todayISO();
@@ -550,7 +554,11 @@
 					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
 				}}
 			>
-				{columnLabel(date)}
+				<span class="dow-label">{dowLabel(date)}</span>
+				<span class="date-number">{dayNumber(date)}</span>
+				{#if isToday(date)}
+					<span class="today-indicator"></span>
+				{/if}
 			</button>
 		{/each}
 	</div>
@@ -589,6 +597,7 @@
 									onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
 									onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
 									onNest={(rect) => columns[date]?.nestTask(block, task, rect)}
+									onMoveToBacklog={() => columns[date]?.moveTaskToBacklog(block, task)}
 									onSetStatus={(_t, status) => columns[date]?.setTaskStatus(block, task, status)}
 									onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
 									onDelete={(_t) => columns[date]?.deleteTask(block, task)}

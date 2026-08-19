@@ -48,6 +48,11 @@
 		// a parent block (e.g. the grid's scheduled tasks) pass "Change parent
 		// block"; the default fits a task being nested for the first time.
 		nestLabel?: string;
+		// Move this task off its day and back into the backlog (spec §2.6). The
+		// parent lifts the task's text + materialized association into a fresh
+		// backlog entry and drops the day task. Omitted for a colocated
+		// (checkable-block) task, which isn't a liftable task.
+		onMoveToBacklog?: () => void;
 		// Extra metadata rendered inside the row, beneath the text on the same line
 		// as the association (so it shares the row's hover region). The grid uses
 		// this for the block-nesting badge; it styles it with `.k-task-assoc`.
@@ -76,6 +81,7 @@
 		onEditAssoc,
 		onNest,
 		nestLabel = "Nest under block",
+		onMoveToBacklog,
 		meta,
 		onGrab,
 		onSetStatus,
@@ -236,6 +242,15 @@
 			);
 		}
 
+		if (onMoveToBacklog) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Move to backlog")
+					.setIcon("inbox")
+					.onClick(() => onMoveToBacklog()),
+			);
+		}
+
 		menu.addSeparator();
 
 		menu.addItem((item) =>
@@ -345,6 +360,11 @@
 		{/if}
 	</div>
 
+	{#if association || meta}
+		<!-- Association and any extra metadata (e.g. the grid's block-nesting badge)
+		     share one inline row: association first, then the metadata. Both align
+		     under the task text, past the checkbox. -->
+		<div class="k-task-meta">
 	{#if association}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -370,9 +390,10 @@
 		</div>
 	{/if}
 
-	<!-- Extra metadata (e.g. the grid's block-nesting badge), inside the row so it
-	     shares the hover region and sits on the same line as the association. -->
+			<!-- Extra metadata (e.g. the grid's block-nesting badge). -->
 	{@render meta?.()}
+		</div>
+	{/if}
 </div>
 
 <style>

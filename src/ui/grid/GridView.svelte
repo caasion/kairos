@@ -123,11 +123,15 @@
 			});
 		return `${fmt(dates[0]!)} – ${fmt(dates[dates.length - 1]!)}`;
 	});
-	function columnLabel(date: ISODate): string {
-		return dateFromISO(date).toLocaleDateString(undefined, {
-			weekday: "short",
-			day: "numeric",
-		});
+	// A date card's two lines: an uppercase day-of-week label over the day number
+	// (Holos-style header). Kept as separate accessors so the markup can stack them.
+	function dowLabel(date: ISODate): string {
+		return dateFromISO(date)
+			.toLocaleDateString(undefined, { weekday: "short" })
+			.toUpperCase();
+	}
+	function dayNumber(date: ISODate): string {
+		return dateFromISO(date).toLocaleDateString(undefined, { day: "numeric" });
 	}
 	function isToday(date: ISODate): boolean {
 		return date === todayISO();
@@ -263,6 +267,27 @@
 		const day = dayOf(task.date);
 		if (!day || day.path === null) return;
 		commit(task.date, day.path, deleteTask(day.blocks, task.block, task));
+	}
+
+	// Move a task off its day and back into the backlog (spec §2.6): drop the day
+	// task and append a fresh backlog entry seeded with its text and materialized
+	// association (`task.owner` = explicit assoc, else the block's inherited one).
+	// The entry carries no resurface date — it lands in the backlog unscheduled.
+	// Both writes commit as one optimistic unit via the index.
+	function onMoveToBacklog(task: ResolvedTask) {
+		const day = dayOf(task.date);
+		if (!day || day.path === null) return;
+		const entry: BacklogEntry = {
+			source: { path: index.backlogPath(), line: -1 },
+			text: task.text,
+			...(task.owner ? { assoc: task.owner } : {}),
+		};
+		index.returnToBacklog(
+			task.date,
+			day.path,
+			(blocks) => deleteTask(blocks, task.block, task),
+			entry,
+		);
 	}
 
 	function onNavigate(assoc: Association) {
@@ -828,6 +853,7 @@
 								{onNavigate}
 								{onReveal}
 								onNest={openBlockPicker}
+								{onMoveToBacklog}
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
 								onBlockGrab={onBlockGrab}

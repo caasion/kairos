@@ -461,6 +461,15 @@ export class KairosIndex {
 		return associationOptions(this.state.projects, this.state.domains);
 	}
 
+	/**
+	 * The configured backlog file path. A view building a fresh backlog entry
+	 * stamps this onto its `source.path`; the actual line is re-derived on the
+	 * next reparse (the index owns the whole backlog file).
+	 */
+	backlogPath(): string {
+		return this.deps.settings.backlogPath;
+	}
+
 	// ── subscriptions ──
 
 	/** A live store of the day for `date` (undefined when no note exists). */

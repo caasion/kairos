@@ -15,7 +15,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock, nestTaskUnderBlock } from "../../writer";
+	import { deleteTask, makeBlock, nestTaskUnderBlock } from "../../writer";
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
@@ -433,6 +433,34 @@
 			real.tasks = real.tasks.filter((t) => t.source.line !== task.source.line);
 		}
 		void writeToDisk();
+	}
+
+	// Move a task off the day and back into the backlog (spec §2.6): drop the day
+	// task and append a fresh backlog entry seeded with its text and materialized
+	// association (the task's explicit assoc, else the block it inherits from).
+	// Nesting is dropped (a flat backlog entry has no parent block) and no
+	// resurface date is set — it lands in the backlog unscheduled. Routed through
+	// the index so the day removal + backlog append commit as one optimistic unit;
+	// the resulting store push is adopted back into `blocks` via `adoptDay`.
+	function handleMoveTaskToBacklog(owner: Block, task: Task) {
+		if (notePath === null) return;
+		const real = ownerFor(owner);
+		if (!real) return;
+		// Only a genuine nested task can move; a colocated task is a block.
+		const nested = realTask(real, task);
+		if (!nested) return;
+		const assoc = nested.assoc ?? real.assoc;
+		const entry: BacklogEntry = {
+			source: { path: settings.backlogPath, line: -1 },
+			text: nested.text,
+			...(assoc ? { assoc } : {}),
+		};
+		index.returnToBacklog(
+			date,
+			notePath,
+			(bs) => deleteTask(bs, owner, task),
+			entry,
+		);
 	}
 
 	// ── Block field write-back ──────────────────────────────────────
@@ -1115,6 +1143,7 @@
 								onNavigate={() => task.owner && onNavigate(task.owner)}
 								onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
 								onNest={(rect) => openBlockPicker(block, task, rect)}
+								onMoveToBacklog={() => handleMoveTaskToBacklog(block, task)}
 								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
 								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
 								onDelete={(_t) => handleDeleteTask(block, task)}
@@ -1206,6 +1235,7 @@
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
 							onNestTask={openBlockPicker}
+							onMoveTaskToBacklog={handleMoveTaskToBacklog}
 							onTaskGrab={onTaskGrab}
 							dragTaskLine={taskDrag?.task.source.line}
 							dropSlot={taskDrop ?? undefined}
