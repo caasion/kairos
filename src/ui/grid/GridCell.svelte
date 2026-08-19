@@ -275,11 +275,12 @@
 	   checkbox. Ctrl+click reveals it in the Day view — signalled, like the assoc
 	   line, by a pointer cursor and a hover underline on `.linked`. No pill, no
 	   hover fill — it reads as the same kind of metadata as the assoc tag. */
+	/* Rendered inside Task's inline meta row (after the association), so it needs
+	   no indent of its own — the meta row supplies the alignment past the checkbox. */
 	.grid-cell-badge {
 		display: flex;
 		align-items: center;
 		gap: 3px;
-		padding-left: 24px;
 		font-size: 10px;
 		color: var(--text-muted);
 		min-width: 0;

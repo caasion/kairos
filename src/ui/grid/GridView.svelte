@@ -666,7 +666,23 @@
 		}
 	}
 
+	// The body scroll reserves a stable scrollbar gutter so its columns keep a
+	// constant width. The header strip sits outside that scroll, so it reserves the
+	// same trailing width — the measured scrollbar width, published as a CSS var on
+	// the root — to stay column-aligned with the body below.
+	let viewEl = $state<HTMLDivElement>();
+	function measureScrollbar(el: HTMLElement) {
+		const probe = document.createElement("div");
+		probe.style.cssText =
+			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+		el.appendChild(probe);
+		const width = probe.offsetWidth - probe.clientWidth;
+		probe.remove();
+		el.style.setProperty("--gv-scrollbar", `${width}px`);
+	}
+
 	onMount(() => {
+		if (viewEl) measureScrollbar(viewEl);
 		const unsub = index.resolver().subscribe((r) => {
 			resolve = r;
 		});
@@ -697,7 +713,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="grid-view" onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
+<div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
 	<div class="grid-header">
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
@@ -774,24 +790,32 @@
 		</div>
 	</div>
 
+	<!-- Header strip: corner + day columns. Fixed above the scroll so the vertical
+	     scrollbar only runs alongside the body rows, not the date header. Reserves
+	     the scrollbar gutter on its right so its columns line up with the body. -->
+	<div class="grid-head" style={`grid-template-columns: ${gridTemplate};`}>
+		<div class="grid-corner grid-corner-head"></div>
+		{#each dates as date (date)}
+			<button
+				class="grid-colhead date-card"
+				class:today={isToday(date)}
+				title="Click to open daily note"
+				onclick={(e) => {
+					e.stopPropagation();
+					void openDayNote(date);
+				}}
+			>
+				<span class="dow-label">{dowLabel(date)}</span>
+				<span class="date-number">{dayNumber(date)}</span>
+				{#if isToday(date)}
+					<span class="today-indicator"></span>
+				{/if}
+			</button>
+		{/each}
+	</div>
+
 	<div class="grid-scroll">
 		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
-			<!-- Header row: corner + day columns -->
-			<div class="grid-corner"></div>
-			{#each dates as date (date)}
-				<button
-					class="grid-colhead"
-					class:today={isToday(date)}
-					title="Open the daily note"
-					onclick={(e) => {
-						e.stopPropagation();
-						void openDayNote(date);
-					}}
-				>
-					{columnLabel(date)}
-				</button>
-			{/each}
-
 			<!-- Body rows -->
 			{#each rows as row (row.key)}
 				{@const rowArchived = isCellInactive(row, todayISO())}
@@ -1067,58 +1091,111 @@
 	}
 
 	/* ── The grid table ── */
+	/* The header strip is fixed above the scroll (so the vertical scrollbar runs
+	   only alongside the body). It reserves the scrollbar's width on its right
+	   (--gv-scrollbar) so its columns align with the body's, which reserves the
+	   same width via `scrollbar-gutter: stable`. Rounds only its top corners; the
+	   body table rounds its bottom corners, so together they read as one framed
+	   table. */
+	.grid-head {
+		display: grid;
+		flex-shrink: 0;
+		margin: 0 10px;
+		margin-right: calc(10px + var(--gv-scrollbar, 0px));
+		border: 1px solid var(--background-modifier-border);
+		border-bottom: none;
+		border-radius: 8px 8px 0 0;
+	}
+
 	.grid-scroll {
 		flex: 1;
 		overflow: auto;
+		/* Always reserve the scrollbar gutter so the body columns keep a constant
+		   width and stay aligned with the fixed header strip above. */
+		scrollbar-gutter: stable;
 		padding: 0 10px 12px;
 	}
 
 	.grid-table {
 		display: grid;
 		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		overflow: hidden;
+		border-radius: 0 0 8px 8px;
 	}
 
 	.grid-corner {
 		background: var(--background-secondary);
-		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
 		position: sticky;
-		top: 0;
 		left: 0;
+		z-index: 1;
+	}
+	/* The header-strip corner carries the header's bottom divider. */
+	.grid-corner-head {
+		border-bottom: 1px solid var(--background-modifier-border);
+		border-radius: 8px 0 0 0;
 		z-index: 3;
 	}
 
-	.grid-colhead {
-		position: sticky;
-		top: 0;
-		z-index: 2;
-		text-align: center;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-muted);
+	/* Holos-style date card: an uppercase day-of-week label over a large serif
+	   day number, left-aligned, one per header-strip column. Kept identical to the
+	   Week view's .col-head.date-card so the two headers read the same.
+
+	   The two text lines flow normally in the button; the today underline is
+	   absolutely positioned in the reserved bottom strip (padding-bottom) so it
+	   never overlaps the number. */
+	.grid-colhead.date-card {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1px;
 		background: var(--background-secondary);
 		border: none;
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
-		padding: 7px 4px;
+		padding: 8px 8px 12px 12px;
 		cursor: pointer;
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		box-shadow: none;
+		transition: filter 150ms ease;
+		height: 100%;
 	}
-	.grid-colhead:hover {
+	.grid-colhead.date-card:hover {
+		filter: brightness(1.15);
+	}
+	.grid-colhead .dow-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 1px;
+		line-height: 1.4;
+	}
+	.grid-colhead .date-number {
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 24px;
+		font-weight: 400;
 		color: var(--text-normal);
+		line-height: 1.1;
+		font-variant-numeric: tabular-nums;
+	}
+	.grid-colhead .today-indicator {
+		position: absolute;
+		left: 10%;
+		bottom: 0px;
+		width: 80%;
+		height: 2px;
+		background: var(--interactive-accent);
+		border-radius: 1px;
 	}
 	.grid-colhead.today {
-		color: var(--interactive-accent);
 		background: color-mix(
 			in srgb,
 			var(--interactive-accent) 5%,
 			var(--background-secondary)
 		);
+	}
+	.grid-colhead.today .date-number {
+		color: var(--interactive-accent);
 	}
 
 	.grid-rowlabel {

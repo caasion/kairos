@@ -1498,6 +1498,9 @@
 	.day-scroll {
 		flex: 1;
 		overflow-y: auto;
+		/* Reserve the scrollbar's gutter even when it isn't shown, so the timeline
+		   keeps a constant width instead of shifting when content overflows. */
+		scrollbar-gutter: stable;
 	}
 
 	.day-body {

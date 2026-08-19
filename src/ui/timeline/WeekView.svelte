@@ -431,7 +431,25 @@
 		jumpTo(isoFromDate(picked));
 	}
 
+	// The timeline scroll reserves a stable scrollbar gutter so its columns don't
+	// resize when the scrollbar toggles. The header + unscheduled strips sit
+	// outside that scroll, so to stay aligned they must reserve the same trailing
+	// width — the actual scrollbar width, measured once and published as a CSS var
+	// on the root. `stable` guarantees the gutter is always present, so the columns
+	// underneath always line up with the reserve above.
+	let viewEl = $state<HTMLDivElement>();
+	function measureScrollbar(el: HTMLElement) {
+		const probe = document.createElement("div");
+		probe.style.cssText =
+			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+		el.appendChild(probe);
+		const width = probe.offsetWidth - probe.clientWidth;
+		probe.remove();
+		el.style.setProperty("--wv-scrollbar", `${width}px`);
+	}
+
 	onMount(() => {
+		if (viewEl) measureScrollbar(viewEl);
 		const unsubscribeResolver = index.resolver().subscribe((r) => {
 			resolve = r;
 		});
@@ -452,7 +470,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="week-view" tabindex="-1" onclick={handleClickOutside} onkeydown={onKeyDown}>
+<div class="week-view" tabindex="-1" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown}>
 	<div class="week-header">
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
@@ -546,7 +564,7 @@
 		<div class="week-gutter-spacer"></div>
 		{#each dates as date (date)}
 			<button
-				class="col-head"
+				class="col-head date-card"
 				class:today={isToday(date)}
 				title="Ctrl+click to open the daily note"
 				onclick={(e) => {
@@ -830,10 +848,13 @@
 	}
 
 	/* ── Column heads ── */
+	/* The right padding reserves the timeline scrollbar's width (measured into
+	   --wv-scrollbar) on top of the base 10px, so these columns line up with the
+	   scroll area below whether or not its scrollbar is showing. */
 	.week-colheads {
 		display: flex;
 		flex-shrink: 0;
-		padding: 0 10px;
+		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
 
@@ -842,36 +863,73 @@
 		min-width: 46px;
 	}
 
-	.col-head {
+	/* Holos-style date card: an uppercase day-of-week label over a large serif
+	   day number, left-aligned, one per column. Kept identical to the Grid view's
+	   .grid-colhead.date-card so the two headers read the same.
+
+	   The two text lines flow normally in the button; the today underline is
+	   absolutely positioned in the reserved bottom strip (padding-bottom) so it
+	   never overlaps the number. */
+	.col-head.date-card {
+		position: relative;
 		flex: 1;
 		min-width: 0;
-		text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1px;
+		background: transparent;
+		border: none;
+		padding: 8px 8px 12px 12px;
+		cursor: pointer;
+		box-shadow: none;
+		transition: filter 150ms ease;
+		height: 100%;
+	}
+
+	.col-head.date-card:hover {
+		filter: brightness(1.15);
+	}
+
+	.col-head .dow-label {
 		font-size: 11px;
 		font-weight: 600;
 		color: var(--text-muted);
-		background: transparent;
-		border: none;
-		padding: 6px 4px;
-		cursor: pointer;
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		text-transform: uppercase;
+		letter-spacing: 1px;
+		line-height: 1.4;
 	}
 
-	.col-head:hover {
+	.col-head .date-number {
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 24px;
+		font-weight: 400;
 		color: var(--text-normal);
+		line-height: 1.1;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.col-head .today-indicator {
+		position: absolute;
+		left: 10%;
+		bottom: -2px;
+		width: 80%;
+		height: 2px;
+		background: var(--interactive-accent);
+		border-radius: 1px;
 	}
 
 	.col-head.today {
-		color: var(--interactive-accent);
 		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
 	}
-
 	/* ── Body ── */
 	.week-scroll {
 		flex: 1;
 		overflow: auto;
+		/* Always reserve the scrollbar gutter so the columns keep a constant width
+		   (and stay aligned with the header/unscheduled strips, which reserve the
+		   same width via --wv-scrollbar) whether or not the scrollbar is showing. */
+		scrollbar-gutter: stable;
 	}
 
 	.week-body {
@@ -956,6 +1014,9 @@
 		align-items: center;
 		cursor: pointer;
 		user-select: none;
+		/* Match .week-us-body's insets (incl. the reserved scrollbar gutter) so the
+		   header divider cells line up with the body columns and the timeline. */
+		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
 	}
 
 	.week-us-header:hover {
@@ -1008,7 +1069,9 @@
 
 	.week-us-body {
 		display: flex;
-		padding: 0 10px;
+		/* Reserve the timeline scrollbar gutter on the right so these columns stay
+		   aligned with the scroll area below (see .week-colheads). */
+		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
 	}
 
 	.week-us-col {
