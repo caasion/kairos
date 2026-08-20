@@ -44,6 +44,8 @@
 	import { historyToSpans, type Span } from "../../gantt/spans";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
+	import RowLabel from "../components/RowLabel.svelte";
+	import { rowLabelInfo, type RowLabelInfo } from "../components/rowLabel";
 
 	interface Props {
 		app: App;
@@ -74,11 +76,13 @@
 		label: string;
 		indent: boolean; // child project under a domain
 		color: string; // base hue; "" → neutral accent
+		info: RowLabelInfo; // presentation for the sidebar label + hover card
 	}
 
 	const rows = $derived.by<GanttRow[]>(() => {
 		const out: GanttRow[] = [];
 		for (const domain of feed.domains) {
+			const color = domain.color || undefined;
 			out.push({
 				key: domain.source.path,
 				entity: domain,
@@ -86,6 +90,7 @@
 				label: domain.name,
 				indent: false,
 				color: domain.color,
+				info: rowLabelInfo(domain, true, color, today),
 			});
 			for (const p of feed.projectsByDomain.get(domain.id) ?? []) {
 				out.push({
@@ -95,6 +100,7 @@
 					label: p.name,
 					indent: true,
 					color: domain.color, // inherit domain hue
+					info: rowLabelInfo(p, false, color, today),
 				});
 			}
 		}
@@ -106,10 +112,20 @@
 				label: p.name,
 				indent: false,
 				color: "",
+				info: rowLabelInfo(p, false, undefined, today),
 			});
 		}
 		return out;
 	});
+
+	// Group flags for the continuous accent stripe: a domain + its child projects
+	// share one unbroken stripe. A child continues the group; a domain or orphan
+	// opens a new one.
+	function ganttGroup(i: number): { start: boolean; end: boolean } {
+		const row = rows[i]!;
+		const next = rows[i + 1];
+		return { start: !row.indent, end: !(next?.indent) };
+	}
 
 	// ── Viewport / zoom / pan ──
 	let windowDays = $state<number>(180);
@@ -448,16 +464,26 @@
 			<!-- Sidebar labels -->
 			<div class="gantt-labels" style:width={`${LABEL_WIDTH}px`}>
 				<div class="gantt-corner" style:height={`${HEADER_HEIGHT}px`}></div>
-				{#each rows as row (row.key)}
+				{#each rows as row, i (row.key)}
+					{@const group = ganttGroup(i)}
 					<div
 						class="gantt-label"
 						class:indent={row.indent}
 						class:domain={row.isDomain}
+						class:group-start={group.start}
+						class:group-end={group.end}
 						style:height={`${ROW_HEIGHT}px`}
 						style:margin-bottom={`${ROW_GAP}px`}
+						style={row.color ? `--row-accent: ${row.color};` : undefined}
 					>
-						{#if row.color}<span class="gantt-swatch" style:background={row.color}></span>{/if}
-						<span class="gantt-label-text">{row.label}</span>
+						<!-- Continuous group accent: a domain + its projects share one stripe.
+						     Extends through the row gap on non-terminal rows so it reads as
+						     unbroken across the fixed-height, gapped Gantt rows. -->
+						<span
+							class="gantt-accent"
+							style:height={group.end ? `${ROW_HEIGHT}px` : `${ROW_HEIGHT + ROW_GAP}px`}
+						></span>
+						<RowLabel info={row.info} />
 					</div>
 				{/each}
 			</div>
@@ -674,18 +700,34 @@
 	}
 	.gantt-corner { border-bottom: 1px solid var(--background-modifier-border); }
 	.gantt-label {
+		position: relative;
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 0 8px;
+		gap: 8px;
+		padding: 0 8px 0 12px;
 		font-size: 12px;
 		color: var(--text-normal);
-		overflow: hidden;
+		overflow: visible;
 	}
-	.gantt-label.domain { font-weight: 600; }
-	.gantt-label.indent { padding-left: 22px; color: var(--text-muted); }
-	.gantt-label-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.gantt-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+	.gantt-label.indent { padding-left: 26px; }
+	/* Continuous group accent stripe, mirroring the Grid: rounded only at the
+	   group's top/bottom, and extended through the row gap between grouped rows so
+	   it reads as unbroken across the fixed-height, gapped Gantt rows. */
+	.gantt-accent {
+		position: absolute;
+		left: 4px;
+		top: 0;
+		width: 3px;
+		background: var(--row-accent, var(--text-faint));
+	}
+	.gantt-label.group-start .gantt-accent {
+		border-top-left-radius: 2px;
+		border-top-right-radius: 2px;
+	}
+	.gantt-label.group-end .gantt-accent {
+		border-bottom-left-radius: 2px;
+		border-bottom-right-radius: 2px;
+	}
 	.gantt-plot {
 		position: relative;
 		flex: 1;

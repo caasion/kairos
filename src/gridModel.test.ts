@@ -9,6 +9,11 @@ import type {
 	ResolvedTask,
 } from "./types";
 
+// Reference "today" for row-label status derivation. The fixtures' histories are
+// mostly empty (→ active default), so the exact value rarely matters, but a fixed
+// date keeps the label info deterministic.
+const AS_OF = "2026-08-01";
+
 // ─── fixtures ──────────────────────────────────────────────────
 
 function domain(over: Partial<Domain> = {}): Domain {
@@ -98,7 +103,7 @@ const dom = (id: string): Association => ({ kind: "domain", id });
 describe("buildRows", () => {
 	it("emits top-level projects, then domains (always expanded), in order", () => {
 		const s = snap([project({ name: "Alpha" })], [domain()], []);
-		const rows = buildRows(s);
+		const rows = buildRows(s, AS_OF);
 		expect(rows.map((r) => r.kind)).toEqual(["project", "domain"]);
 		expect(rows[0]!.name).toBe("Alpha");
 		expect(rows[1]!.name).toBe("Health");
@@ -110,7 +115,7 @@ describe("buildRows", () => {
 			[domain()],
 			[],
 		);
-		const rows = buildRows(s);
+		const rows = buildRows(s, AS_OF);
 		expect(rows.map((r) => [r.kind, r.name])).toEqual([
 			["domain", "Health"],
 			["project", "Alpha"],
@@ -119,10 +124,10 @@ describe("buildRows", () => {
 
 	it("adds an Unassigned row only when an unowned task exists", () => {
 		const withNone = snap([], [], [task({})]);
-		expect(buildRows(withNone).at(-1)?.kind).toBe("unassigned");
+		expect(buildRows(withNone, AS_OF).at(-1)?.kind).toBe("unassigned");
 
 		const owned = snap([project()], [], [task({ owner: proj("Alpha") })]);
-		expect(buildRows(owned).some((r) => r.kind === "unassigned")).toBe(false);
+		expect(buildRows(owned, AS_OF).some((r) => r.kind === "unassigned")).toBe(false);
 	});
 
 	it("omits projects/domains that were never active and carry no task in the window", () => {
@@ -136,7 +141,7 @@ describe("buildRows", () => {
 			[],
 			["2026-08-01"],
 		);
-		expect(buildRows(s)).toHaveLength(0);
+		expect(buildRows(s, AS_OF)).toHaveLength(0);
 	});
 
 	it("keeps an archived project for days it was active earlier in the window", () => {
@@ -151,7 +156,7 @@ describe("buildRows", () => {
 			],
 		});
 		const s = snap([p], [], [], ["2026-08-01", "2026-08-02", "2026-08-03"]);
-		expect(buildRows(s).map((r) => r.name)).toEqual(["Wrapped"]);
+		expect(buildRows(s, AS_OF).map((r) => r.name)).toEqual(["Wrapped"]);
 	});
 
 	it("keeps an archived project that still carries a task in the window", () => {
@@ -164,7 +169,7 @@ describe("buildRows", () => {
 		});
 		const t = task({ owner: proj("Ghost"), date: "2026-08-01" });
 		const s = snap([p], [], [t], ["2026-08-01"]);
-		expect(buildRows(s).map((r) => r.name)).toEqual(["Ghost"]);
+		expect(buildRows(s, AS_OF).map((r) => r.name)).toEqual(["Ghost"]);
 	});
 
 	it("keeps a domain header when a child project is visible in the window", () => {
@@ -177,7 +182,7 @@ describe("buildRows", () => {
 		});
 		const child = project({ name: "Alpha", domain: "d-health" });
 		const s = snap([child], [d], [], ["2026-08-01"]);
-		expect(buildRows(s).map((r) => [r.kind, r.name])).toEqual([
+		expect(buildRows(s, AS_OF).map((r) => [r.kind, r.name])).toEqual([
 			["domain", "Health"],
 			["project", "Alpha"],
 		]);
@@ -195,14 +200,14 @@ describe("dayStatus", () => {
 			],
 		});
 		const s = snap([p], [], [], ["2026-08-02", "2026-08-03"]);
-		const row = buildRows(s)[0]!;
+		const row = buildRows(s, AS_OF)[0]!;
 		expect(dayStatus(row, "2026-08-02", s)).toBe("active");
 		expect(dayStatus(row, "2026-08-03", s)).toBe("archived");
 	});
 
 	it("treats the unassigned row as always active", () => {
 		const s = snap([], [], [task({})]);
-		const row = buildRows(s).find((r) => r.kind === "unassigned")!;
+		const row = buildRows(s, AS_OF).find((r) => r.kind === "unassigned")!;
 		expect(dayStatus(row, "2026-08-01", s)).toBe("active");
 	});
 });
@@ -213,7 +218,7 @@ describe("cellTasks", () => {
 	it("routes a task to its project row", () => {
 		const t = task({ owner: proj("Alpha") });
 		const s = snap([project({ name: "Alpha" })], [], [t]);
-		const projRow = buildRows(s)[0]!;
+		const projRow = buildRows(s, AS_OF)[0]!;
 		expect(cellTasks(projRow, s.days[0]!.tasks, s)).toEqual([t]);
 	});
 
@@ -225,7 +230,7 @@ describe("cellTasks", () => {
 			[domain()],
 			[child, direct],
 		);
-		const rows = buildRows(s);
+		const rows = buildRows(s, AS_OF);
 		const domRow = rows.find((r) => r.kind === "domain")!;
 		const projRow = rows.find((r) => r.kind === "project")!;
 		expect(cellTasks(domRow, s.days[0]!.tasks, s)).toEqual([direct]);
@@ -235,7 +240,7 @@ describe("cellTasks", () => {
 	it("matches by canonical name so an aliased tag lands in the right row", () => {
 		const t = task({ owner: proj("OldAlpha") });
 		const s = snap([project({ name: "Alpha", aliases: ["OldAlpha"] })], [], [t]);
-		const projRow = buildRows(s)[0]!;
+		const projRow = buildRows(s, AS_OF)[0]!;
 		expect(cellTasks(projRow, s.days[0]!.tasks, s)).toEqual([t]);
 	});
 });
@@ -247,7 +252,7 @@ describe("rowAssociation", () => {
 			[domain()],
 			[task({})],
 		);
-		const rows = buildRows(s);
+		const rows = buildRows(s, AS_OF);
 		const byKind = Object.fromEntries(
 			rows.map((r) => [r.kind, rowAssociation(r)]),
 		);

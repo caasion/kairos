@@ -167,6 +167,54 @@ export function effectiveStatus(
 	return "active";
 }
 
+/**
+ * The lifecycle record in effect as of `asOf`, plus the bounds of the current
+ * span. Same "most recent record on-or-before asOf" rule as `effectiveStatus`,
+ * but also surfaces:
+ *   • `status` / `note` — the effective record's state and its freeform note
+ *     (the "status description"; empty when none or when no record applies).
+ *   • `since` — the date the *current* span (the run of consecutive records
+ *     sharing this status) began. Null when the default "active" applies with no
+ *     record at all.
+ *   • `until` — the date the current span ends: the next record's date (which may
+ *     be future-dated, i.e. a *scheduled* end), or null when no later record
+ *     exists (the span is open-ended / ongoing). Note `status` still reflects the
+ *     record in effect *now*, so a future-dated close leaves `status` unchanged
+ *     while `until` surfaces the scheduled end.
+ *
+ * Consecutive same-status records can't normally exist (normalizeHistory
+ * collapses them), but we walk backward defensively so `since` is the true start
+ * of the run rather than the last record's own date.
+ */
+export function effectiveRecord(
+	history: StatusRecord[],
+	asOf: ISODate = localTodayISO(),
+): { status: LifecycleState; note: string; since: ISODate | null; until: ISODate | null } {
+	// Index of the record in effect (most recent dated on-or-before asOf).
+	let idx = -1;
+	for (let i = history.length - 1; i >= 0; i--) {
+		const r = history[i];
+		if (r && r.date <= asOf) {
+			idx = i;
+			break;
+		}
+	}
+	if (idx < 0) {
+		return { status: "active", note: "", since: null, until: null };
+	}
+	const rec = history[idx]!;
+	// Walk back over any records sharing this status to find where the span began.
+	let start = idx;
+	while (start > 0 && history[start - 1]!.status === rec.status) start--;
+	const until = idx + 1 < history.length ? history[idx + 1]!.date : null;
+	return {
+		status: rec.status,
+		note: rec.note ?? "",
+		since: history[start]!.date,
+		until,
+	};
+}
+
 /** Archived iff the status in effect today is `archived`. */
 function deriveArchived(history: StatusRecord[]): boolean {
 	return effectiveStatus(history) === "archived";

@@ -32,6 +32,7 @@ import type {
 } from "./types";
 import type { GridSnapshot } from "./index";
 import { effectiveStatus } from "./projectFile";
+import { rowLabelInfo, type RowLabelInfo } from "./ui/components/rowLabel";
 
 // ─── row types ─────────────────────────────────────────────────
 
@@ -46,6 +47,8 @@ export type GridRow =
 			color?: string;
 			/** Indent depth: 0 top-level, 1 child under a domain. */
 			depth: number;
+			/** Presentation for the row-label column + its hover card. */
+			info: RowLabelInfo;
 	  }
 	| {
 			kind: "domain";
@@ -54,6 +57,7 @@ export type GridRow =
 			domainId: string;
 			color?: string;
 			depth: 0;
+			info: RowLabelInfo;
 	  }
 	| { kind: "unassigned"; key: RowKey; name: string; depth: 0 };
 
@@ -123,7 +127,7 @@ function visibleInWindow(
  * Build the ordered rows for the current snapshot. Domains are always fully
  * expanded — every child project row is always visible.
  */
-export function buildRows(snap: GridSnapshot): GridRow[] {
+export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 	const rows: GridRow[] = [];
 
 	const projectColor = (p: Project): string | undefined => {
@@ -139,12 +143,14 @@ export function buildRows(snap: GridSnapshot): GridRow[] {
 		.filter((p) => !p.domain && visibleInWindow(p, "project", snap))
 		.sort(byName);
 	for (const p of topProjects) {
+		const color = projectColor(p);
 		rows.push({
 			kind: "project",
 			key: `project:${p.name}`,
 			name: p.name,
-			...(projectColor(p) ? { color: projectColor(p) } : {}),
+			...(color ? { color } : {}),
 			depth: 0,
+			info: rowLabelInfo(p, false, color, asOf),
 		});
 	}
 
@@ -161,13 +167,15 @@ export function buildRows(snap: GridSnapshot): GridRow[] {
 		);
 		if (!visibleInWindow(d, "domain", snap) && children.length === 0) continue;
 
+		const domainColor = d.color || undefined;
 		rows.push({
 			kind: "domain",
 			key: `domain:${d.name}`,
 			name: d.name,
 			domainId: d.id,
-			...(d.color ? { color: d.color } : {}),
+			...(domainColor ? { color: domainColor } : {}),
 			depth: 0,
+			info: rowLabelInfo(d, true, domainColor, asOf),
 		});
 
 		for (const p of children) {
@@ -175,8 +183,9 @@ export function buildRows(snap: GridSnapshot): GridRow[] {
 				kind: "project",
 				key: `project:${p.name}`,
 				name: p.name,
-				...(d.color ? { color: d.color } : {}),
+				...(domainColor ? { color: domainColor } : {}),
 				depth: 1,
+				info: rowLabelInfo(p, false, domainColor, asOf),
 			});
 		}
 	}

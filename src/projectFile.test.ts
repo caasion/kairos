@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	appendStatus,
 	editStatusRecord,
+	effectiveRecord,
 	effectiveStatus,
 	normalizeHistory,
 	removeStatusRecord,
@@ -134,6 +135,56 @@ describe("effectiveStatus", () => {
 	it("returns active when the only records are in the future", () => {
 		const h = hist(["2026-08-07", "inactive"]);
 		expect(effectiveStatus(h, "2026-08-04")).toBe("active");
+	});
+});
+
+describe("effectiveRecord", () => {
+	const rec = (
+		date: string,
+		status: "active" | "inactive" | "archived",
+		note?: string,
+	): StatusRecord => ({ date: date as StatusRecord["date"], status, ...(note ? { note } : {}) });
+
+	it("defaults to active with no bounds and no note when history is empty", () => {
+		expect(effectiveRecord([], "2026-08-04")).toEqual({
+			status: "active",
+			note: "",
+			since: null,
+			until: null,
+		});
+	});
+
+	it("surfaces the effective record's status, note, and open span", () => {
+		const h = [rec("2026-01-01", "active", "baseline")];
+		expect(effectiveRecord(h, "2026-08-04")).toEqual({
+			status: "active",
+			note: "baseline",
+			since: "2026-01-01",
+			until: null, // still open
+		});
+	});
+
+	it("bounds the span with the next record's date as 'until'", () => {
+		const h = [rec("2026-01-01", "active", "hard"), rec("2026-06-01", "inactive")];
+		expect(effectiveRecord(h, "2026-03-01")).toEqual({
+			status: "active",
+			note: "hard",
+			since: "2026-01-01",
+			until: "2026-06-01",
+		});
+	});
+
+	it("keeps active status for a future-dated close, surfacing it as a scheduled 'until'", () => {
+		const h = [rec("2026-01-01", "active"), rec("2026-08-07", "inactive")];
+		// As of Aug 4 the effective status is still active (the inactive record is
+		// scheduled, not yet in effect), but the popover can surface Aug 7 as the
+		// date it's scheduled to end.
+		expect(effectiveRecord(h, "2026-08-04")).toEqual({
+			status: "active",
+			note: "",
+			since: "2026-01-01",
+			until: "2026-08-07",
+		});
 	});
 });
 

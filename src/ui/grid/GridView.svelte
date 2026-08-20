@@ -61,6 +61,7 @@
 		todayISO,
 	} from "../../dayNote";
 	import GridCell from "./GridCell.svelte";
+	import RowLabel from "../components/RowLabel.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -155,8 +156,20 @@
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
 	const rows = $derived<GridRow[]>(
-		snapshot ? buildRows(snapshot) : [],
+		snapshot ? buildRows(snapshot, todayISO()) : [],
 	);
+
+	// Whether a row is the last of its domain group — a domain header and its child
+	// project rows share one accent color and read as one block, so the divider
+	// between them is dropped and only reappears after the group's last child. We
+	// mark each row's group-end position from the flat row list.
+	function isGroupEnd(i: number): boolean {
+		const row = rows[i]!;
+		if (row.kind === "unassigned") return true;
+		const next = rows[i + 1];
+		const nextIsChild = next?.kind === "project" && next.depth > 0;
+		return !nextIsChild;
+	}
 
 	function tasksFor(row: GridRow, day: GridDay): ResolvedTask[] {
 		return snapshot ? cellTasks(row, day.tasks, snapshot) : [];
@@ -817,7 +830,7 @@
 	<div class="grid-scroll">
 		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
 			<!-- Body rows -->
-			{#each rows as row (row.key)}
+			{#each rows as row, i (row.key)}
 				{@const rowArchived = isCellInactive(row, todayISO())}
 				<div
 					class="grid-rowlabel"
@@ -825,17 +838,15 @@
 					class:domain={row.kind === "domain"}
 					class:unassigned={row.kind === "unassigned"}
 					class:dim={rowArchived}
+					class:group-end={isGroupEnd(i)}
+					style={row.kind !== "unassigned" && "color" in row && row.color
+						? `--row-accent: ${row.color};`
+						: undefined}
 				>
-					{#if row.kind !== "unassigned"}
-						<span
-							class="row-accent"
-							style={`background-color: ${("color" in row && row.color) || "var(--text-faint)"};`}
-						></span>
-					{/if}
-					<span class="row-name" title={row.name}>{row.name}</span>
-					{#if row.kind === "domain"}
-						<!-- Domain icon — matches the association tag icon in task rows. -->
-						<svg class="row-kind-icon" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+					{#if row.kind === "unassigned"}
+						<span class="row-name" title={row.name}>{row.name}</span>
+					{:else}
+						<RowLabel info={row.info} />
 					{/if}
 				</div>
 
@@ -1199,39 +1210,45 @@
 	}
 
 	.grid-rowlabel {
+		/* Top-left aligned content. The group accent is the row's left border
+		   (a domain + its projects share the same accent color, so the border
+		   reads as one continuous stripe down the group). */
 		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 10px;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 8px 10px 8px 12px;
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
+		border-left: 3px solid var(--row-accent, var(--text-faint));
 		min-width: 0;
 		position: sticky;
 		left: 0;
 		z-index: 1;
 	}
+	/* The Unassociated row has no association, so no accent border. */
+	.grid-rowlabel.unassigned {
+		border-left-color: transparent;
+	}
+	/* Child project rows sit deeper and share the domain's continuous accent, so
+	   the divider between a domain and its children is dropped — the group reads as
+	   one block. */
 	.grid-rowlabel.child {
-		padding-left: 22px;
+		padding-left: 26px;
 		background: var(--background-secondary-alt);
+	}
+	.grid-rowlabel.child:not(.group-end),
+	.grid-rowlabel.domain {
+		border-bottom-color: transparent;
 	}
 	/* A row for an entity that is inactive/archived today — present for its
 	   history, but dimmed to read as past (mirrors the Projects page). */
-	.grid-rowlabel.dim .row-name,
-	.grid-rowlabel.dim .row-accent,
-	.grid-rowlabel.dim .row-kind-icon {
+	.grid-rowlabel.dim {
 		opacity: 0.5;
 	}
 	.grid-rowlabel.unassigned .row-name {
 		color: var(--text-faint);
 		font-style: italic;
-	}
-
-	.row-accent {
-		width: 3px;
-		height: 16px;
-		border-radius: 2px;
-		flex-shrink: 0;
 	}
 
 	.row-name {
@@ -1243,11 +1260,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.row-kind-icon {
-		flex-shrink: 0;
-		color: var(--text-faint);
 	}
 
 	.grid-nudges {
