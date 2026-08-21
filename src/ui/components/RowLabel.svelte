@@ -101,9 +101,10 @@
 	<Portal>
 		<div class="row-label-card" bind:this={cardEl} style={cardStyle}>
 			<div class="rlc-head">
-				{#if info.color}
-					<span class="rlc-dot" style={`background: ${info.color};`}></span>
-				{/if}
+				<span
+					class="rlc-accent"
+					style={info.color ? `background: ${info.color};` : undefined}
+				></span>
 				<span class="rlc-name">{info.name}</span>
 			</div>
 			{#if info.description.trim() !== ""}
@@ -119,9 +120,12 @@
 			</div>
 			{#if info.since !== null}
 				<div class="rlc-span">
-					{#if info.status === "active"}Active{:else}{statusLabel}{/if}
-					since {fmtDate(info.since)}
-					{#if info.until !== null}· until {fmtDate(info.until)}{:else}· ongoing{/if}
+					{statusLabel} since {fmtDate(info.since)}
+					{#if info.until !== null}
+						· until {fmtDate(info.until)}
+					{:else if info.status === "active"}
+						· ongoing
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -182,71 +186,83 @@
 	/* ── Hover card ── */
 	:global(.row-label-card) {
 		position: fixed;
-		z-index: 1000;
+		z-index: var(--layer-popover);
 		min-width: 160px;
 		max-width: 260px;
+		height: auto;
 		background: var(--background-primary);
 		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-l);
-		padding: 8px 10px;
+		border-radius: var(--radius-m);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+		padding: var(--size-4-2) var(--size-4-3);
 		pointer-events: none;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		gap: var(--size-4-2);
 	}
 	:global(.row-label-card) .rlc-head {
 		display: flex;
-		align-items: center;
-		gap: 6px;
+		align-items: stretch;
+		gap: var(--size-4-2);
 	}
-	:global(.row-label-card) .rlc-dot {
-		width: 8px;
-		height: 8px;
+	/* Vertical accent bar in the entity's color (faint when none is set). */
+	:global(.row-label-card) .rlc-accent {
+		width: 3px;
 		border-radius: 2px;
+		background: var(--text-faint);
 		flex-shrink: 0;
 	}
 	:global(.row-label-card) .rlc-name {
-		font-size: 13px;
-		font-weight: 600;
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: var(--font-ui-medium);
+		font-weight: 400;
 		color: var(--text-normal);
 	}
 	:global(.row-label-card) .rlc-desc {
-		font-size: 12px;
+		font-size: var(--font-ui-smaller);
 		color: var(--text-muted);
-		line-height: 1.4;
+		line-height: var(--line-height-tight);
 	}
 	:global(.row-label-card) .rlc-status {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: var(--size-4-2);
 		flex-wrap: wrap;
 	}
+	/* Muted "chip": tinted 20% fill behind a full-opacity border and darker,
+	   legible text — never bright-on-bright. */
 	:global(.row-label-card) .rlc-status-badge {
-		font-size: 10px;
-		font-weight: 600;
-		text-transform: uppercase;
+		font-size: 0.7em;
+		font-weight: var(--font-semibold);
+		text-transform: capitalizee;
 		letter-spacing: 0.5px;
-		padding: 1px 6px;
-		border-radius: 4px;
-		color: var(--text-on-accent);
-		background: var(--text-faint);
+		padding: 1px var(--size-4-2);
+		border-radius: var(--radius-s);
+		color: var(--text-muted);
+		background: color-mix(in srgb, var(--text-faint) 20%, transparent);
+		border: 1px solid var(--text-faint);
 	}
 	:global(.row-label-card) .rlc-status-badge.active {
-		background: var(--color-green, #4caf50);
+		color: color-mix(in srgb, var(--color-green) 75%, var(--text-normal));
+		background: color-mix(in srgb, var(--color-green) 20%, transparent);
+		border-color: var(--color-green);
 	}
 	:global(.row-label-card) .rlc-status-badge.inactive {
-		background: var(--text-muted);
+		color: var(--text-muted);
+		background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+		border-color: var(--text-muted);
 	}
 	:global(.row-label-card) .rlc-status-badge.archived {
-		background: var(--color-red, #e5534b);
+		color: color-mix(in srgb, var(--color-red) 75%, var(--text-normal));
+		background: color-mix(in srgb, var(--color-red) 20%, transparent);
+		border-color: var(--color-red);
 	}
 	:global(.row-label-card) .rlc-status-note {
-		font-size: 12px;
+		font-size: var(--font-ui-smaller);
 		color: var(--text-normal);
 	}
 	:global(.row-label-card) .rlc-span {
-		font-size: 11px;
+		font-size: var(--font-ui-smaller);
 		color: var(--text-faint);
 		font-variant-numeric: tabular-nums;
 	}
