@@ -1036,6 +1036,9 @@
 		flex-shrink: 0;
 		border-right: 1px solid var(--background-modifier-border);
 	}
+	.week-us-header .week-us-gutter-spacer {
+		border: none;
+	}
 
 	.week-us-header:hover .week-us-gutter-spacer {
 		color: var(--text-normal);

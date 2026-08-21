@@ -1216,7 +1216,7 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 8px;
-		padding: 8px 10px 8px 12px;
+		padding: 8px 10px 8px 8px;
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
@@ -1234,8 +1234,7 @@
 	   the divider between a domain and its children is dropped — the group reads as
 	   one block. */
 	.grid-rowlabel.child {
-		padding-left: 26px;
-		background: var(--background-secondary-alt);
+		padding-left: 16px;
 	}
 	.grid-rowlabel.child:not(.group-end),
 	.grid-rowlabel.domain {

@@ -148,16 +148,18 @@
 
 	.row-label-name {
 		max-width: 100%;
+		font-family: Georgia, "Times New Roman", serif;
 		font-size: 13px;
-		font-weight: 500;
+		font-weight: 400;
 		color: var(--text-normal);
 		text-align: left;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	/* Domains sit above their projects, so their name reads a touch larger. */
 	.domain .row-label-name {
-		font-weight: 600;
+		font-size: 15px;
 	}
 
 	.row-label-note {
