@@ -26,7 +26,7 @@ export class KairosGanttView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Strength (Gantt)";
+		return "Timeline";
 	}
 
 	getIcon(): string {

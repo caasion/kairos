@@ -162,7 +162,7 @@ export default class Kairos extends Plugin {
 			void this.activateProjectsView();
 		});
 
-		this.addRibbonIcon('gantt-chart', 'Open Kairos Strength (Gantt) view', () => {
+		this.addRibbonIcon('gantt-chart', 'Open Kairos Timeline view', () => {
 			void this.activateGanttView();
 		});
 
@@ -198,7 +198,7 @@ export default class Kairos extends Plugin {
 
 		this.addCommand({
 			id: 'open-kairos-gantt-view',
-			name: 'Open Strength (Gantt) view',
+			name: 'Open Timeline view',
 			callback: () => void this.activateGanttView(),
 		});
 
@@ -346,7 +346,7 @@ export default class Kairos extends Plugin {
 		if (leaf) void workspace.revealLeaf(leaf);
 	}
 
-	// Reveal the Strength (Gantt) view in a main (center) leaf, reusing one.
+	// Reveal the Timeline view in a main (center) leaf, reusing one.
 	async activateGanttView() {
 		const { workspace } = this.app;
 
