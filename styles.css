@@ -66,3 +66,12 @@ If your plugin does not need CSS, delete this file.
 .kairos-modal-message p:last-child {
 	margin-bottom: 0;
 }
+
+/* ── Status history modal (StatusHistoryModal.ts) ── */
+/* A "Status history" caption trailing the entity name in the modal title. */
+.kairos-history-sub {
+	margin-left: 8px;
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--text-faint);
+}
