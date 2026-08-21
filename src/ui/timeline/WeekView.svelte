@@ -855,12 +855,20 @@
 		display: flex;
 		flex-shrink: 0;
 		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
-		border-bottom: 1px solid var(--background-modifier-border);
+		background: var(--background-secondary);
+		background-clip: content-box;
 	}
 
 	.week-gutter-spacer {
 		width: 46px;
 		min-width: 46px;
+		/* Carry the gutter's vertical divider up through the header so it reads as one
+		   continuous line into the body below, rather than a stray line that begins at
+		   the header's bottom edge. The bottom rule lives here (and on the col-heads)
+		   so it stops at the real content extents instead of bleeding into the padded
+		   flex edges. */
+		border-right: 1px solid var(--background-modifier-border);
+		border-bottom: 1px solid var(--background-modifier-border);
 	}
 
 	/* Holos-style date card: an uppercase day-of-week label over a large serif
@@ -880,6 +888,9 @@
 		gap: 1px;
 		background: transparent;
 		border: none;
+		/* The header's bottom rule; carried on each column cell so it spans exactly the
+		   body's column extents (no overhang past the timeline). */
+		border-bottom: 1px solid var(--background-modifier-border);
 		padding: 8px 8px 12px 12px;
 		cursor: pointer;
 		box-shadow: none;
@@ -943,6 +954,7 @@
 		min-width: 46px;
 		position: relative;
 		border-right: 1px solid var(--background-modifier-border);
+		background: var(--background-secondary);
 	}
 
 	.day-hour-label {
