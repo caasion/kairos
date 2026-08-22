@@ -29,17 +29,24 @@
 	} from "../../projectActions";
 	import {
 		BAR_HEIGHT,
+		HEADER_COARSE_HEIGHT,
+		HEADER_FINE_HEIGHT,
 		HEADER_HEIGHT,
+		INTERVALS,
+		INTERVAL_LABEL,
 		LABEL_WIDTH,
 		ROW_GAP,
 		ROW_HEIGHT,
-		WINDOW_PRESETS,
 		dateToX,
-		getHeaderTicks,
-		getRollingViewport,
+		getHeader,
+		getUnitViewport,
+		daysBetween,
 		shiftDays,
+		stepUnit,
+		unitLabel,
 		xToDate,
 		xToDay,
+		type Interval,
 	} from "../../gantt/ganttUtils";
 	import { historyToSpans, type Span } from "../../gantt/spans";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -127,26 +134,55 @@
 		return { start: !row.indent, end: !(next?.indent) };
 	}
 
-	// ── Viewport / zoom / pan ──
-	let windowDays = $state<number>(180);
-	let centerOffset = $state(0); // days panned from today
-	const center = $derived(shiftDays(today, centerOffset));
-	const viewport = $derived(getRollingViewport(windowDays, center));
+	// ── Viewport / interval / pan ──
+	// The view snaps to whole calendar units. `interval` picks the unit granularity
+	// (week/month/quarter/year); `anchor` is any date inside the shown unit, and the
+	// viewport is the whole unit containing it. Stepping moves by one unit; "Today"
+	// snaps back to the unit containing today.
+	let interval = $state<Interval>("month");
+	// Seed from the raw function (not the `today` derived) so this init doesn't
+	// capture a reactive value — `anchor` is user-driven from here on.
+	let anchor = $state<ISODate>(todayISO());
+	const viewport = $derived(getUnitViewport(interval, anchor));
+	// Number of whole days the current unit spans (drives px-per-day).
+	const unitDays = $derived(daysBetween(viewport.start, viewport.end) + 1);
+	const atToday = $derived(
+		today >= viewport.start && today <= viewport.end,
+	);
 
-	// Measure the plotting area to compute pixels-per-day (window fills the width).
+	// Measure the plotting area to compute pixels-per-day (the unit fills the width).
 	let plotWidth = $state(0);
-	const pxPerDay = $derived(plotWidth > 0 ? plotWidth / windowDays : 0);
-	const ticks = $derived(getHeaderTicks(viewport.start, viewport.end, pxPerDay));
-	// Today marker sits at the *center* of today's day-column, aligning with the
-	// centered day-label above it. Each date owns a full-width column; the label,
-	// the column, and this marker must agree or boundaries read ambiguously.
-	const todayX = $derived(dateToX(today, viewport.start, pxPerDay) + pxPerDay / 2);
+	const pxPerDay = $derived(plotWidth > 0 ? plotWidth / unitDays : 0);
+	const header = $derived(getHeader(interval, viewport.start, viewport.end, pxPerDay));
+	// Today marker sits on the *left boundary* of today's column, aligning with the
+	// date-on-line header labels (which mark day boundaries, not column centers).
+	const todayX = $derived(dateToX(today, viewport.start, pxPerDay));
 
 	function pan(dir: 1 | -1) {
-		centerOffset += dir * Math.floor(windowDays / 2);
+		anchor = stepUnit(interval, viewport.start, dir);
 	}
 	function jumpToday() {
-		centerOffset = 0;
+		anchor = today;
+	}
+	function setInterval(next: Interval) {
+		// Keep the same anchor date visible when changing granularity.
+		interval = next;
+	}
+
+	// ── Header calendar (pick the unit to jump to) ──
+	// The user picks any day; we snap to the unit of the current interval that
+	// contains it (there is no precise per-day navigation at this altitude).
+	let showCalendar = $state(false);
+	let calendarValue = $state<Date>(dateFromISO(todayISO()));
+	let dateNavRef = $state<HTMLDivElement>();
+	function onCalendarSelect(picked: Date) {
+		anchor = isoFromDate(picked);
+		showCalendar = false;
+	}
+	function handleClickOutside(event: MouseEvent) {
+		if (showCalendar && dateNavRef && !dateNavRef.contains(event.target as Node)) {
+			showCalendar = false;
+		}
 	}
 
 	const rowTop = (i: number) => HEADER_HEIGHT + i * (ROW_HEIGHT + ROW_GAP);
@@ -156,11 +192,16 @@
 	const barColor = (row: GanttRow) => row.color || "var(--interactive-accent)";
 
 	// ── Span geometry: clamp to the viewport so off-screen spans don't overflow ──
-	// A span occupies whole day-columns: it starts at the *left* boundary of its
-	// start day and fills *through* the end day, i.e. up to the left boundary of
-	// end+1 (== the right boundary of the end column). This makes a bar's edges land
-	// exactly on the grid lines that delimit the labeled days, so the eye can read
-	// "this ran from here to here" against the header.
+	// Boundaries are drawn *on the grid lines that delimit the labeled days*, and
+	// those lines are now labeled by date (date-on-line header). A span's right edge
+	// therefore lands on the boundary of the day it ends:
+	//   • bounded span → its `end` is the date it went inactive; the bar fills up to
+	//     that boundary (the last active day is end−1). Right edge = dateToX(end).
+	//   • open span → still running; it fills *through* today, so the right edge is
+	//     dateToX(today+1). `spans.ts` sets an open span's `end` to today, so we add
+	//     one day only in the open case.
+	// This kills the old off-by-one where an active-through-the-23rd bar reached the
+	// line labeled "24".
 	interface SpanBox {
 		left: number;
 		width: number;
@@ -168,14 +209,15 @@
 		clampedEnd: boolean; // true when the real end is off-screen to the right
 	}
 	function spanBox(span: Span): SpanBox | null {
+		// The exclusive right boundary date the bar reaches.
+		const endBoundary = span.open ? shiftDays(span.end, 1) : span.end;
 		const clampedStart = span.start < viewport.start;
-		const clampedEnd = span.end > viewport.end;
+		const clampedEnd = endBoundary > shiftDays(viewport.end, 1);
 		const start = clampedStart ? viewport.start : span.start;
-		const end = clampedEnd ? viewport.end : span.end;
-		if (end < viewport.start || start > viewport.end) return null; // fully off-screen
+		const rightDate = clampedEnd ? shiftDays(viewport.end, 1) : endBoundary;
+		if (rightDate <= viewport.start || start > viewport.end) return null; // off-screen
 		const left = dateToX(start, viewport.start, pxPerDay);
-		// Fill through the end day's column (left boundary of end+1).
-		const right = dateToX(shiftDays(end, 1), viewport.start, pxPerDay);
+		const right = dateToX(rightDate, viewport.start, pxPerDay);
 		return { left, width: Math.max(3, right - left), clampedStart, clampedEnd };
 	}
 
@@ -443,18 +485,60 @@
 	}
 </script>
 
-<div class="gantt-wrap">
-	<!-- Controls -->
-	<div class="gantt-controls">
-		<button class="gc-btn" title="Pan back" aria-label="Pan back" onclick={() => pan(-1)}>‹</button>
-		<button class="gc-btn" title="Pan forward" aria-label="Pan forward" onclick={() => pan(1)}>›</button>
-		<button class="gc-btn" onclick={jumpToday}>Today</button>
-		<span class="gc-spacer"></span>
-		{#each WINDOW_PRESETS as p}
-			<button class="gc-zoom" class:active={windowDays === p} onclick={() => (windowDays = p)}>
-				{p}d
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="gantt-wrap" onclick={handleClickOutside}>
+	<!-- Header: shared left navigator (mirrors Grid / Week) + interval selector. -->
+	<div class="gantt-header-bar">
+		<div class="day-nav" bind:this={dateNavRef}>
+			<button
+				class="icon-btn nav-btn"
+				onclick={(e) => { e.stopPropagation(); pan(-1); }}
+				aria-label="Previous"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
 			</button>
-		{/each}
+
+			<button
+				class="day-date"
+				title="Click to jump to a {INTERVAL_LABEL[interval].toLowerCase()}"
+				onclick={(e) => { e.stopPropagation(); showCalendar = !showCalendar; }}
+			>
+				{unitLabel(interval, viewport.start)}
+			</button>
+
+			<button
+				class="icon-btn nav-btn"
+				onclick={(e) => { e.stopPropagation(); pan(1); }}
+				aria-label="Next"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+			</button>
+
+			{#if !atToday}
+				<button class="today-btn" onclick={(e) => { e.stopPropagation(); jumpToday(); }}>Today</button>
+			{/if}
+
+			{#if showCalendar}
+				<div class="calendar-popup">
+					<Datepicker inline bind:value={calendarValue} onselect={onCalendarSelect} />
+				</div>
+			{/if}
+		</div>
+
+		<span class="gc-spacer"></span>
+
+		<div class="interval-tabs">
+			{#each INTERVALS as iv}
+				<button
+					class="interval-tab"
+					class:active={interval === iv}
+					onclick={(e) => { e.stopPropagation(); setInterval(iv); }}
+				>
+					{INTERVAL_LABEL[iv]}
+				</button>
+			{/each}
+		</div>
 	</div>
 
 	{#if rows.length === 0}
@@ -499,18 +583,35 @@
 				onpointerup={endDrag}
 				onpointerleave={endDrag}
 			>
-				<!-- Header ticks + grid lines -->
+				<!-- Two-level header: coarse grouping row over a fine row. Fine labels
+				     mark the *left boundary* of each column, so a bar edge (which lands
+				     on a day boundary) reads against a labeled line — no off-by-one. -->
 				<div class="gantt-header" style:height={`${HEADER_HEIGHT}px`}>
-					{#each ticks as t}
-						<span class="gantt-tick-label" style:left={`${t.x}px`}>{t.label}</span>
-					{/each}
+					<div class="gantt-header-coarse" style:height={`${HEADER_COARSE_HEIGHT}px`}>
+						{#each header.coarse as c}
+							<span class="gantt-coarse-label" style:left={`${c.labelX}px`}>{c.label}</span>
+							<span class="gantt-coarse-sep" style:left={`${c.gridX}px`}></span>
+						{/each}
+					</div>
+					<div class="gantt-header-fine" style:height={`${HEADER_FINE_HEIGHT}px`} style:top={`${HEADER_COARSE_HEIGHT}px`}>
+						{#each header.fine as f}
+							<!-- Label sits *on* the boundary line (its day's start), so a bar
+							     edge lands on the labeled date. The leftmost tick (gridX≈0)
+							     left-aligns so it isn't clipped off the plot edge. -->
+							<span class="gantt-fine-label" class:edge={f.gridX < 1} style:left={`${f.gridX}px`}>{f.label}</span>
+						{/each}
+					</div>
 				</div>
-				{#each ticks as t}
-					<div class="gantt-gridline" style:left={`${t.gridX}px`} style:top={`${HEADER_HEIGHT}px`} style:height={`${contentHeight - HEADER_HEIGHT}px`}></div>
+				<!-- Fine gridlines at column boundaries; coarse boundaries drawn heavier. -->
+				{#each header.fine as f}
+					<div class="gantt-gridline" style:left={`${f.gridX}px`} style:top={`${HEADER_HEIGHT}px`} style:height={`${contentHeight - HEADER_HEIGHT}px`}></div>
+				{/each}
+				{#each header.coarse as c}
+					<div class="gantt-gridline coarse" style:left={`${c.gridX}px`} style:top={`${HEADER_COARSE_HEIGHT}px`} style:height={`${contentHeight - HEADER_COARSE_HEIGHT}px`}></div>
 				{/each}
 
-				<!-- Today marker -->
-				{#if todayX >= 0 && todayX <= plotWidth}
+				<!-- Today marker (on today's left boundary) -->
+				{#if atToday && todayX >= 0 && todayX <= plotWidth}
 					<div class="gantt-today" style:left={`${todayX}px`} style:height={`${contentHeight}px`}></div>
 				{/if}
 
@@ -548,7 +649,6 @@
 									style:height={`${BAR_HEIGHT}px`}
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
-									style:--bar-intensity={span.intensity}
 									title={`Active${span.note ? " · " + span.note : ""} — ${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`}
 									onclick={() => openEditor(row, span)}
 								>
@@ -579,7 +679,11 @@
 					{/each}
 				{/each}
 
-				<!-- Create-drag range preview: a ghost bar between anchor and pointer. -->
+				<!-- Create-drag range preview: a ghost bar between anchor and pointer.
+				     The gesture creates a bounded active period [a, b): active at `a`,
+				     inactive at `b`. So the ghost's right edge lands on the `b` boundary
+				     line (matching the committed bar and the drag marker), *not* b+1 —
+				     otherwise the preview reads one day wider than what gets written. -->
 				{#if drag && drag.kind === "create" && drag.moved}
 					{@const a = drag.anchorDate <= drag.preview ? drag.anchorDate : drag.preview}
 					{@const b = drag.anchorDate <= drag.preview ? drag.preview : drag.anchorDate}
@@ -587,7 +691,7 @@
 					<div
 						class="gantt-ghost"
 						style:left={`${dateToX(a, viewport.start, pxPerDay)}px`}
-						style:width={`${dateToX(shiftDays(b, 1), viewport.start, pxPerDay) - dateToX(a, viewport.start, pxPerDay)}px`}
+						style:width={`${Math.max(3, dateToX(b, viewport.start, pxPerDay) - dateToX(a, viewport.start, pxPerDay))}px`}
 						style:top={`${rowTop(ri) + (ROW_HEIGHT - BAR_HEIGHT) / 2}px`}
 						style:height={`${BAR_HEIGHT}px`}
 					></div>
@@ -623,7 +727,7 @@
 				{#if editPickDate}
 					<div class="gantt-datepicker"><Datepicker inline bind:value={editDate} onselect={() => (editPickDate = false)} /></div>
 				{/if}
-				<input class="gantt-note-input" placeholder="intensity note (e.g. baseline / hard / taper)" bind:value={editNote} onkeydown={(e) => { if (e.key === "Enter") commitEditor(); }} />
+				<input class="gantt-note-input" placeholder="label (optional, e.g. baseline / hard / taper)" bind:value={editNote} onkeydown={(e) => { if (e.key === "Enter") commitEditor(); }} />
 				<div class="gantt-edit-actions">
 					<button class="gc-btn primary" onclick={commitEditor}>Save</button>
 					<span class="gc-spacer"></span>
@@ -641,12 +745,13 @@
 		height: 100%;
 		overflow: hidden;
 	}
-	.gantt-controls {
+	/* ── Header bar (mirrors Grid / Week view) — tinted background-secondary. ── */
+	.gantt-header-bar {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		padding: 8px 10px;
-		border-bottom: 1px solid var(--background-modifier-border);
+		flex-shrink: 0;
 	}
 	.gc-spacer { flex: 1; }
 	.gc-btn {
@@ -665,20 +770,94 @@
 		color: var(--text-on-accent);
 		border-color: var(--interactive-accent);
 	}
-	.gc-zoom {
-		height: 24px;
-		padding: 0 8px;
-		font-size: 11px;
+
+	.day-nav {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.icon-btn {
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 6px;
+		background: var(--background-primary-alt);
+		color: var(--text-muted);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 26px;
+		width: 26px;
+		flex-shrink: 0;
+	}
+	.icon-btn:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
+	}
+	/* Give the inline SVG an explicit size so it doesn't collapse to 0-width inside
+	   the flex button (renders as 0×14 = invisible otherwise). */
+	.icon-btn svg {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+	}
+	.nav-btn { height: 24px; width: 24px; }
+	.day-date {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--text-normal);
+		font-variant-numeric: tabular-nums;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		padding: 3px 8px;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.day-date:hover { background: var(--background-modifier-hover); }
+	.today-btn {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		background: var(--background-primary-alt);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 6px;
+		padding: 3px 8px;
+		cursor: pointer;
+	}
+	.today-btn:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
+	}
+	.calendar-popup {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 100;
+	}
+	.interval-tabs {
+		display: flex;
+		gap: 2px;
+		background: var(--background-primary-alt);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 7px;
+		padding: 2px;
+	}
+	.interval-tab {
+		height: 22px;
+		padding: 0 10px;
+		font-size: 11px;
+		font-weight: 500;
+		border: none;
+		border-radius: 5px;
 		background: transparent;
 		color: var(--text-muted);
 		cursor: pointer;
 	}
-	.gc-zoom.active {
+	.interval-tab:hover { color: var(--text-normal); }
+	.interval-tab.active {
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
-		border-color: var(--interactive-accent);
 	}
 	.gantt-empty {
 		padding: 24px;
@@ -689,16 +868,22 @@
 		display: flex;
 		flex: 1;
 		overflow: auto;
+		/* Match the Grid / Week body insets so the plot doesn't run flush to the view
+		   edges. Sticky children (.gantt-labels) pin to this padding box's left edge. */
+		padding: 0 10px 12px;
 	}
 	.gantt-labels {
 		flex-shrink: 0;
 		border-right: 1px solid var(--background-modifier-border);
-		background: var(--background-primary);
+		background: var(--background-secondary);
 		position: sticky;
 		left: 0;
 		z-index: 2;
 	}
-	.gantt-corner { border-bottom: 1px solid var(--background-modifier-border); }
+	.gantt-corner {
+		border-bottom: 1px solid var(--background-modifier-border);
+		background: var(--background-secondary);
+	}
 	.gantt-label {
 		position: relative;
 		display: flex;
@@ -733,33 +918,69 @@
 		flex: 1;
 		min-width: 400px;
 	}
+	/* Two-level header: a coarse grouping row stacked over a fine row. Tinted to
+	   match the header bar / label column (background-secondary). */
 	.gantt-header {
 		position: sticky;
 		top: 0;
 		z-index: 1;
 		border-bottom: 1px solid var(--background-modifier-border);
-		background: var(--background-primary);
+		background: var(--background-secondary);
 	}
-	.gantt-tick-label {
+	.gantt-header-coarse {
+		position: relative;
+		width: 100%;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+	.gantt-header-fine { position: absolute; left: 0; width: 100%; }
+	.gantt-coarse-label {
 		position: absolute;
-		top: 6px;
+		top: 3px;
+		transform: translateX(-50%);
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--text-muted);
+		white-space: nowrap;
+		pointer-events: none;
+	}
+	/* A short separator tick at each coarse group's left boundary. */
+	.gantt-coarse-sep {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 0;
+		border-left: 1px solid var(--background-modifier-border);
+	}
+	.gantt-fine-label {
+		position: absolute;
+		top: 4px;
 		transform: translateX(-50%);
 		font-size: 10px;
 		color: var(--text-faint);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+		pointer-events: none;
+	}
+	/* The leftmost boundary tick has no room to center on the line, so left-align it. */
+	.gantt-fine-label.edge {
+		transform: translateX(2px);
 	}
 	.gantt-gridline {
 		position: absolute;
 		width: 0;
 		border-left: 1px dashed var(--background-modifier-border);
-		opacity: 0.6;
+		opacity: 0.5;
+	}
+	/* Coarse-unit boundaries read heavier than the fine day/week lines. */
+	.gantt-gridline.coarse {
+		border-left: 1px solid var(--background-modifier-border);
+		opacity: 0.9;
 	}
 	.gantt-today {
 		position: absolute;
 		top: 0;
 		width: 0;
-		/* todayX is the column center; pull the line onto it. */
+		/* todayX is today's left boundary; nudge to sit on the line. */
 		transform: translateX(-1px);
 		border-left: 2px solid var(--color-red, #e5534b);
 		opacity: 0.75;
@@ -796,13 +1017,18 @@
 		   label does its own ellipsis clipping. */
 		overflow: visible;
 		z-index: 1;
-		/* Left accent stripe in the base hue (like Holos), body shaded by intensity. */
-		border: 1px solid color-mix(in srgb, var(--bar-color) 55%, transparent);
+		/* Colored sides, plain interior: thick accent caps on left/right, a hairline
+		   accent top/bottom, and a background-primary body so the bar reads as a
+		   framed span rather than a filled block. */
+		border: 1px solid color-mix(in srgb, var(--bar-color) 45%, transparent);
 		border-left: 3px solid var(--bar-color);
-		background: color-mix(in srgb, var(--bar-color) calc(var(--bar-intensity) * 100%), var(--background-secondary));
+		border-right: 3px solid var(--bar-color);
+		background: var(--background-primary);
 	}
 	.gantt-bar:hover {
-		border-color: color-mix(in srgb, var(--bar-color) 80%, transparent);
+		border-color: color-mix(in srgb, var(--bar-color) 70%, transparent);
+		border-left-color: var(--bar-color);
+		border-right-color: var(--bar-color);
 	}
 	/* Open-ended (still-running) spans: no right border, arrow cap → "continues". */
 	.gantt-bar.open-ended {
@@ -814,10 +1040,9 @@
 		content: "";
 		position: absolute;
 		right: -8px;
-		top: -1px;
 		border-top: calc(var(--bar-h, 22px) / 2 + 1px) solid transparent;
 		border-bottom: calc(var(--bar-h, 22px) / 2 + 1px) solid transparent;
-		border-left: 8px solid color-mix(in srgb, var(--bar-color) 55%, transparent);
+		border-left: 8px solid var(--bar-color);
 	}
 	/* Span whose real start is off-screen left: square that edge (it's cut, not a boundary). */
 	.gantt-bar.clamped-start {

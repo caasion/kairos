@@ -5,9 +5,15 @@ import { historyToSpans, noteToIntensity } from "./spans";
 import {
 	dateToX,
 	daysBetween,
-	getRollingViewport,
+	getUnitViewport,
 	getViewportWidth,
+	isoWeekNumber,
 	shiftDays,
+	startOfQuarter,
+	startOfWeek,
+	stepUnit,
+	unitLabel,
+	unitRange,
 	xToDate,
 	xToDay,
 } from "./ganttUtils";
@@ -187,13 +193,58 @@ describe("coordinate math", () => {
 		expect(xToDay(12, "2026-06-01", 12)).toBe("2026-06-02"); // into day 1
 	});
 
-	it("getRollingViewport centers the window on the given date", () => {
-		const vp = getRollingViewport(30, "2026-06-15");
-		expect(daysBetween(vp.start, vp.end)).toBe(29);
-		expect(daysBetween(vp.start, "2026-06-15")).toBe(15); // half = 15
-	});
-
 	it("getViewportWidth counts both endpoints", () => {
 		expect(getViewportWidth("2026-06-01", "2026-06-30", 10)).toBe(300); // 30 days * 10
+	});
+});
+
+describe("calendar-unit intervals", () => {
+	it("startOfWeek snaps to the Monday on-or-before (ISO weeks)", () => {
+		expect(startOfWeek("2026-08-21")).toBe("2026-08-17"); // Fri → Mon of that week
+		expect(startOfWeek("2026-08-17")).toBe("2026-08-17"); // a Monday is its own start
+		expect(startOfWeek("2026-08-23")).toBe("2026-08-17"); // Sunday still belongs to Mon week
+	});
+
+	it("startOfQuarter snaps to Jan/Apr/Jul/Oct firsts", () => {
+		expect(startOfQuarter("2026-08-21")).toBe("2026-07-01"); // Q3
+		expect(startOfQuarter("2026-01-15")).toBe("2026-01-01"); // Q1
+		expect(startOfQuarter("2026-12-31")).toBe("2026-10-01"); // Q4
+	});
+
+	it("unitRange returns whole inclusive calendar units", () => {
+		expect(unitRange("week", "2026-08-21")).toEqual({ start: "2026-08-17", end: "2026-08-23" });
+		expect(unitRange("month", "2026-08-21")).toEqual({ start: "2026-08-01", end: "2026-08-31" });
+		expect(unitRange("quarter", "2026-08-21")).toEqual({ start: "2026-07-01", end: "2026-09-30" });
+		expect(unitRange("year", "2026-08-21")).toEqual({ start: "2026-01-01", end: "2026-12-31" });
+	});
+
+	it("getUnitViewport mirrors unitRange", () => {
+		expect(getUnitViewport("month", "2026-02-14")).toEqual({ start: "2026-02-01", end: "2026-02-28" });
+	});
+
+	it("stepUnit advances/retreats by whole units", () => {
+		expect(stepUnit("week", "2026-08-17", 1)).toBe("2026-08-24");
+		expect(stepUnit("week", "2026-08-17", -1)).toBe("2026-08-10");
+		expect(stepUnit("month", "2026-12-01", 1)).toBe("2027-01-01"); // year wrap
+		expect(stepUnit("month", "2026-01-01", -1)).toBe("2025-12-01");
+		expect(stepUnit("quarter", "2026-10-01", 1)).toBe("2027-01-01"); // Q4 → next Q1
+		expect(stepUnit("quarter", "2026-01-01", -1)).toBe("2025-10-01");
+		expect(stepUnit("year", "2026-01-01", 1)).toBe("2027-01-01");
+	});
+
+	it("isoWeekNumber follows ISO-8601 (Thursday rule)", () => {
+		// 2026-01-01 is a Thursday → it belongs to week 1 of 2026.
+		expect(isoWeekNumber("2026-01-01")).toBe(1);
+		expect(isoWeekNumber("2026-01-05")).toBe(2); // the following Monday
+		// A date in a mid-year week.
+		expect(isoWeekNumber("2026-08-21")).toBe(34);
+		// 2025-12-29 (Mon) starts the week containing 2026-01-01 (Thu) → week 1/2026.
+		expect(isoWeekNumber("2025-12-29")).toBe(1);
+	});
+
+	it("unitLabel is human-readable per interval", () => {
+		expect(unitLabel("month", "2026-08-01")).toBe("Aug 2026");
+		expect(unitLabel("quarter", "2026-07-01")).toBe("Q3 2026");
+		expect(unitLabel("year", "2026-01-01")).toBe("2026");
 	});
 });

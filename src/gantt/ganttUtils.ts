@@ -1,23 +1,42 @@
-// Gantt coordinate math — pure date↔pixel mapping for the strength view.
+// Timeline coordinate math — pure date↔pixel mapping for the Timeline view.
 //
 // Adapted from the Holos plugin's ganttUtils, reworked to be dependency-free
 // (no date-fns, no obsidian) so it runs under vitest like projectFile.ts. Dates
 // are `YYYY-MM-DD` strings; we parse them at UTC noon and diff in whole days,
 // which sidesteps DST and timezone drift entirely.
+//
+// The view is driven by a calendar *interval* (week / month / quarter / year)
+// rather than a free rolling window. A viewport always snaps to whole calendar
+// units — a Mon–Sun week, a calendar month, a Jan–Mar quarter, a Jan–Dec year —
+// so stepping is by whole units and the header can label real weeks/months.
 
 import type { ISODate } from "../types";
 
 export const ROW_HEIGHT = 34;
 export const ROW_GAP = 6;
 export const BAR_HEIGHT = 22;
-export const HEADER_HEIGHT = 28;
+// The header carries two stacked rows: a coarse grouping row over a fine row.
+export const HEADER_COARSE_HEIGHT = 20;
+export const HEADER_FINE_HEIGHT = 20;
+export const HEADER_HEIGHT = HEADER_COARSE_HEIGHT + HEADER_FINE_HEIGHT;
 export const LABEL_WIDTH = 160;
 
-/** Standard window-size presets, in days. */
-export const WINDOW_PRESETS = [30, 60, 90, 180, 365] as const;
-export type WindowPreset = (typeof WINDOW_PRESETS)[number];
+// ── Interval presets ─────────────────────────────────────────────────────────
+export type Interval = "week" | "month" | "quarter" | "year";
+export const INTERVALS: readonly Interval[] = ["week", "month", "quarter", "year"];
+export const INTERVAL_LABEL: Record<Interval, string> = {
+	week: "Week",
+	month: "Month",
+	quarter: "Quarter",
+	year: "Year",
+};
 
 const MS_PER_DAY = 86_400_000;
+
+const MONTHS = [
+	"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+	"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /** Parse an ISO date at UTC noon (DST-proof anchor for day arithmetic). */
 function parseUTCNoon(date: ISODate): number {
@@ -42,23 +61,141 @@ export function shiftDays(date: ISODate, days: number): ISODate {
 	return isoFromUTC(parseUTCNoon(date) + days * MS_PER_DAY);
 }
 
-/**
- * A viewport centered on `center` (defaults to `today`) spanning exactly
- * `windowDays` days. Mirrors Holos' rolling window: half the window before the
- * center, the remainder after.
- */
-export function getRollingViewport(
-	windowDays: number,
-	center: ISODate,
-): { start: ISODate; end: ISODate } {
-	const half = Math.floor(windowDays / 2);
-	return {
-		start: shiftDays(center, -half),
-		end: shiftDays(center, windowDays - half - 1),
-	};
+// ── Calendar-unit helpers ────────────────────────────────────────────────────
+
+function year(date: ISODate): number {
+	return Number(date.slice(0, 4));
+}
+function month(date: ISODate): number {
+	return Number(date.slice(5, 7)); // 1..12
+}
+/** Day-of-week 0=Sun..6=Sat at UTC noon. */
+function dow(date: ISODate): number {
+	return new Date(parseUTCNoon(date)).getUTCDay();
+}
+/** The Monday on-or-before `date` (ISO weeks start Monday). */
+export function startOfWeek(date: ISODate): ISODate {
+	const d = dow(date);
+	const back = d === 0 ? 6 : d - 1; // Sun → 6 back, Mon → 0, …
+	return shiftDays(date, -back);
 }
 
-/** Pixel x of `date` within a viewport, given pixels-per-day. */
+/**
+ * ISO-8601 week number (1..53). Week 1 is the week containing the first Thursday
+ * of the year; equivalently, weeks are Monday-anchored and numbered by the year
+ * of the Thursday in that week.
+ */
+export function isoWeekNumber(date: ISODate): number {
+	// The Thursday of this date's ISO week determines the owning year.
+	const monday = startOfWeek(date);
+	const thursday = shiftDays(monday, 3);
+	const yearStart = `${thursday.slice(0, 4)}-01-01` as ISODate;
+	const firstThursday = shiftDays(startOfWeek(yearStart), 3);
+	return Math.round(daysBetween(firstThursday, thursday) / 7) + 1;
+}
+export function startOfMonth(date: ISODate): ISODate {
+	return `${date.slice(0, 7)}-01` as ISODate;
+}
+/** First day of the calendar quarter (Jan/Apr/Jul/Oct) containing `date`. */
+export function startOfQuarter(date: ISODate): ISODate {
+	const q = Math.floor((month(date) - 1) / 3); // 0..3
+	const m = q * 3 + 1;
+	return `${date.slice(0, 4)}-${String(m).padStart(2, "0")}-01` as ISODate;
+}
+export function startOfYear(date: ISODate): ISODate {
+	return `${date.slice(0, 4)}-01-01` as ISODate;
+}
+
+/** First day of the next calendar month after `date`. */
+function startOfNextMonth(date: ISODate): ISODate {
+	const y = year(date);
+	const m = month(date);
+	const ny = m === 12 ? y + 1 : y;
+	const nm = m === 12 ? 1 : m + 1;
+	return `${ny}-${String(nm).padStart(2, "0")}-01` as ISODate;
+}
+
+/** The [start, end] inclusive ISO dates of the unit of `interval` containing `date`. */
+export function unitRange(interval: Interval, date: ISODate): { start: ISODate; end: ISODate } {
+	switch (interval) {
+		case "week": {
+			const start = startOfWeek(date);
+			return { start, end: shiftDays(start, 6) };
+		}
+		case "month": {
+			const start = startOfMonth(date);
+			return { start, end: shiftDays(startOfNextMonth(start), -1) };
+		}
+		case "quarter": {
+			const start = startOfQuarter(date);
+			// Advance three months, minus a day.
+			let cur = start;
+			for (let i = 0; i < 3; i++) cur = startOfNextMonth(cur);
+			return { start, end: shiftDays(cur, -1) };
+		}
+		case "year": {
+			const start = startOfYear(date);
+			return { start, end: `${date.slice(0, 4)}-12-31` as ISODate };
+		}
+	}
+}
+
+/** Step a viewport-start date by `dir` whole units of `interval`. */
+export function stepUnit(interval: Interval, unitStart: ISODate, dir: 1 | -1): ISODate {
+	switch (interval) {
+		case "week":
+			return shiftDays(unitStart, dir * 7);
+		case "month": {
+			const at = dir === 1 ? startOfNextMonth(unitStart) : shiftDays(unitStart, -1);
+			return startOfMonth(at);
+		}
+		case "quarter": {
+			const y = year(unitStart);
+			const q = Math.floor((month(unitStart) - 1) / 3); // 0..3
+			let nq = q + dir;
+			let ny = y;
+			if (nq < 0) { nq = 3; ny -= 1; }
+			if (nq > 3) { nq = 0; ny += 1; }
+			return `${ny}-${String(nq * 3 + 1).padStart(2, "0")}-01` as ISODate;
+		}
+		case "year":
+			return `${year(unitStart) + dir}-01-01` as ISODate;
+	}
+}
+
+/**
+ * The viewport (inclusive start/end) for the unit of `interval` containing
+ * `date`. Replaces the old rolling window: the range is always a whole
+ * calendar unit so the header can label real weeks/months/quarters.
+ */
+export function getUnitViewport(
+	interval: Interval,
+	date: ISODate,
+): { start: ISODate; end: ISODate } {
+	return unitRange(interval, date);
+}
+
+/** A short human label for the current unit (used in the header date button). */
+export function unitLabel(interval: Interval, start: ISODate): string {
+	const { end } = unitRange(interval, start);
+	switch (interval) {
+		case "week": {
+			const a = `${Number(start.slice(8, 10))} ${MONTHS[month(start) - 1]}`;
+			const b = `${Number(end.slice(8, 10))} ${MONTHS[month(end) - 1]}`;
+			return `${a} – ${b} ${year(end)}`;
+		}
+		case "month":
+			return `${MONTHS[month(start) - 1]} ${year(start)}`;
+		case "quarter":
+			return `Q${Math.floor((month(start) - 1) / 3) + 1} ${year(start)}`;
+		case "year":
+			return String(year(start));
+	}
+}
+
+// ── Pixel math ───────────────────────────────────────────────────────────────
+
+/** Pixel x of `date` (its left boundary) within a viewport, given px-per-day. */
 export function dateToX(date: ISODate, viewportStart: ISODate, pxPerDay: number): number {
 	return daysBetween(viewportStart, date) * pxPerDay;
 }
@@ -95,84 +232,179 @@ export function getViewportWidth(
 	return (daysBetween(viewportStart, viewportEnd) + 1) * pxPerDay;
 }
 
-export interface HeaderTick {
+// ── Two-level header ticks ───────────────────────────────────────────────────
+//
+// The header is two stacked rows. Fine ticks carry a label centered in their
+// span and a boundary gridline at their *left edge* (so bar edges, which land on
+// day boundaries, read against a labeled line — killing the old off-by-one where
+// a bar ending "on the 23rd" appeared to end at the 24th). Coarse ticks group the
+// fine ones and draw a heavier boundary line.
+//
+// Per interval:
+//   week    → fine = each day,   coarse = the week (single group)
+//   month   → fine = each day,   coarse = weeks
+//   quarter → fine = weeks,      coarse = months
+//   year    → fine = months,     coarse = quarters
+
+export interface FineTick {
+	/** Centered label text. */
 	label: string;
-	/** Pixel offset for the centered label. */
-	x: number;
-	/** Pixel offset for the left-edge grid line. */
+	/** Pixel x of the tick's left boundary (where the gridline is drawn). */
 	gridX: number;
+	/** Pixel x for the centered label. */
+	labelX: number;
+	/** The ISO date of this tick's left boundary (for date-on-line rendering). */
+	date: ISODate;
+}
+export interface CoarseTick {
+	label: string;
+	/** Pixel x of the group's left boundary. */
+	gridX: number;
+	/** Pixel x for the centered label. */
+	labelX: number;
+	/** Width of the group in pixels. */
+	width: number;
+}
+export interface HeaderModel {
+	fine: FineTick[];
+	coarse: CoarseTick[];
 }
 
-const MONTHS = [
-	"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-	"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+function fmtDay(date: ISODate): string {
+	return String(Number(date.slice(8, 10)));
+}
 
 /**
- * Header ticks whose granularity is inferred from `pxPerDay`:
- *  - >= 18 → one tick per day
- *  - >= 5  → one tick per week (Monday-aligned)
- *  - else  → one tick per month
+ * Build the two-level header for `interval` over `[viewportStart, viewportEnd]`.
+ * Assumes the viewport is a whole unit (as `getUnitViewport` guarantees).
  */
-export function getHeaderTicks(
+export function getHeader(
+	interval: Interval,
 	viewportStart: ISODate,
 	viewportEnd: ISODate,
 	pxPerDay: number,
-): HeaderTick[] {
-	if (pxPerDay <= 0) return [];
-	const span = daysBetween(viewportStart, viewportEnd);
+): HeaderModel {
+	if (pxPerDay <= 0) return { fine: [], coarse: [] };
+	const span = daysBetween(viewportStart, viewportEnd); // inclusive → last index
+	const xOf = (d: ISODate) => daysBetween(viewportStart, d) * pxPerDay;
 
-	// ── Daily ──
-	if (pxPerDay >= 18) {
-		const ticks: HeaderTick[] = [];
+	// Helper: emit fine day ticks for every day in the viewport.
+	const dayFine = (): FineTick[] => {
+		const out: FineTick[] = [];
 		for (let i = 0; i <= span; i++) {
 			const date = shiftDays(viewportStart, i);
-			ticks.push({
-				label: String(Number(date.slice(8, 10))),
-				x: i * pxPerDay + pxPerDay / 2,
+			out.push({
+				label: fmtDay(date),
 				gridX: i * pxPerDay,
+				labelX: i * pxPerDay + pxPerDay / 2,
+				date,
 			});
 		}
-		return ticks;
-	}
+		return out;
+	};
 
-	// ── Weekly (Monday-aligned) ──
-	if (pxPerDay >= 5) {
-		const ticks: HeaderTick[] = [];
-		// Find the first Monday on-or-after viewportStart.
-		const startDow = new Date(parseUTCNoon(viewportStart)).getUTCDay(); // 0=Sun
-		const toMonday = (8 - (startDow === 0 ? 7 : startDow)) % 7;
-		for (let i = toMonday; i <= span; i += 7) {
-			const date = shiftDays(viewportStart, i);
-			const [, mm, dd] = date.split("-");
-			ticks.push({
-				label: `${Number(dd)} ${MONTHS[Number(mm) - 1]}`,
-				x: i * pxPerDay + (7 * pxPerDay) / 2,
-				gridX: i * pxPerDay,
+	// Helper: emit coarse groups by walking week/month/quarter boundaries.
+	const groupsBy = (
+		nextStart: (d: ISODate) => ISODate,
+		label: (start: ISODate) => string,
+	): CoarseTick[] => {
+		const out: CoarseTick[] = [];
+		let cur = viewportStart;
+		while (cur <= viewportEnd) {
+			const next = nextStart(cur);
+			const groupEnd = shiftDays(next, -1); // inclusive last day of this group
+			const clampedEnd = groupEnd > viewportEnd ? viewportEnd : groupEnd;
+			const left = Math.max(0, xOf(cur));
+			const right = xOf(shiftDays(clampedEnd, 1));
+			out.push({
+				label: label(cur),
+				gridX: left,
+				labelX: left + (right - left) / 2,
+				width: right - left,
 			});
+			cur = next;
 		}
-		return ticks;
-	}
+		return out;
+	};
 
-	// ── Monthly ──
-	const ticks: HeaderTick[] = [];
-	const multiYear = viewportStart.slice(0, 4) !== viewportEnd.slice(0, 4);
-	// Walk month firsts from the month of viewportStart.
-	let cursor = `${viewportStart.slice(0, 7)}-01` as ISODate;
-	while (cursor <= viewportEnd) {
-		const offset = daysBetween(viewportStart, cursor);
-		const yy = cursor.slice(0, 4);
-		const mm = Number(cursor.slice(5, 7));
-		const daysInMonth = new Date(Date.UTC(Number(yy), mm, 0)).getUTCDate();
-		ticks.push({
-			label: multiYear ? `${MONTHS[mm - 1]} ${yy.slice(2)}` : MONTHS[mm - 1]!,
-			x: offset * pxPerDay + (daysInMonth * pxPerDay) / 2,
-			gridX: Math.max(0, offset) * pxPerDay,
-		});
-		// Advance to the first of the next month.
-		const nextMonth = mm === 12 ? 1 : mm + 1;
-		const nextYear = mm === 12 ? Number(yy) + 1 : Number(yy);
-		cursor = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01` as ISODate;
+	switch (interval) {
+		case "week": {
+			// Fine = days; coarse = the single week (by ISO week-of-year number).
+			const right = xOf(shiftDays(viewportEnd, 1));
+			return {
+				fine: dayFine(),
+				coarse: [{
+					label: `Week ${isoWeekNumber(viewportStart)}`,
+					gridX: 0,
+					labelX: right / 2,
+					width: right,
+				}],
+			};
+		}
+		case "month": {
+			// Fine = days; coarse = weeks (by ISO week-of-year number).
+			return {
+				fine: dayFine(),
+				coarse: groupsBy(
+					(d) => shiftDays(startOfWeek(d), 7),
+					(s) => `Week ${isoWeekNumber(s)}`,
+				),
+			};
+		}
+		case "quarter": {
+			// Fine = weeks (Monday-aligned, by ISO week number); coarse = months.
+			const fine: FineTick[] = [];
+			// Walk week starts; the first fine tick begins at the viewport start
+			// (the quarter's first day may be mid-week — its column starts there).
+			let cur = viewportStart;
+			while (cur <= viewportEnd) {
+				const next = shiftDays(startOfWeek(cur), 7);
+				const clampedEnd = shiftDays(next, -1) > viewportEnd ? viewportEnd : shiftDays(next, -1);
+				const left = xOf(cur);
+				const right = xOf(shiftDays(clampedEnd, 1));
+				fine.push({
+					label: `Week ${isoWeekNumber(cur)}`,
+					gridX: Math.max(0, left),
+					labelX: left + (right - left) / 2,
+					date: cur,
+				});
+				cur = next;
+			}
+			return {
+				fine,
+				// The whole viewport is one quarter → within a single year, so the
+				// month bands don't need the year suffix.
+				coarse: groupsBy(
+					(d) => startOfNextMonth(d),
+					(s) => MONTHS[month(s) - 1]!,
+				),
+			};
+		}
+		case "year": {
+			// Fine = months; coarse = quarters (year is fixed by the viewport, so no
+			// year suffix on each quarter band).
+			const fine: FineTick[] = [];
+			let cur = startOfMonth(viewportStart);
+			while (cur <= viewportEnd) {
+				const next = startOfNextMonth(cur);
+				const clampedEnd = shiftDays(next, -1) > viewportEnd ? viewportEnd : shiftDays(next, -1);
+				const left = xOf(cur);
+				const right = xOf(shiftDays(clampedEnd, 1));
+				fine.push({
+					label: MONTHS[month(cur) - 1]!,
+					gridX: Math.max(0, left),
+					labelX: left + (right - left) / 2,
+					date: cur,
+				});
+				cur = next;
+			}
+			return {
+				fine,
+				coarse: groupsBy(
+					(d) => stepUnit("quarter", startOfQuarter(d), 1),
+					(s) => `Q${Math.floor((month(s) - 1) / 3) + 1}`,
+				),
+			};
+		}
 	}
-	return ticks;
 }
