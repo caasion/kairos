@@ -16,6 +16,7 @@
 		TimeRange,
 	} from "../../types";
 	import {
+		copyTaskUnderBlock,
 		deleteTask as deleteTaskFromBlocks,
 		makeBlock,
 		nestTaskUnderBlock,
@@ -320,6 +321,20 @@
 		writeToDisk();
 	}
 
+	// Ctrl-drag duplicate: insert a copy of the task under `destination`, leaving
+	// the source in place. Whole-array transform, like handleNestTask.
+	function handleCopyTask(
+		owner: Block,
+		task: Task,
+		destination: Block,
+		index?: number,
+	) {
+		const next = copyTaskUnderBlock(blocks, owner, task, destination, nextDraftLine--, index);
+		if (next === blocks) return;
+		blocks = next;
+		writeToDisk();
+	}
+
 	// The week-level block picker calls this after a pick (it holds the picker,
 	// like applyBlockAssoc). Appends the task to the chosen block.
 	export function applyNest(owner: Block, task: Task, destination: Block) {
@@ -528,6 +543,7 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			label: task.text,
+			duplicate: event.ctrlKey || event.metaKey,
 		};
 		taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
 	}
@@ -543,7 +559,12 @@
 		// A live task drag takes precedence over a block gesture (grabbing a task
 		// clears any block gesture, so only one is ever live here).
 		if (taskDrag) {
-			taskDrag = { ...taskDrag, ghostX: event.clientX, ghostY: event.clientY };
+			taskDrag = {
+				...taskDrag,
+				ghostX: event.clientX,
+				ghostY: event.clientY,
+				duplicate: event.ctrlKey || event.metaKey,
+			};
 			taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
 			return true;
 		}
@@ -579,7 +600,12 @@
 					(b) => b.source.line === drop.blockLine,
 				);
 				if (destination) {
-					handleNestTask(drag.owner, drag.task, destination, drop.index);
+					// Ctrl/Cmd-drag → nest a copy; a plain drag moves the task.
+					if (drag.duplicate) {
+						handleCopyTask(drag.owner, drag.task, destination, drop.index);
+					} else {
+						handleNestTask(drag.owner, drag.task, destination, drop.index);
+					}
 				}
 			}
 			return null;
@@ -873,9 +899,11 @@
 	<!-- Drag ghost, portaled to body so fixed positioning matches the viewport. -->
 	<div
 		class="task-ghost"
+		class:duplicating={taskDrag.duplicate}
 		use:portal
 		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
 	>
+		{#if taskDrag.duplicate}<span class="ghost-copy-badge">+</span>{/if}
 		{taskDrag.label}
 	</div>
 {/if}
@@ -898,6 +926,27 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		opacity: 0.95;
+	}
+
+	/* Ctrl-drag duplicate: green frame + a "+" badge → "drop a copy". */
+	:global(.task-ghost.duplicating) {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		border-color: var(--color-green, #3aa675);
+	}
+	:global(.ghost-copy-badge) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--color-green, #3aa675);
+		color: var(--text-on-accent, #fff);
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1;
 	}
 
 	.col-canvas-wrap {

@@ -27,6 +27,8 @@
 	} from "../../types";
 	import {
 		addTaskToUnscheduled,
+		copyBlockIntoDay,
+		copyTaskIntoDay,
 		deleteTask,
 		moveBlockAcrossDays,
 		moveTaskAcrossDays,
@@ -349,6 +351,7 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			label: task.text,
+			duplicate: event.ctrlKey || event.metaKey,
 		};
 		taskDrop = hitTestGridCell(event);
 	}
@@ -357,7 +360,12 @@
 		if (!taskDrag) return;
 		lastPointerX = event.clientX;
 		lastPointerY = event.clientY;
-		taskDrag = { ...taskDrag, ghostX: event.clientX, ghostY: event.clientY };
+		taskDrag = {
+			...taskDrag,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			duplicate: event.ctrlKey || event.metaKey,
+		};
 		taskDrop = hitTestGridCell(event);
 	}
 
@@ -386,6 +394,24 @@
 			: targetAssoc === undefined
 				? undefined  // no target row found — preserve existing assoc
 				: null;      // unassigned row — clear assoc
+
+		// Ctrl/Cmd-drag: drop a copy into the target cell's Unscheduled, leaving
+		// the source task untouched. Same-day and cross-day collapse to one path —
+		// the source day is never modified, so we only write the target day.
+		if (drag.duplicate) {
+			const targetDay = dayOf(drop.date as ISODate);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetBlocks = targetDay?.blocks ?? [];
+			const next = copyTaskIntoDay(
+				targetBlocks,
+				drag.task,
+				targetPath,
+				nextDraftLine--,
+				newAssoc,
+			);
+			commit(drop.date as ISODate, targetPath, next);
+			return;
+		}
 
 		if (drop.date === drag.task.date) {
 			// Same day: move to Unscheduled of that day with the new association.
@@ -458,7 +484,14 @@
 		const childCount = block.tasks.length;
 		const label = childCount > 0 ? `${block.title} (+${childCount})` : block.title;
 		// Stash the source date on the drag state so onBlockDragUp can find the day.
-		blockDrag = { block, sourceDate: task.date, ghostX: event.clientX, ghostY: event.clientY, label };
+		blockDrag = {
+			block,
+			sourceDate: task.date,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			label,
+			duplicate: event.ctrlKey || event.metaKey,
+		};
 		blockDrop = hitTestGridCell(event);
 	}
 
@@ -466,7 +499,12 @@
 		if (!blockDrag) return;
 		lastPointerX = event.clientX;
 		lastPointerY = event.clientY;
-		blockDrag = { ...blockDrag, ghostX: event.clientX, ghostY: event.clientY };
+		blockDrag = {
+			...blockDrag,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			duplicate: event.ctrlKey || event.metaKey,
+		};
 		blockDrop = hitTestGridCell(event);
 	}
 
@@ -493,6 +531,24 @@
 			: targetAssoc === undefined
 				? undefined
 				: null; // unassigned row — clear assoc
+
+		// Ctrl/Cmd-drag: drop a copy of the whole block (time, title, children)
+		// onto the target day, leaving the source block in place. Same-day and
+		// cross-day both just append a copy to the target — never touch the source.
+		if (drag.duplicate) {
+			const targetDay = dayOf(drop.date as ISODate);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetBlocks = targetDay?.blocks ?? [];
+			const next = copyBlockIntoDay(
+				targetBlocks,
+				drag.block,
+				targetPath,
+				undefined, // keep existing time
+				newAssoc,
+			);
+			commit(drop.date as ISODate, targetPath, next);
+			return;
+		}
 
 		if (drop.date === sourceDate) {
 			// Same day: only the association changes.
@@ -948,9 +1004,11 @@
 {#if taskDrag}
 	<div
 		class="task-ghost"
+		class:duplicating={taskDrag.duplicate}
 		use:portal
 		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
 	>
+		{#if taskDrag.duplicate}<span class="ghost-copy-badge">+</span>{/if}
 		{taskDrag.label}
 	</div>
 {/if}
@@ -958,9 +1016,11 @@
 {#if blockDrag}
 	<div
 		class="task-ghost task-ghost-block"
+		class:duplicating={blockDrag.duplicate}
 		use:portal
 		style={`left: ${blockDrag.ghostX + 12}px; top: ${blockDrag.ghostY + 8}px;`}
 	>
+		{#if blockDrag.duplicate}<span class="ghost-copy-badge">+</span>{/if}
 		{blockDrag.label}
 	</div>
 {/if}
@@ -1309,5 +1369,27 @@
 	:global(.task-ghost-block) {
 		border-color: var(--interactive-accent) !important;
 		background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary)) !important;
+	}
+
+	/* Ctrl-drag duplicate: green-tinted frame + a leading "+" badge so the ghost
+	   reads as "drop a copy" rather than "move". */
+	:global(.task-ghost.duplicating) {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		border-color: var(--color-green, #3aa675) !important;
+	}
+	:global(.ghost-copy-badge) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--color-green, #3aa675);
+		color: var(--text-on-accent, #fff);
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1;
 	}
 </style>

@@ -37,6 +37,9 @@ export interface TaskDragState {
   ghostY: number;
   // A short label for the ghost — the task's text.
   label: string;
+  // Ctrl/Cmd held → drop a copy instead of moving. Tracked live (set on grab,
+  // refreshed on every move) so the user can decide mid-drag; read at drop.
+  duplicate: boolean;
 }
 
 /** A checkable block being dragged (grid block DnD). */
@@ -49,6 +52,8 @@ export interface BlockDragState {
   ghostY: number;
   // Ghost label: block title + child count so the user knows what's carried.
   label: string;
+  // Ctrl/Cmd held → drop a copy instead of moving (see TaskDragState).
+  duplicate: boolean;
 }
 
 /** A resolved drop position: which block, and the insertion index within it. */
