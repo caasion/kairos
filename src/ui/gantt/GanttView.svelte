@@ -12,6 +12,7 @@
 	// page — different question (retrospective spans vs. present snapshot).
 
 	import { onMount } from "svelte";
+	import { Menu } from "obsidian";
 	import type { App } from "obsidian";
 	import type { Unsubscriber } from "svelte/store";
 	import type { Domain, ISODate, LifecycleState, Project, StatusRecord } from "../../types";
@@ -335,6 +336,8 @@
 	function beginCreateDrag(e: PointerEvent, row: GanttRow) {
 		if (pxPerDay <= 0) return;
 		e.preventDefault();
+		// Pressing empty canvas clears any bar selection.
+		selectedKey = null;
 		const history = row.entity.history;
 		const date = pointerDay(e);
 		// Clamp to the gaps between existing records so a create can't collide.
@@ -393,7 +396,8 @@
 			} else {
 				setProjectActivePeriod(index, project, start, end, note);
 			}
-			openNewEditor(d.row, start, note);
+			// A fresh period gets the seeded distinguishing note; the user double-clicks
+			// the bar to rename it (no auto-opened editor — the popup is gone).
 			return;
 		}
 
@@ -408,6 +412,16 @@
 			return;
 		}
 
+		// A click-in-place (no drag) on a *bounded* span's right edge converts it to
+		// indefinite: drop the closing `inactive` record so the span runs open again.
+		// (The `end` + `open` case above already handled open spans; this is the
+		// bounded end-drag whose closer date is `d.anchorDate`.)
+		if (d.kind === "end" && (!d.moved || d.preview === d.anchorDate)) {
+			if (isDomain) removeDomainStatusRecord(index, domain, d.anchorDate);
+			else removeProjectStatusRecord(index, project, d.anchorDate);
+			return;
+		}
+
 		// Move an existing boundary (start record, or a bounded span's closer).
 		if (!d.moved || d.preview === d.anchorDate) return;
 		const rec = d.row.entity.history.find((r) => r.date === d.anchorDate);
@@ -417,65 +431,209 @@
 		else editProjectStatusRecord(index, project, d.anchorDate, next);
 	}
 
-	// ── Editor: the note/intensity + start date of one active span ──────────────
-	// A bar is always active, so the editor no longer picks a status — it edits the
-	// active record's start date and its note (the intensity annotation), or deletes
-	// the record. It opens two ways: clicking a bar (edit), or on release of a
-	// create gesture (name the fresh period). `deleteFromEditor` removes the opening
-	// record; the closing `inactive` record (if any) is orphaned harmlessly and can
-	// be dragged/removed on its own.
-	interface EditTarget {
-		row: GanttRow;
-		originalDate: ISODate;
+	// ── Bar interaction model ───────────────────────────────────────────────────
+	// A bar is always active, so there's no status to pick. The fast-path gestures
+	// (drag edges to retime, click empty space to create, hover-x / Delete-key to
+	// remove, double-click to rename) cover the common edits; the right-click menu
+	// is the home for precise control (calendar date entry, definite↔indefinite).
+	//
+	// A span has no stored identity, so we key it by row + its opening date, which is
+	// unique within a row (one record per date). Resolving the *current* row by its
+	// stable key each time matters: a captured `row.entity` goes stale the instant an
+	// edit writes (the index republishes a new entity), so any follow-up edit must
+	// re-read from the live `rows` or it re-persists an out-of-date history.
+	function spanKey(rowKey: string, start: ISODate): string {
+		return `${rowKey}::${start}`;
 	}
-	let editTarget = $state<EditTarget | null>(null);
-	let editDate = $state<Date>(new Date());
-	let editNote = $state("");
-	let editPickDate = $state(false);
-
-	function openEditor(row: GanttRow, span: Span) {
-		if (drag) return; // a drag just ended — don't also open the popup
-		editTarget = { row, originalDate: span.start };
-		editDate = dateFromISO(span.start);
-		editNote = span.note ?? "";
-		editPickDate = false;
-	}
-	/** Open the editor for a just-created active record (to name its intensity). */
-	function openNewEditor(row: GanttRow, date: ISODate, note = "") {
-		editTarget = { row, originalDate: date };
-		editDate = dateFromISO(date);
-		editNote = note;
-		editPickDate = false;
-	}
-	function closeEditor() {
-		editTarget = null;
-		editPickDate = false;
-	}
-	// Resolve the *current* row (fresh entity) by its stable key. A captured
-	// `row.entity` goes stale the instant an edit writes (the index republishes a new
-	// entity), so any follow-up edit must re-read from the live `rows` or it operates
-	// on — and re-persists — an out-of-date history, silently dropping the change.
 	function currentRow(key: string): GanttRow | undefined {
 		return rows.find((r) => r.key === key);
 	}
-	function commitEditor() {
-		const t = editTarget;
-		if (!t) return;
-		const row = currentRow(t.row.key);
-		closeEditor();
-		if (!row) return;
-		const next = { date: isoFromDate(editDate), status: "active" as LifecycleState, note: editNote.trim() };
-		if (row.isDomain) editDomainStatusRecord(index, row.entity as Domain, t.originalDate, next);
-		else editProjectStatusRecord(index, row.entity as Project, t.originalDate, next);
+
+	// ── Selection (single-click) ──
+	// The selected span, so Delete removes it and it draws an outline. Cleared on
+	// Escape or a click on empty plot space.
+	let selectedKey = $state<string | null>(null);
+	function selectSpan(row: GanttRow, span: Span) {
+		if (drag) return; // a drag just ended — the pointerup fired a click too
+		selectedKey = spanKey(row.key, span.start);
+		// Focus the plot so it receives the Delete / Escape keys for this selection.
+		plotEl?.focus({ preventScroll: true });
 	}
-	function deleteFromEditor() {
-		const t = editTarget;
-		if (!t) return;
-		const row = currentRow(t.row.key);
-		closeEditor();
-		if (!row) return;
-		if (row.isDomain) removeDomainStatusRecord(index, row.entity as Domain, t.originalDate);
-		else removeProjectStatusRecord(index, row.entity as Project, t.originalDate);
+
+	// Resolve the selected span back to its row + span so Delete can act on it.
+	function selectedTarget(): { row: GanttRow; span: Span } | null {
+		if (!selectedKey) return null;
+		for (const row of rows) {
+			for (const span of historyToSpans(row.entity.history, today)) {
+				if (span.status === "active" && spanKey(row.key, span.start) === selectedKey) {
+					return { row, span };
+				}
+			}
+		}
+		return null;
+	}
+
+	// Delete removes the selected period; Escape clears selection (and closes an
+	// in-place edit / menu first). Ignored while typing in the description input.
+	function onPlotKeyDown(e: KeyboardEvent) {
+		const t = e.target;
+		if (t instanceof HTMLElement && (t.tagName === "INPUT" || t.isContentEditable)) return;
+		const key = e.key;
+		if (key === "Delete" || key === "Backspace") {
+			const target = selectedTarget();
+			if (!target) return;
+			e.preventDefault();
+			deletePeriod(target.row, target.span);
+		} else if (key === "Escape") {
+			if (editingKey) { cancelEditDesc(); return; }
+			selectedKey = null;
+		}
+	}
+
+	// ── In-place description editing (double-click) ──
+	// The bar's label becomes an input seeded with the span's note; committing writes
+	// it back through the same guarded record edit the drags use, keeping the start
+	// date and status untouched.
+	let editingKey = $state<string | null>(null);
+	let editingText = $state("");
+	function beginEditDesc(row: GanttRow, span: Span) {
+		if (drag) return;
+		editingKey = spanKey(row.key, span.start);
+		editingText = span.note ?? "";
+	}
+	function commitEditDesc(row: GanttRow, span: Span) {
+		const key = spanKey(row.key, span.start);
+		if (editingKey !== key) return;
+		editingKey = null;
+		const live = currentRow(row.key);
+		if (!live) return;
+		const next = { date: span.start, status: "active" as LifecycleState, note: editingText.trim() };
+		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
+		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+	}
+	function cancelEditDesc() {
+		editingKey = null;
+	}
+
+	// ── Delete a whole active period ──
+	// Removes the opening `active` record and, if the span is bounded, the closing
+	// `inactive` record too — so deleting a definite period leaves no orphaned
+	// closer behind. (An open span has only the opener.)
+	function deletePeriod(row: GanttRow, span: Span) {
+		const live = currentRow(row.key);
+		if (!live) return;
+		if (selectedKey === spanKey(row.key, span.start)) selectedKey = null;
+		const remove = (date: ISODate) => {
+			if (live.isDomain) removeDomainStatusRecord(index, live.entity as Domain, date);
+			else removeProjectStatusRecord(index, live.entity as Project, date);
+		};
+		// Remove the closer first: `remove` re-reads the live entity each call, and
+		// dropping the opener first would renormalize the history and could shift what
+		// the closer date resolves to. The closer is the record right after the opener.
+		if (!span.open) {
+			const hist = live.entity.history;
+			const openerIdx = hist.findIndex((r) => r.date === span.start);
+			const closer = openerIdx >= 0 ? hist[openerIdx + 1] : undefined;
+			if (closer) remove(closer.date);
+		}
+		remove(span.start);
+	}
+
+	// ── Convert definite → indefinite ──
+	// Drop the closing `inactive` record so the span runs open-ended again. Invoked
+	// by a click-in-place on a bounded bar's right edge, or the context menu.
+	function reopenSpan(row: GanttRow, span: Span) {
+		if (span.open) return;
+		const live = currentRow(row.key);
+		if (!live) return;
+		const hist = live.entity.history;
+		const openerIdx = hist.findIndex((r) => r.date === span.start);
+		const closer = openerIdx >= 0 ? hist[openerIdx + 1] : undefined;
+		if (!closer) return;
+		if (live.isDomain) removeDomainStatusRecord(index, live.entity as Domain, closer.date);
+		else removeProjectStatusRecord(index, live.entity as Project, closer.date);
+	}
+
+	// ── Right-click context menu (precise control) ──
+	// A native Obsidian Menu (matching TimelineBlock / ProjectsView) shown at the
+	// pointer. Items differ by span kind: a bounded span can be reopened; an open
+	// span's "Set end date" is what makes it definite.
+	function openMenu(e: MouseEvent, row: GanttRow, span: Span) {
+		e.preventDefault();
+		e.stopPropagation();
+		selectedKey = spanKey(row.key, span.start);
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item.setTitle("Edit description").setIcon("pencil").onClick(() => beginEditDesc(row, span)),
+		);
+		menu.addItem((item) =>
+			item.setTitle("Edit start date…").setIcon("calendar").onClick(() => openDateEdit(row, span, "start")),
+		);
+		if (span.open) {
+			menu.addItem((item) =>
+				item.setTitle("Set end date…").setIcon("calendar-clock").onClick(() => openDateEdit(row, span, "end")),
+			);
+		} else {
+			menu.addItem((item) =>
+				item.setTitle("Edit end date…").setIcon("calendar-clock").onClick(() => openDateEdit(row, span, "end")),
+			);
+			menu.addItem((item) =>
+				item.setTitle("Convert to indefinite").setIcon("infinity").onClick(() => reopenSpan(row, span)),
+			);
+		}
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item.setTitle("Delete").setIcon("trash").onClick(() => deletePeriod(row, span)),
+		);
+		menu.showAtMouseEvent(e);
+	}
+
+	// ── Calendar popup for precise start/end date entry (from the menu) ──
+	// `which` records whether we're moving the opener (start) or the closer (end);
+	// for an open span, picking an end date inserts the closer (convert → definite).
+	interface DateEdit {
+		row: GanttRow;
+		span: Span;
+		which: "start" | "end";
+	}
+	let dateEdit = $state<DateEdit | null>(null);
+	let dateEditValue = $state<Date>(new Date());
+	function openDateEdit(row: GanttRow, span: Span, which: "start" | "end") {
+		const seed = which === "start" ? span.start : span.open ? span.end : closerDate(row, span) ?? span.end;
+		dateEdit = { row, span, which };
+		dateEditValue = dateFromISO(seed);
+	}
+	function closerDate(row: GanttRow, span: Span): ISODate | undefined {
+		const live = currentRow(row.key);
+		if (!live) return undefined;
+		const hist = live.entity.history;
+		const openerIdx = hist.findIndex((r) => r.date === span.start);
+		return openerIdx >= 0 ? hist[openerIdx + 1]?.date : undefined;
+	}
+	function commitDateEdit(picked: Date) {
+		const d = dateEdit;
+		dateEdit = null;
+		if (!d) return;
+		const live = currentRow(d.row.key);
+		if (!live) return;
+		const pickISO = isoFromDate(picked);
+		if (d.which === "start") {
+			// Move the opening `active` record; keep its status/note.
+			const next = { date: pickISO, status: "active" as LifecycleState, note: d.span.note ?? "" };
+			if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, d.span.start, next);
+			else editProjectStatusRecord(index, live.entity as Project, d.span.start, next);
+			return;
+		}
+		// End date: move the existing closer, or insert one (open → definite).
+		const closer = closerDate(d.row, d.span);
+		if (closer) {
+			const next = { date: pickISO, status: "inactive" as LifecycleState };
+			if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, closer, next);
+			else editProjectStatusRecord(index, live.entity as Project, closer, next);
+		} else {
+			if (live.isDomain) setDomainStatus(index, live.entity as Domain, pickISO, "inactive");
+			else setProjectStatus(index, live.entity as Project, pickISO, "inactive");
+		}
 	}
 
 	function formatDate(iso: ISODate): string {
@@ -578,10 +736,12 @@
 				class="gantt-plot"
 				bind:this={plotEl}
 				bind:clientWidth={plotWidth}
+				tabindex="-1"
 				style:height={`${contentHeight}px`}
 				onpointermove={moveDrag}
 				onpointerup={endDrag}
 				onpointerleave={endDrag}
+				onkeydown={onPlotKeyDown}
 			>
 				<!-- Two-level header: coarse grouping row over a fine row. Fine labels
 				     mark the *left boundary* of each column, so a bar edge (which lands
@@ -637,20 +797,24 @@
 							{@const box = spanBox(span)}
 							{#if box}
 								{@const openEnded = span.open && !box.clampedEnd}
+								{@const key = spanKey(row.key, span.start)}
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									class="gantt-bar"
 									class:open-ended={openEnded}
 									class:clamped-start={box.clampedStart}
+									class:selected={selectedKey === key}
 									style:left={`${box.left}px`}
 									style:width={`${box.width}px`}
 									style:top={`${rowTop(i) + (ROW_HEIGHT - BAR_HEIGHT) / 2}px`}
 									style:height={`${BAR_HEIGHT}px`}
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
-									title={`Active${span.note ? " · " + span.note : ""} — ${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`}
-									onclick={() => openEditor(row, span)}
+									title={`${span.note ? span.note : "No description"} — ${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`}
+									onclick={() => selectSpan(row, span)}
+									ondblclick={() => beginEditDesc(row, span)}
+									oncontextmenu={(e) => openMenu(e, row, span)}
 								>
 									<!-- Left edge: drag to move this period's start date. -->
 									{#if !box.clampedStart}
@@ -658,19 +822,41 @@
 										<div
 											class="gantt-handle left"
 											onpointerdown={(e) => beginEdgeDrag(e, "start", row, span, history)}
+											onclick={(e) => e.stopPropagation()}
 											title="Drag to move the start date"
 										></div>
 									{/if}
-									<span class="gantt-bar-label">
-										{#if span.note}{span.note}{:else}Active{/if}
-									</span>
-									<!-- Right edge: drag to move the end date, or (open-ended) to set one. -->
+									{#if editingKey === key}
+										<!-- Fully inline: the input sits in the label's slot with no chrome
+										     of its own, so editing reads as typing over the label text. -->
+										<!-- svelte-ignore a11y_autofocus -->
+										<input
+											class="gantt-bar-edit"
+											placeholder="No description"
+											bind:value={editingText}
+											autofocus
+											onclick={(e) => e.stopPropagation()}
+											onpointerdown={(e) => e.stopPropagation()}
+											onblur={() => commitEditDesc(row, span)}
+											onkeydown={(e) => {
+												if (e.key === "Enter") { e.preventDefault(); commitEditDesc(row, span); }
+												else if (e.key === "Escape") { e.preventDefault(); cancelEditDesc(); }
+											}}
+										/>
+									{:else}
+										<span class="gantt-bar-label" class:placeholder={!span.note}>
+											{#if span.note}{span.note}{:else}No description{/if}
+										</span>
+									{/if}
+									<!-- Right edge: drag to move the end date, or (open-ended) to set one.
+									     A click-in-place here (no drag) on a bounded span reopens it. -->
 									{#if !box.clampedEnd}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
 											class="gantt-handle right"
 											onpointerdown={(e) => beginEdgeDrag(e, "end", row, span, history)}
-											title={openEnded ? "Drag left to set an end date" : "Drag to move the end date"}
+											onclick={(e) => e.stopPropagation()}
+											title={openEnded ? "Drag left to set an end date" : "Drag to move the end date · click to make indefinite"}
 										></div>
 									{/if}
 								</div>
@@ -708,31 +894,21 @@
 	{/if}
 </div>
 
-<!-- Edit popup (click a span) -->
-{#if editTarget}
+<!-- Precise date entry (from the menu): a calendar to pick a start or end date. -->
+{#if dateEdit}
 	<Portal>
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="gantt-scrim" onclick={closeEditor}>
+		<div class="gantt-scrim" onclick={() => (dateEdit = null)}>
 			<div class="gantt-card" onclick={(e) => e.stopPropagation()}>
 				<div class="gantt-card-head">
-					<span class="gantt-card-title">{editTarget.row.label}</span>
+					<span class="gantt-card-title">
+						{dateEdit.row.label} — {dateEdit.which === "start" ? "start date" : "end date"}
+					</span>
 					<span class="gc-spacer"></span>
-					<button class="gantt-x" aria-label="Close" onclick={closeEditor}>✕</button>
+					<button class="gantt-x" aria-label="Close" onclick={() => (dateEdit = null)}>✕</button>
 				</div>
-				<div class="gantt-edit-row">
-					<span class="gantt-edit-label">Active from</span>
-					<button class="gc-btn" onclick={() => (editPickDate = !editPickDate)}>{formatDate(isoFromDate(editDate))}</button>
-				</div>
-				{#if editPickDate}
-					<div class="gantt-datepicker"><Datepicker inline bind:value={editDate} onselect={() => (editPickDate = false)} /></div>
-				{/if}
-				<input class="gantt-note-input" placeholder="label (optional, e.g. baseline / hard / taper)" bind:value={editNote} onkeydown={(e) => { if (e.key === "Enter") commitEditor(); }} />
-				<div class="gantt-edit-actions">
-					<button class="gc-btn primary" onclick={commitEditor}>Save</button>
-					<span class="gc-spacer"></span>
-					<button class="gantt-link danger" onclick={deleteFromEditor}>Delete</button>
-				</div>
+				<div class="gantt-datepicker"><Datepicker inline bind:value={dateEditValue} onselect={commitDateEdit} /></div>
 			</div>
 		</div>
 	</Portal>
@@ -754,22 +930,6 @@
 		flex-shrink: 0;
 	}
 	.gc-spacer { flex: 1; }
-	.gc-btn {
-		height: 26px;
-		padding: 0 10px;
-		font-size: 12px;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary-alt);
-		color: var(--text-normal);
-		cursor: pointer;
-	}
-	.gc-btn:hover { background: var(--background-modifier-hover); }
-	.gc-btn.primary {
-		background: var(--interactive-accent);
-		color: var(--text-on-accent);
-		border-color: var(--interactive-accent);
-	}
 
 	.day-nav {
 		position: relative;
@@ -933,13 +1093,15 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
 	.gantt-header-fine { position: absolute; left: 0; width: 100%; }
+	/* Coarse row = secondary context → subdued (the fine row carries the primary
+	   information and is emphasized instead). */
 	.gantt-coarse-label {
 		position: absolute;
 		top: 3px;
 		transform: translateX(-50%);
 		font-size: 10px;
-		font-weight: 600;
-		color: var(--text-muted);
+		font-weight: 400;
+		color: var(--text-faint);
 		white-space: nowrap;
 		pointer-events: none;
 	}
@@ -951,12 +1113,14 @@
 		width: 0;
 		border-left: 1px solid var(--background-modifier-border);
 	}
+	/* Fine row = primary information → emphasized. */
 	.gantt-fine-label {
 		position: absolute;
 		top: 4px;
 		transform: translateX(-50%);
 		font-size: 10px;
-		color: var(--text-faint);
+		font-weight: 600;
+		color: var(--text-muted);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 		pointer-events: none;
@@ -969,12 +1133,10 @@
 		position: absolute;
 		width: 0;
 		border-left: 1px dashed var(--background-modifier-border);
-		opacity: 0.5;
 	}
 	/* Coarse-unit boundaries read heavier than the fine day/week lines. */
 	.gantt-gridline.coarse {
-		border-left: 1px solid var(--background-modifier-border);
-		opacity: 0.9;
+		border-left: 1.5px solid var(--background-modifier-border);
 	}
 	.gantt-today {
 		position: absolute;
@@ -984,7 +1146,9 @@
 		transform: translateX(-1px);
 		border-left: 2px solid var(--color-red, #e5534b);
 		opacity: 0.75;
-		z-index: 1;
+		/* Above the bars (z-index 1) so the today reference line is never occluded. */
+		z-index: 5;
+		pointer-events: none;
 	}
 	/* Empty-row press target for authoring a new active period. Transparent, but
 	   hints with a faint tint on hover so the row reads as "clickable canvas". */
@@ -1050,6 +1214,11 @@
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
 	}
+	/* Selected (single-click): accent outline so the keyboard target is obvious. */
+	.gantt-bar.selected {
+		outline: 2px solid var(--interactive-accent);
+		outline-offset: 1px;
+	}
 	.gantt-bar-label {
 		flex: 1;
 		min-width: 0;
@@ -1060,6 +1229,31 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		pointer-events: none;
+	}
+	/* A bar with no note shows a muted "No description" placeholder. */
+	.gantt-bar-label.placeholder {
+		color: var(--text-faint);
+		font-style: italic;
+	}
+	/* In-place description editor: occupies the label's slot with no chrome of its
+	   own (same font, padding, transparent background) so editing reads as typing
+	   directly over the label — the caret and text sit exactly where the label was. */
+	.gantt-bar-edit {
+		flex: 1;
+		min-width: 0;
+		height: 100%;
+		padding: 0 6px 0 8px;
+		font-size: 10px;
+		font-family: inherit;
+		border: none;
+		outline: none;
+		background: transparent;
+		color: var(--text-normal);
+		z-index: 3;
+	}
+	.gantt-bar-edit::placeholder {
+		color: var(--text-faint);
+		font-style: italic;
 	}
 	.gantt-handle {
 		position: absolute;
@@ -1114,21 +1308,5 @@
 	.gantt-card-head { display: flex; align-items: center; margin-bottom: 10px; }
 	.gantt-card-title { font-weight: 600; }
 	.gantt-x { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; }
-	.gantt-edit-row { display: flex; gap: 8px; align-items: center; }
-	.gantt-edit-label { font-size: 12px; color: var(--text-muted); }
-	.gantt-note-input {
-		width: 100%;
-		height: 28px;
-		margin-top: 8px;
-		padding: 0 8px;
-		font-size: 12px;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary);
-		color: var(--text-normal);
-	}
 	.gantt-datepicker { margin-top: 8px; }
-	.gantt-edit-actions { display: flex; align-items: center; margin-top: 12px; }
-	.gantt-link { background: none; border: none; font-size: 12px; color: var(--text-muted); cursor: pointer; }
-	.gantt-link.danger:hover { color: var(--text-error); }
 </style>
