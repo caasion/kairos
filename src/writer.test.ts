@@ -155,6 +155,20 @@ describe("unnestTask", () => {
 		expect(inboxes[0]!.tasks.map((t) => t.text)).toEqual(["Old", "Design"]);
 	});
 
+	it("gives the new inbox a line no other block in the day can hold", () => {
+		// The inbox line used to be derived as `task.line - 1`, which for a task
+		// sitting directly under its block IS that block's own line — and two
+		// blocks sharing a source line make every later edit to one land on the
+		// other. It must come from the draft-line allocator instead.
+		const block = sampleBlock("mon.md");
+		const out = unnestTask([block], block, inheritingTask("mon.md"), "mon.md");
+
+		const lines = out.map((b) => b.source.line);
+		expect(new Set(lines).size).toBe(lines.length);
+		const inbox = out.find((b) => b.title === "Unscheduled")!;
+		expect(inbox.source.line).toBeLessThan(0); // not yet on disk
+	});
+
 	it("is a no-op for a colocated task (a checkable block isn't unnestable)", () => {
 		// A checkable block: its own line carries the checkbox, so the 'task' the
 		// UI hands back shares the block's source line — it is not in `tasks`.

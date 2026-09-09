@@ -60,6 +60,7 @@
 		shiftISO,
 		todayISO,
 	} from "../../dayNote";
+	import { nextDraftLine } from "../../draftLine";
 	import GridCell from "./GridCell.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
@@ -282,10 +283,6 @@
 		reveal(task.date, task.block.source.line);
 	}
 
-	// A unique negative line per unsaved task so keyed rendering doesn't collide
-	// before the reparse re-derives real lines.
-	let nextDraftLine = -1;
-
 	async function onCreate(row: GridRow, date: ISODate) {
 		const assoc = rowAssociation(row);
 		const day = dayOf(date);
@@ -294,7 +291,7 @@
 		commit(
 			date,
 			path,
-			addTaskToUnscheduled(blocks, path, "New task", assoc, nextDraftLine--),
+			addTaskToUnscheduled(blocks, path, "New task", assoc, nextDraftLine()),
 		);
 	}
 
@@ -379,7 +376,7 @@
 			drag.owner,
 			drag.task,
 			targetPath,
-			nextDraftLine--,
+			nextDraftLine(),
 			newAssoc,
 		);
 		index.applyCrossDayMove(

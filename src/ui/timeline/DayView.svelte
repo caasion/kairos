@@ -36,6 +36,7 @@
 		shiftISO,
 		todayISO,
 	} from "../../dayNote";
+	import { nextDraftLine } from "../../draftLine";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import TaskRow from "../task/Task.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
@@ -497,13 +498,13 @@
 	// fresh tasks don't collide on the source line the render keys on before the
 	// write's reparse re-derives real lines. Any negative is a safe placeholder
 	// (real lines are >= 0).
-	let nextDraftLine = -2;
+
 
 	function handleAddTask(block: Block) {
 		const real = ownerFor(block);
 		if (!real) return;
 		const task: Task = {
-			source: { path: real.source.path, line: nextDraftLine-- },
+			source: { path: real.source.path, line: nextDraftLine() },
 			text: "New task",
 			status: " ",
 		};
@@ -819,11 +820,12 @@
 		// wrong day's timeline.
 		if (date !== forDate) return;
 		notePath = path;
-		// A unique negative line so two blocks created before the reparse don't
-		// collide on the source line the keyed `{#each}` renders by (a duplicate
-		// key freezes reconciliation). Shares the task draft-line counter so no
-		// unsaved block and task collide either.
-		const block = makeBlock(range, path, undefined, nextDraftLine--);
+		// A unique negative line so nothing created before the reparse collides on
+		// the source line the writer matches by and the keyed `{#each}` renders by.
+		// The allocator is plugin-wide: the Grid can have already put an unsaved
+		// Unscheduled block into this same day, and a shared line would make every
+		// later edit to this block land on that one instead.
+		const block = makeBlock(range, path, undefined, nextDraftLine());
 		blocks = [...blocks, block]; // growing the array doesn't reorder existing ones
 		await writeToDisk();
 		if (settings.askAssocOnBlockCreate) askAssocFor(block);

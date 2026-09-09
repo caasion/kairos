@@ -18,6 +18,7 @@
 // (the Unscheduled inbox) are pinned to the end in their existing order.
 
 import type { TFile, Vault } from "obsidian";
+import { nextDraftLine } from "./draftLine";
 import { serialize } from "./serializer";
 import { DEFAULT_HEADING, spliceSection } from "./section";
 import type {
@@ -288,7 +289,7 @@ export function addTaskToUnscheduled(
   path: string,
   text: string,
   assoc: Association | undefined,
-  line = -1,
+  line = nextDraftLine(),
 ): Block[] {
   const task: Task = {
     source: { path, line },
@@ -296,20 +297,23 @@ export function addTaskToUnscheduled(
     status: " ",
     ...(assoc ? { assoc } : {}),
   };
-  return insertIntoUnscheduled(blocks, task, path, line - 1);
+  return insertIntoUnscheduled(blocks, task, path);
 }
 
 /**
  * Append `task` to the day's Unscheduled block, creating that block if absent.
- * `inboxLine` is the throwaway negative line for a freshly-created inbox block
- * (only used when no inbox exists yet). Shared by `addTaskToUnscheduled` (new
- * task) and `unnestTask` (moved task).
+ * Shared by `addTaskToUnscheduled` (new task) and `unnestTask` (moved task).
+ *
+ * A freshly-created inbox block takes its throwaway line from the plugin-wide
+ * allocator. It must NOT be derived from the moved task's line: a nested task
+ * sits directly under its block, so `line - 1` is usually that block's own line
+ * — and two blocks sharing a source line make every later edit to one land on
+ * the other (see draftLine.ts).
  */
 function insertIntoUnscheduled(
   blocks: Block[],
   task: Task,
   path: string,
-  inboxLine: number,
 ): Block[] {
   const existing = findUnscheduled(blocks);
   if (existing) {
@@ -321,7 +325,7 @@ function insertIntoUnscheduled(
   // No inbox yet: create one and drop the task in. `sortForWrite` pins untimed
   // blocks to the end, so its position in the array here doesn't matter.
   const inbox: Block = {
-    source: { path, line: inboxLine },
+    source: { path, line: nextDraftLine() },
     title: UNSCHEDULED_TITLE,
     tasks: [task],
     scheduled: false,
@@ -370,7 +374,7 @@ export function unnestTask(
       ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
       : b,
   );
-  return insertIntoUnscheduled(without, moved, path, target.source.line - 1);
+  return insertIntoUnscheduled(without, moved, path);
 }
 
 // ─── nest a task under a block ─────────────────────────────────
@@ -471,6 +475,9 @@ export interface CrossDayTaskMove {
  * association). When omitted, the existing explicit-or-inherited association is
  * preserved (materialize-on-move). Pass `null` to explicitly clear it.
  *
+ * `toLine` is the moved task's throwaway line on the destination day; the real
+ * one is re-derived by that note's reparse.
+ *
  * Colocated tasks (a checkable block's own line) are a no-op — they are blocks,
  * not liftable tasks. Pure; caller persists both days via `applyCrossDayMove`.
  */
@@ -480,7 +487,7 @@ export function moveTaskAcrossDays(
   sourceOwner: Block,
   target: Task,
   toPath: string,
-  toInboxLine: number,
+  toLine = nextDraftLine(),
   targetAssoc?: Association | null,
 ): CrossDayTaskMove {
   const source = fromBlocks.find((b) => isOwner(b, sourceOwner));
@@ -501,7 +508,7 @@ export function moveTaskAcrossDays(
       : (nested.assoc ?? source.assoc);
   const moved: Task = {
     ...nested,
-    source: { path: toPath, line: toInboxLine },
+    source: { path: toPath, line: toLine },
     ...(assoc ? { assoc } : {}),
   };
   if (!assoc) delete (moved as Partial<Task>).assoc;
@@ -511,7 +518,7 @@ export function moveTaskAcrossDays(
       ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
       : b,
   );
-  const to = insertIntoUnscheduled(toBlocks, moved, toPath, toInboxLine - 1);
+  const to = insertIntoUnscheduled(toBlocks, moved, toPath);
   return { from, to };
 }
 
@@ -619,16 +626,17 @@ export function deleteBlocks(
  *
  * `source` is a throwaway handle; the parser re-derives the real line on the
  * next read. It only needs to be unique enough for keyed rendering until then —
- * so the caller passes a distinct negative `line` per unsaved block. Two blocks
- * created before the reparse must NOT share a line, or the keyed `{#each}` that
- * renders them collides and stops reconciling (a frozen timeline). Defaults to
- * -1 for the common single-create case.
+ * so every unsaved block gets a distinct negative `line`. Two blocks created
+ * before the reparse must NOT share a line, or the keyed `{#each}` that renders
+ * them collides and stops reconciling (a frozen timeline). Defaults to the
+ * plugin-wide allocator, which is the only source that can promise uniqueness
+ * across the views that create into the same day (see draftLine.ts).
  */
 export function makeBlock(
   time: TimeRange,
   path: string,
   title = DEFAULT_BLOCK_TITLE,
-  line = -1,
+  line = nextDraftLine(),
 ): Block {
   return {
     source: { path, line },
