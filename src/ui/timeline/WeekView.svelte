@@ -589,6 +589,7 @@
 									onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
 									onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
 									onNest={(rect) => columns[date]?.nestTask(block, task, rect)}
+								onMoveToBacklog={() => columns[date]?.moveToBacklog(block, task)}
 									onSetStatus={(_t, status) => columns[date]?.setTaskStatus(block, task, status)}
 									onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
 									onDelete={(_t) => columns[date]?.deleteTask(block, task)}
@@ -640,6 +641,7 @@
 							onEditAssoc={openBlockAssoc}
 							onEditTaskAssoc={openTaskAssoc}
 							onNestTask={openBlockPicker}
+							backlogPath={settings.backlogPath}
 							{onCrossDayGrab}
 							askAssocOnCreate={settings.askAssocOnBlockCreate}
 							showUnscheduled={false}

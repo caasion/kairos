@@ -19,6 +19,7 @@
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
+		moveTaskToBacklog,
 		resurfaceTomorrow,
 		setResurface,
 	} from "../../backlogActions";
@@ -394,6 +395,24 @@
 			if (date === forDate) notePath = path;
 			index.applyDayEdit(forDate, path, blocks);
 		});
+	}
+
+	// Send a nested task back to the backlog (task context menu). The task leaves
+	// the day; the entry it becomes carries its text and its explicit-or-inherited
+	// association. Needs a note to write the removal into, so an unsaved day
+	// creates one first — exactly like every other write here.
+	async function handleMoveTaskToBacklog(owner: Block, task: Task) {
+		const forDate = date;
+		const path = notePath ?? (await ensureNoteForDate(forDate));
+		if (date === forDate) notePath = path;
+		moveTaskToBacklog(
+			index,
+			settings.backlogPath,
+			forDate,
+			path,
+			owner,
+			task,
+		);
 	}
 
 	function handleSetTaskStatus(owner: Block, task: Task, status: TaskStatus) {
@@ -1129,6 +1148,8 @@
 								onNavigate={() => task.owner && onNavigate(task.owner)}
 								onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
 								onNest={(rect) => openBlockPicker(block, task, rect)}
+								onMoveToBacklog={() =>
+									void handleMoveTaskToBacklog(block, task)}
 								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
 								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
 								onDelete={(_t) => handleDeleteTask(block, task)}
@@ -1217,6 +1238,8 @@
 							onSetBlockStatus={handleSetBlockStatus}
 							onToggleCheckable={handleToggleBlockCheckable}
 							onAddTask={handleAddTask}
+							onMoveTaskToBacklog={(owner, task) =>
+								void handleMoveTaskToBacklog(owner, task)}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
 							onNestTask={openBlockPicker}

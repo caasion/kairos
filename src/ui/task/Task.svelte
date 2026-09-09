@@ -48,6 +48,10 @@
 		// a parent block (e.g. the grid's scheduled tasks) pass "Change parent
 		// block"; the default fits a task being nested for the first time.
 		nestLabel?: string;
+		// Move this task out of the day and into the backlog. Omitted where the
+		// task can't leave its line (a colocated/checkable-block task) or where
+		// there is no backlog to move it to (the backlog view itself).
+		onMoveToBacklog?: () => void;
 		// Extra metadata rendered inside the row, beneath the text on the same line
 		// as the association (so it shares the row's hover region). The grid uses
 		// this for the block-nesting badge; it styles it with `.k-task-assoc`.
@@ -76,6 +80,7 @@
 		onEditAssoc,
 		onNest,
 		nestLabel = "Nest under block",
+		onMoveToBacklog,
 		meta,
 		onGrab,
 		onSetStatus,
@@ -232,6 +237,15 @@
 					.setTitle(nestLabel)
 					.setIcon("between-vertical-start")
 					.onClick(() => requestNest()),
+			);
+		}
+
+		if (onMoveToBacklog) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Move to backlog")
+					.setIcon("inbox")
+					.onClick(() => onMoveToBacklog()),
 			);
 		}
 

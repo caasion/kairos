@@ -15,6 +15,7 @@
 		TimeRange,
 	} from "../../types";
 	import { makeBlock, nestTaskUnderBlock } from "../../writer";
+	import { moveTaskToBacklog } from "../../backlogActions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
 	import {
@@ -76,6 +77,8 @@
 			task: Task,
 			anchor: DOMRect,
 		) => void;
+		// The vault path of the global backlog file, for "move to backlog".
+		backlogPath: string;
 		// A block move gesture began on this column. The parent begins tracking
 		// the pointer's X to detect a cross-day drop; it calls back into
 		// `takeBlock`/`isDropTarget` as needed. Returns nothing — the column keeps
@@ -102,6 +105,7 @@
 		onEditAssoc,
 		onEditTaskAssoc,
 		onNestTask,
+		backlogPath,
 		onCrossDayGrab,
 		askAssocOnCreate = false,
 		showUnscheduled = true,
@@ -182,6 +186,15 @@
 		selection = new Set();
 		blocks = blocks.filter((b) => b !== real);
 		writeToDisk();
+	}
+
+	// Send a nested task back to the backlog. Needs a note to write the removal
+	// into, so an unsaved day creates one first, like every other write here.
+	async function handleMoveTaskToBacklog(owner: Block, task: Task) {
+		const forDate = date;
+		const path = notePath ?? (await ensureNoteForDate(forDate));
+		if (date === forDate) notePath = path;
+		moveTaskToBacklog(index, backlogPath, forDate, path, owner, task);
 	}
 
 	function handleSetTaskStatus(owner: Block, task: Task, status: TaskStatus) {
@@ -729,6 +742,10 @@
 		openBlockPicker(owner, task, anchor);
 	}
 
+	export function moveToBacklog(owner: Block, task: Task) {
+		void handleMoveTaskToBacklog(owner, task);
+	}
+
 	export function navigateAssoc(assoc: Association) {
 		onNavigate(assoc);
 	}
@@ -786,6 +803,8 @@
 						onNavigate={() => task.owner && onNavigate(task.owner)}
 						onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
 						onNest={(rect) => openBlockPicker(block, task, rect)}
+						onMoveToBacklog={() =>
+							void handleMoveTaskToBacklog(block, task)}
 						onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
 						onSetText={(_t, text) => handleSetTaskText(block, task, text)}
 						onDelete={(_t) => handleDeleteTask(block, task)}
@@ -834,6 +853,8 @@
 				onEditAssoc={openAssocPicker}
 				onEditTaskAssoc={openTaskAssocPicker}
 				onNestTask={openBlockPicker}
+				onMoveTaskToBacklog={(owner, task) =>
+					void handleMoveTaskToBacklog(owner, task)}
 				onTaskGrab={onTaskGrab}
 				dragTaskLine={taskDrag?.task.source.line}
 				dropSlot={taskDrop ?? undefined}

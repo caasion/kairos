@@ -10,13 +10,11 @@
 // logic — the index owns the optimistic commit + file write. `insertEntry` is
 // async only because it may create the target daily note first.
 
-import type { BacklogEntry, ISODate } from "./types";
+import type { BacklogEntry, Block, ISODate, Task } from "./types";
 import type { KairosIndex } from "./index";
-import { addTaskToUnscheduled } from "./writer";
+import { addTaskToUnscheduled, deleteTask } from "./writer";
 import { ensureNoteForDate, shiftISO, todayISO } from "./dayNote";
-
-/** A unique-ish negative line for freshly-materialized day tasks (see writer). */
-let draftLine = -1;
+import { nextDraftLine } from "./draftLine";
 
 /**
  * Insert a resurfaced entry into `date`'s daily note as a real task (spec §2.6):
@@ -31,7 +29,44 @@ export async function insertEntry(
 ): Promise<void> {
 	const path = await ensureNoteForDate(date);
 	index.scheduleEntry(entry, date, path, (blocks) =>
-		addTaskToUnscheduled(blocks, path, entry.text, entry.assoc, draftLine--),
+		addTaskToUnscheduled(blocks, path, entry.text, entry.assoc, nextDraftLine()),
+	);
+}
+
+/**
+ * The reverse of `insertEntry`: move a day task back into the backlog (spec
+ * §2.6, §4.2 "special delete"). The task leaves its block and reappears as a
+ * fresh backlog entry carrying its text and association; no resurface date is
+ * set, and nothing links the entry back to the task it came from.
+ *
+ * Materialize-on-move (spec §4.3): a task that was only *inheriting* its block's
+ * association would land in the backlog unassociated, so the inherited owner is
+ * pinned onto the new entry.
+ *
+ * Colocated tasks (a checkable block's own line) are not liftable — that task
+ * *is* a block — so callers only offer this on genuine nested tasks.
+ */
+export function moveTaskToBacklog(
+	index: KairosIndex,
+	backlogPath: string,
+	date: ISODate,
+	path: string,
+	owner: Block,
+	task: Task,
+): void {
+	const assoc = task.assoc ?? owner.assoc;
+	const entry: BacklogEntry = {
+		// A throwaway negative line, like a day draft's (see draftLine.ts): the
+		// entry has no file line until the backlog is rewritten.
+		source: { path: backlogPath, line: nextDraftLine() },
+		text: task.text,
+		...(assoc ? { assoc } : {}),
+	};
+	index.returnToBacklog(
+		date,
+		path,
+		(blocks) => deleteTask(blocks, owner, task),
+		entry,
 	);
 }
 

@@ -28,6 +28,9 @@
 		// Open the block picker to change a nested task's parent block, anchored at
 		// `rect`. Wired only for non-colocated tasks (a checkable block can't move).
 		onNest: (task: ResolvedTask, anchor: DOMRect) => void;
+		// Move a nested task out of its day and into the backlog. Not offered for
+		// a colocated task — that task is a block, which can't leave its line.
+		onMoveToBacklog: (task: ResolvedTask) => void;
 		// A long-press on a regular task began a grid drag-to-reschedule.
 		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
 		// A long-press on a colocated task (checkable block) began a block drag.
@@ -53,6 +56,7 @@
 		onCreate,
 		onReveal,
 		onNest,
+		onMoveToBacklog,
 		onTaskGrab,
 		onBlockGrab,
 		dragTaskLine,
@@ -114,6 +118,9 @@
 				onDelete={deleteOf}
 				onNest={!task.colocated && onNest ? (rect) => onNest(task, rect) : undefined}
 				nestLabel="Change parent block"
+				onMoveToBacklog={task.colocated
+					? undefined
+					: () => onMoveToBacklog(task)}
 				meta={task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
 				onGrab={task.colocated
 					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined

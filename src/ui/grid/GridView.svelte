@@ -49,6 +49,7 @@
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
+		moveTaskToBacklog,
 		resurfaceTomorrow,
 		setResurface,
 	} from "../../backlogActions";
@@ -255,6 +256,21 @@
 		const day = dayOf(task.date);
 		if (!day || day.path === null) return;
 		commit(task.date, day.path, deleteTask(day.blocks, task.block, task));
+	}
+
+	// Send a task back to the backlog (task context menu). Only offered on genuine
+	// nested tasks — a colocated task is a block, which can't leave its line.
+	function onMoveToBacklog(task: ResolvedTask) {
+		const day = dayOf(task.date);
+		if (!day || day.path === null) return;
+		moveTaskToBacklog(
+			index,
+			settings.backlogPath,
+			task.date,
+			day.path,
+			task.block,
+			task,
+		);
 	}
 
 	function onNavigate(assoc: Association) {
@@ -811,6 +827,7 @@
 								{onNavigate}
 								{onReveal}
 								onNest={openBlockPicker}
+								{onMoveToBacklog}
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
 								onBlockGrab={onBlockGrab}

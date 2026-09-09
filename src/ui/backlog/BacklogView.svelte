@@ -26,6 +26,7 @@
 		type BacklogSort,
 	} from "../../backlogModel";
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
+	import { nextDraftLine } from "../../draftLine";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 
@@ -79,10 +80,6 @@
 		return a.source.line === b.source.line;
 	}
 
-	// A unique negative line per freshly-created entry so keyed rendering doesn't
-	// collide before the reparse re-derives real lines.
-	let nextDraftLine = -1;
-
 	// ── Entry mutations (all route through applyBacklogEdit) ──
 
 	function commit(next: BacklogEntry[]) {
@@ -95,7 +92,10 @@
 				? undefined
 				: ({ kind: group.kind, id: group.name } as Association);
 		const draft: BacklogEntry = {
-			source: { path: settings.backlogPath, line: nextDraftLine-- },
+			// A unique negative line per freshly-created entry, from the plugin-wide
+			// allocator: a local counter restarts at its seed on every mount, and a
+			// repeated line collides as a duplicate key here and in "move to backlog".
+			source: { path: settings.backlogPath, line: nextDraftLine() },
 			text: "New item",
 			...(assoc ? { assoc } : {}),
 		};
