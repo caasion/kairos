@@ -89,7 +89,7 @@
 		index.applyBacklogEdit(next);
 	}
 
-	function onCreate(group: BacklogGroup) {
+	function onCreate(group: BacklogGroup, anchor: DOMRect) {
 		const assoc =
 			group.kind === "none"
 				? undefined
@@ -100,6 +100,14 @@
 			...(assoc ? { assoc } : {}),
 		};
 		commit([...entries, draft]);
+		if (settings.askAssocOnBacklogCreate) {
+			// Ask first: the picker owns the focus, so text editing has to wait
+			// until it closes (answered or dismissed) — see `editAfterPick`.
+			pickerEntry = draft;
+			pickerAnchor = anchor;
+			editAfterPick = draft.source.line;
+			return;
+		}
 		// Focus the new entry for immediate editing on the next render.
 		editingLine = draft.source.line;
 	}
@@ -164,6 +172,9 @@
 	// ── Association picker (parent-owned so it isn't clipped) ──
 	let pickerEntry = $state<BacklogEntry | null>(null);
 	let pickerAnchor = $state<DOMRect | null>(null);
+	// Set when the picker was opened automatically on a fresh draft: the line to
+	// drop into text editing once the picker closes, answered or not.
+	let editAfterPick: number | null = null;
 
 	function openAssoc(entry: BacklogEntry, event: MouseEvent) {
 		event.stopPropagation();
@@ -173,6 +184,10 @@
 	function closeAssoc() {
 		pickerEntry = null;
 		pickerAnchor = null;
+		if (editAfterPick !== null) {
+			editingLine = editAfterPick;
+			editAfterPick = null;
+		}
 	}
 	function onPickAssoc(assoc: Association | null) {
 		const entry = pickerEntry;
@@ -301,7 +316,10 @@
 						title="Add a backlog item here"
 						onclick={(e) => {
 							e.stopPropagation();
-							onCreate(group);
+							onCreate(
+								group,
+								e.currentTarget.getBoundingClientRect(),
+							);
 						}}
 						aria-label="Add item"
 					>

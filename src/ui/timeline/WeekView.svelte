@@ -641,6 +641,7 @@
 							onEditTaskAssoc={openTaskAssoc}
 							onNestTask={openBlockPicker}
 							{onCrossDayGrab}
+							askAssocOnCreate={settings.askAssocOnBlockCreate}
 							showUnscheduled={false}
 							{onUnscheduledChange}
 						/>

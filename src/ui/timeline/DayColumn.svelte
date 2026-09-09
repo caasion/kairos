@@ -81,6 +81,10 @@
 		// `takeBlock`/`isDropTarget` as needed. Returns nothing — the column keeps
 		// previewing vertically until `onPointerUp` resolves the drop.
 		onCrossDayGrab?: (date: ISODate, block: Block, event: PointerEvent) => void;
+		// Open the association picker on a block the moment it is created
+		// (settings.askAssocOnBlockCreate). The parent owns the picker, so this is
+		// just the flag telling us to ask for it.
+		askAssocOnCreate?: boolean;
 		// When false, the component skips rendering its own unscheduled section.
 		// The parent is then responsible for rendering it (e.g. WeekView).
 		showUnscheduled?: boolean;
@@ -99,6 +103,7 @@
 		onEditTaskAssoc,
 		onNestTask,
 		onCrossDayGrab,
+		askAssocOnCreate = false,
 		showUnscheduled = true,
 		onUnscheduledChange,
 	}: Props = $props();
@@ -631,6 +636,18 @@
 		const block = makeBlock(range, path, undefined, nextDraftLine--);
 		blocks = [...blocks, block];
 		writeToDisk();
+		if (askAssocOnCreate) askAssocFor(block);
+	}
+
+	// Open the (parent-owned) association picker on a block that was just created,
+	// anchored to its element — which only exists once the create has rendered.
+	function askAssocFor(block: Block) {
+		requestAnimationFrame(() => {
+			const el = canvasEl?.querySelector<HTMLElement>(
+				`[data-block-line="${block.source.line}"]`,
+			);
+			if (el) openAssocPicker(block, el.getBoundingClientRect());
+		});
 	}
 
 	async function commitRetime(ranges: Map<Block, TimeRange>) {

@@ -32,6 +32,16 @@ export interface KairosSettings {
 	 * (e.g. "## Schedule", "# My Day", "### Plan").
 	 */
 	scheduleHeading: string;
+
+	/**
+	 * Open the association picker right after a new timeline block is created, so
+	 * a block is filed the moment it exists instead of being left unassociated.
+	 * Off by default — creating a block is a fast, repeated gesture and a popup
+	 * on every one gets in the way unless you asked for it.
+	 */
+	askAssocOnBlockCreate: boolean;
+	/** The same prompt after a new backlog item is created. */
+	askAssocOnBacklogCreate: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -44,6 +54,8 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	domainsFolder: 'Domains',
 	backlogPath: 'Backlog.md',
 	scheduleHeading: '## Schedule',
+	askAssocOnBlockCreate: false,
+	askAssocOnBacklogCreate: false,
 };
 
 export class KairosSettingTab extends PluginSettingTab {
@@ -169,6 +181,38 @@ export class KairosSettingTab extends PluginSettingTab {
 						// Days already in memory were parsed under the old heading;
 						// rebuild the index so open views re-parse under the new one.
 						await this.plugin.indexAdapter.reseed();
+					}),
+			);
+
+		new Setting(containerEl).setName('Associations').setHeading();
+
+		new Setting(containerEl)
+			.setName('Ask when creating a block')
+			.setDesc(
+				'Open the association picker as soon as a new block is created ' +
+					'in the Day or Week view.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.askAssocOnBlockCreate)
+					.onChange(async (value) => {
+						this.plugin.settings.askAssocOnBlockCreate = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Ask when creating a backlog item')
+			.setDesc(
+				'Open the association picker as soon as a new item is added to ' +
+					'the backlog.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.askAssocOnBacklogCreate)
+					.onChange(async (value) => {
+						this.plugin.settings.askAssocOnBacklogCreate = value;
+						await this.plugin.saveSettings();
 					}),
 			);
 

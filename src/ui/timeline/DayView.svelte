@@ -807,6 +807,20 @@
 		const block = makeBlock(range, path, undefined, nextDraftLine--);
 		blocks = [...blocks, block]; // growing the array doesn't reorder existing ones
 		await writeToDisk();
+		if (settings.askAssocOnBlockCreate) askAssocFor(block);
+	}
+
+	// Open the association picker on a block that was just created. The picker is
+	// anchored to the block's own element, which only exists after the create has
+	// rendered — hence the frame wait. Silently skipped if the element isn't there
+	// (the day was navigated away from mid-create).
+	function askAssocFor(block: Block) {
+		requestAnimationFrame(() => {
+			const el = scrollEl?.querySelector<HTMLElement>(
+				`[data-block-line="${block.source.line}"]`,
+			);
+			if (el) openAssocPicker(block, el.getBoundingClientRect());
+		});
 	}
 
 	// ── Task drag-to-nest lifecycle ─────────────────────────────────
