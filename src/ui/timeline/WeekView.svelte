@@ -3,10 +3,17 @@
 	import { onMount } from "svelte";
 	import type { Readable } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
-	import type { Association, Block, ISODate, Task } from "../../types";
+	import type {
+		Association,
+		BacklogEntry,
+		Block,
+		ISODate,
+		Task,
+	} from "../../types";
 	import type { TimeRange } from "../../types";
 	import { moveBlockAcrossDays } from "../../writer";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
+	import { navigateToAssociation } from "../../navigate";
 	import type { KairosIndex, Resolver } from "../../index";
 	import {
 		dateFromISO,
@@ -16,6 +23,14 @@
 		shiftISO,
 		todayISO,
 	} from "../../dayNote";
+	import { surfacedOn } from "../../backlogModel";
+	import {
+		insertEntry,
+		resurfaceTomorrow,
+		setResurface,
+	} from "../../backlogActions";
+	import BacklogNudge from "../backlog/BacklogNudge.svelte";
+	import { placeUnderAnchor } from "../floating";
 	import DayColumn from "./DayColumn.svelte";
 	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
@@ -194,6 +209,72 @@
 	const totalUnscheduled = $derived(
 		dates.reduce((n, d) => n + (unscheduledByDate[d]?.length ?? 0), 0),
 	);
+
+	// ── Resurfaced backlog nudges ──
+	// A backlog entry with a resurface date surfaces on exactly one day; the Day
+	// and Grid views already show those as nudges, and the week strip mirrors them
+	// per column. They live in the backlog file until the arrow inserts them.
+	let backlogEntries = $state<BacklogEntry[]>([]);
+
+	const surfacedByDate = $derived.by(() => {
+		const today = todayISO();
+		const map: Record<string, BacklogEntry[]> = {};
+		for (const date of dates) map[date] = surfacedOn(backlogEntries, date, today);
+		return map;
+	});
+	const totalSurfaced = $derived(
+		dates.reduce((n, d) => n + (surfacedByDate[d]?.length ?? 0), 0),
+	);
+	let resurfacingOpen = $state(true);
+
+	function onNudgeInsert(entry: BacklogEntry, date: ISODate) {
+		void insertEntry(index, entry, date);
+	}
+	function onNudgeResurfaceTomorrow(entry: BacklogEntry) {
+		resurfaceTomorrow(index, backlogEntries, entry);
+	}
+
+	// Resurface-at datepicker, owned here (not by a column) so it isn't clipped.
+	let resurfaceEntry = $state<BacklogEntry | null>(null);
+	let resurfaceAnchor = $state<DOMRect | null>(null);
+	let resurfaceValue = $state<Date>(dateFromISO(todayISO()));
+	// Placed off-screen until measured so it never flashes at the anchor before
+	// being clamped into the viewport.
+	let resurfacePopupEl = $state<HTMLElement>();
+	let resurfaceStyle = $state("left: -9999px; top: -9999px;");
+	function onNudgeResurfaceAt(entry: BacklogEntry, anchor: DOMRect) {
+		resurfaceStyle = "left: -9999px; top: -9999px;"; // hide until measured
+		resurfaceEntry = entry;
+		resurfaceAnchor = anchor;
+		resurfaceValue = dateFromISO(entry.resurface ?? todayISO());
+	}
+	function closeResurfaceAt() {
+		resurfaceEntry = null;
+		resurfaceAnchor = null;
+	}
+	$effect(() => {
+		const el = resurfacePopupEl;
+		const anchor = resurfaceAnchor;
+		if (!el || !anchor) return;
+		resurfaceStyle = placeUnderAnchor(anchor, {
+			width: el.offsetWidth,
+			height: el.offsetHeight,
+		});
+	});
+	function onResurfaceAtSelect(picked: Date) {
+		const entry = resurfaceEntry;
+		closeResurfaceAt();
+		if (entry) setResurface(index, backlogEntries, entry, isoFromDate(picked));
+	}
+
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				node.remove();
+			},
+		};
+	}
 
 	// The column a live gesture began on, and the block it grabbed (single-block
 	// move only). Non-null only during a potential cross-day drag.
@@ -431,12 +512,16 @@
 		const unsubscribeResolver = index.resolver().subscribe((r) => {
 			resolve = r;
 		});
+		const unsubscribeBacklog = index.backlog().subscribe((e) => {
+			backlogEntries = e;
+		});
 		const move = (e: PointerEvent) => onWindowPointerMove(e);
 		const up = (e: PointerEvent) => void onWindowPointerUp(e);
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
 		return () => {
 			unsubscribeResolver();
+			unsubscribeBacklog();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
 		};
@@ -603,6 +688,49 @@
 		</div>
 	{/if}
 
+	<!-- Resurfacing: backlog nudges due somewhere in the window. A strip of its
+	     own, like Unscheduled, but the items live in the backlog until inserted. -->
+	{#if totalSurfaced > 0}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="week-resurfacing">
+			<div
+				class="week-us-header"
+				class:open={resurfacingOpen}
+				onclick={() => (resurfacingOpen = !resurfacingOpen)}
+			>
+				<div class="week-us-gutter-spacer">
+					<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
+					<span>Resurfacing</span>
+					<span class="us-count">{totalSurfaced}</span>
+				</div>
+				{#each dates as date (date)}
+					<div class="week-us-head-cell"></div>
+				{/each}
+			</div>
+			{#if resurfacingOpen}
+				<div class="week-us-body">
+					<div class="week-us-gutter-spacer"></div>
+					{#each dates as date (date)}
+						<div class="week-us-col week-rs-col">
+							{#each surfacedByDate[date] ?? [] as entry (entry.source.line)}
+								<BacklogNudge
+									{entry}
+									resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+									onInsert={(e) => onNudgeInsert(e, date)}
+									onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+									onResurfaceAt={onNudgeResurfaceAt}
+									onNavigate={(assoc) =>
+										navigateToAssociation(app, resolve(assoc))}
+								/>
+							{/each}
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	<div class="week-scroll">
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
@@ -662,6 +790,20 @@
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}
 	/>
+{/if}
+
+{#if resurfaceEntry && resurfaceAnchor}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="resurface-popup"
+		use:portal
+		bind:this={resurfacePopupEl}
+		style={resurfaceStyle}
+		onclick={(e) => e.stopPropagation()}
+	>
+		<Datepicker inline bind:value={resurfaceValue} onselect={onResurfaceAtSelect} />
+	</div>
 {/if}
 
 {#if blockPickerTarget && blockPickerAnchor}
@@ -1006,5 +1148,30 @@
 
 	.week-us-col:first-child {
 		border-left: none;
+	}
+
+	/* ── Resurfacing (backlog nudges due in the window) ── */
+	.week-resurfacing {
+		flex-shrink: 0;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+
+	/* Nudges carry their own accent tint, so give them a little breathing room
+	   the plain task rows above don't need. */
+	.week-rs-col {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		padding: 3px 4px;
+	}
+
+	:global(.resurface-popup) {
+		position: fixed;
+		z-index: 1000;
+		background: var(--background-primary);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 8px;
+		box-shadow: var(--shadow-s);
+		padding: 4px;
 	}
 </style>
