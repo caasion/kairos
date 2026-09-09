@@ -300,7 +300,11 @@
 	// hovered cell's (date, rowKey) is tracked as the live drop target. On release:
 	//   • Same day → unnest + re-associate within that day.
 	//   • Different day → cross-day move via moveTaskAcrossDays.
-	let taskDrag = $state<TaskDragState | null>(null);
+	// The grid drags *resolved* tasks: the drop handler needs the task's date to
+	// find the day it came from, which the shared (timeline) drag state — where a
+	// column already knows its own date — doesn't carry.
+	type GridTaskDrag = Omit<TaskDragState, "task"> & { task: ResolvedTask };
+	let taskDrag = $state<GridTaskDrag | null>(null);
 	let taskDrop = $state<GridDropSlot | null>(null);
 	// Last pointer coordinates, updated on every pointermove during a drag.
 	// Re-hit-tested at pointerup to get the freshest drop slot.
@@ -353,15 +357,42 @@
 				: null;      // unassigned row — clear assoc
 
 		if (drop.date === drag.task.date) {
-			// Same day: move to Unscheduled of that day with the new association.
-			// (We always go through unnest + re-associate rather than reorder,
-			// because the drop could be onto a different row on the same day.)
-			let next = unnestTask(sourceDay.blocks, drag.owner, drag.task, sourceDay.path);
-			// Apply association change if needed.
-			if (next !== sourceDay.blocks && newAssoc !== undefined) {
-				next = applyAssocToTask(next, drag.task, newAssoc);
+			// Same day, different row: this is a *re-filing*, not a move. Only the
+			// task's association changes — it stays in whatever block it lives in.
+			// You schedule blocks, not tasks, so changing a task's owner must not
+			// quietly unschedule it out of its block and into Unscheduled.
+			if (newAssoc === undefined) return; // no target row resolved
+
+			const owner = sourceDay.blocks.find(
+				(b) => b.source.line === drag.owner.source.line,
+			);
+
+			// The one case that still has to move: "Unassigned" can't be expressed
+			// while the task sits in a block carrying its own association, because
+			// clearing the task's tag just re-inherits the block's (spec §2.2). To
+			// land in that row the task has to leave the block — and then the
+			// association `unnestTask` materializes onto it has to be cleared again.
+			if (newAssoc === null && owner?.assoc) {
+				const moved = unnestTask(
+					sourceDay.blocks,
+					drag.owner,
+					drag.task,
+					sourceDay.path,
+				);
+				if (moved === sourceDay.blocks) return;
+				commit(
+					drag.task.date,
+					sourceDay.path,
+					applyAssocToTask(moved, drag.task, null),
+				);
+				return;
 			}
-			if (next !== sourceDay.blocks) commit(drag.task.date, sourceDay.path, next);
+
+			commit(
+				drag.task.date,
+				sourceDay.path,
+				applyAssocToTask(sourceDay.blocks, drag.task, newAssoc),
+			);
 			return;
 		}
 
@@ -389,8 +420,9 @@
 		);
 	}
 
-	// Patch the association on a task that has just been moved into Unscheduled.
-	// Walks the blocks to find the task by source line and updates its assoc field.
+	// Set (or clear) a nested task's own association, wherever it currently sits.
+	// Walks the blocks to find the task by source line and updates its assoc field;
+	// everything else about the task — and its place in its block — is untouched.
 	function applyAssocToTask(blocks: Block[], task: Task, assoc: Association | null): Block[] {
 		return blocks.map((b) => ({
 			...b,
