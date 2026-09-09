@@ -21,8 +21,10 @@
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
 	import {
+		filterBySchedule,
 		groupBacklog,
 		type BacklogGroup,
+		type BacklogSchedule,
 		type BacklogSort,
 	} from "../../backlogModel";
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
@@ -50,6 +52,9 @@
 	let entries = $state<BacklogEntry[]>([]);
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 	let sort = $state<BacklogSort>("manual");
+	// Show everything, only entries waiting on a resurface date, or only those
+	// with none. View state, not persisted — it's a way of looking, not a setting.
+	let schedule = $state<BacklogSchedule>("all");
 
 	// ── Project/domain filter (pushed by the Projects & Domains page) ──
 	// An allow-list of association names; only entries whose association resolves
@@ -66,9 +71,10 @@
 	}
 
 	const visibleEntries = $derived.by(() => {
-		if (!filter) return entries;
+		const scoped = filterBySchedule(entries, schedule);
+		if (!filter) return scoped;
 		const names = new Set(filter.names);
-		return entries.filter((e) => entryMatchesFilter(e, names));
+		return scoped.filter((e) => entryMatchesFilter(e, names));
 	});
 
 	const groups = $derived<BacklogGroup[]>(groupBacklog(visibleEntries, resolve, sort));
@@ -234,6 +240,22 @@
 		return date <= todayISO();
 	}
 
+	function cycleSchedule() {
+		schedule =
+			schedule === "all"
+				? "scheduled"
+				: schedule === "scheduled"
+					? "unscheduled"
+					: "all";
+	}
+	const scheduleLabel = $derived(
+		schedule === "all"
+			? "All"
+			: schedule === "scheduled"
+				? "Scheduled"
+				: "Unscheduled",
+	);
+
 	function cycleSort() {
 		sort = sort === "manual" ? "resurface" : sort === "resurface" ? "alpha" : "manual";
 	}
@@ -275,6 +297,17 @@
 			</button>
 		{/if}
 		<span class="backlog-header-spacer"></span>
+		<button
+			class="sort-btn"
+			title="Show all items, only scheduled ones (waiting on a resurface date), or only unscheduled ones"
+			onclick={(e) => {
+				e.stopPropagation();
+				cycleSchedule();
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+			<span>{scheduleLabel}</span>
+		</button>
 		<button
 			class="sort-btn"
 			title="Change sort order"

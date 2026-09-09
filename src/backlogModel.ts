@@ -18,6 +18,13 @@ import type { Resolver } from "./index";
 /** How to order entries within a group. */
 export type BacklogSort = "manual" | "resurface" | "alpha";
 
+/**
+ * Which entries to show. A backlog entry's only form of scheduling is its
+ * resurface date — the day it comes back to ask to be done — so "scheduled"
+ * means it carries one and "unscheduled" means it doesn't.
+ */
+export type BacklogSchedule = "all" | "scheduled" | "unscheduled";
+
 export interface BacklogGroup {
 	/** Stable key for keyed rendering: `project:Name`, `domain:Name`, or `none`. */
 	key: string;
@@ -29,6 +36,27 @@ export interface BacklogGroup {
 	color?: string;
 	/** The entries in this group, ordered per the active sort. */
 	entries: BacklogEntry[];
+}
+
+// ─── schedule filter ───────────────────────────────────────────
+
+/**
+ * Narrow entries to those that are (or aren't) waiting on a resurface date.
+ * Applied before grouping, so the groups reflect only what's shown — an empty
+ * group simply doesn't appear, except Unassociated, which always does.
+ */
+export function filterBySchedule(
+	entries: BacklogEntry[],
+	schedule: BacklogSchedule,
+): BacklogEntry[] {
+	switch (schedule) {
+		case "all":
+			return entries;
+		case "scheduled":
+			return entries.filter((e) => e.resurface !== undefined);
+		case "unscheduled":
+			return entries.filter((e) => e.resurface === undefined);
+	}
 }
 
 // ─── grouping ──────────────────────────────────────────────────

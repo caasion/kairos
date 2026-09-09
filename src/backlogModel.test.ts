@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	filterBySchedule,
 	groupBacklog,
 	sortEntries,
 	surfaceDate,
@@ -163,6 +164,34 @@ describe("surfacedOn", () => {
 		expect(surfacedOn(entries, TODAY, TODAY).map((e) => e.text)).toEqual([
 			"earlier",
 			"later",
+		]);
+	});
+});
+
+describe("filterBySchedule", () => {
+	const es = () => {
+		line = 0;
+		return [
+			entry("Waiting", { resurface: "2026-09-10" }),
+			entry("Someday"),
+			entry("Also waiting", { resurface: "2026-01-01" }),
+		];
+	};
+
+	it("passes everything through on 'all'", () => {
+		expect(filterBySchedule(es(), "all")).toHaveLength(3);
+	});
+
+	it("keeps only entries carrying a resurface date on 'scheduled'", () => {
+		expect(filterBySchedule(es(), "scheduled").map((e) => e.text)).toEqual([
+			"Waiting",
+			"Also waiting",
+		]);
+	});
+
+	it("keeps only entries with no resurface date on 'unscheduled'", () => {
+		expect(filterBySchedule(es(), "unscheduled").map((e) => e.text)).toEqual([
+			"Someday",
 		]);
 	});
 });
