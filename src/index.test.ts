@@ -385,6 +385,27 @@ describe("KairosIndex", () => {
 		expect(get(store)).toBeUndefined();
 	});
 
+	it("keeps a pending edit when the daily note's creation echoes back", async () => {
+		const idx = new KairosIndex(deps);
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.seed([]);
+		const store = idx.day(date);
+
+		// First edit on a day with no note: the view created the note, then applied
+		// the edit. `now()` is 1000, so the echo's mtime is NOT older — only the
+		// pending-write gate can save it.
+		idx.applyDayEdit(date, path, parseSchedule(note("- 09:00 - 10:00 A"), path));
+
+		// The vault's create event arrives afterwards with the bare template.
+		idx.onFileChanged(path, "# Title\n", 1000);
+		expect(get(store)?.blocks.map((b) => b.title)).toEqual(["A"]);
+
+		// ...and the debounced write persists the edit, not the template.
+		await vi.advanceTimersByTimeAsync(500);
+		expect(writes[0]?.content).toContain("09:00 - 10:00 A");
+	});
+
 	it("dispose cancels pending writes", () => {
 		const idx = new KairosIndex(deps);
 		const path = dayPath("2026-07-31");

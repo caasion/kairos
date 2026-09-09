@@ -615,6 +615,18 @@ export class KairosIndex {
 		mtime: number,
 	): void {
 		const prev = this.state.days.get(date);
+		// Pending-write gate: an edit for this date is committed in memory and
+		// waiting on its debounced write, so memory — not the file — is the newer
+		// version. This matters most on a *first* edit to a day with no note yet:
+		// `ensureNoteForDate` creates the note, then applies the edit on the very
+		// next microtask, while the vault's create event only reaches us after an
+		// async read. That echo therefore always lands *after* the commit, carrying
+		// the freshly-templated (scheduleless) file, and adopting it would drop the
+		// edit from memory — which the pending write would then persist. The write
+		// splices into whatever the file holds at write time, so nothing outside
+		// the Schedule section is lost by skipping this parse.
+		if (this.writeTimers.has(date)) return;
+
 		// mtime gate: ignore stale echoes older than what we already hold.
 		if (prev && mtime !== 0 && prev.mtime > mtime) return;
 
