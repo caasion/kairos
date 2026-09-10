@@ -45,7 +45,9 @@
 		// Open the block picker to nest a task under another block, anchored at
 		// `rect`. The owning block travels along so the writer can locate the task.
 		onNestTask: (owner: Block, task: Task, rect: DOMRect) => void;
-		// Move a nested task out of the day and into the backlog.
+		// Move a nested task off the day and back into the backlog. The owning block
+		// travels along so the parent can locate the task and lift its inherited
+		// association before dropping it.
 		onMoveTaskToBacklog: (owner: Block, task: Task) => void;
 		// A long-press on a task body began a drag-to-nest gesture. The parent (the
 		// canvas owner) takes over window pointer tracking, previews a drop slot,

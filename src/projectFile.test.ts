@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
 	appendStatus,
+	editStatusRecord,
+	effectiveRecord,
+	effectiveStatus,
+	normalizeHistory,
+	removeStatusRecord,
 	extractFrontmatter,
 	isDomainFile,
 	isProjectFile,
@@ -19,7 +24,7 @@ import {
 	setDomain,
 	setOrder,
 } from "./projectFile";
-import type { Domain, Project } from "./types";
+import type { Domain, Project, StatusRecord } from "./types";
 
 const PROJECT = `---
 tags:
@@ -99,6 +104,90 @@ describe("parseProject", () => {
 	});
 });
 
+describe("effectiveStatus", () => {
+	const hist = (
+		...rs: [string, "active" | "inactive" | "archived"][]
+	): StatusRecord[] =>
+		rs.map(([date, status]) => ({ date: date as StatusRecord["date"], status }));
+
+	it("defaults to active with no records", () => {
+		expect(effectiveStatus([], "2026-08-04")).toBe("active");
+	});
+
+	it("uses the most recent record on-or-before the as-of date", () => {
+		const h = hist(["2026-01-01", "active"], ["2026-06-01", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("inactive");
+	});
+
+	it("ignores records dated after the as-of date (scheduled changes)", () => {
+		// Currently active; an inactive change is scheduled for Aug 7. As of Aug 4
+		// it must still read active — the future record has not taken effect.
+		const h = hist(["2026-01-01", "active"], ["2026-08-07", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("active");
+		expect(effectiveStatus(h, "2026-08-07")).toBe("inactive");
+	});
+
+	it("treats a record dated exactly on the as-of date as in effect", () => {
+		const h = hist(["2026-08-04", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("inactive");
+	});
+
+	it("returns active when the only records are in the future", () => {
+		const h = hist(["2026-08-07", "inactive"]);
+		expect(effectiveStatus(h, "2026-08-04")).toBe("active");
+	});
+});
+
+describe("effectiveRecord", () => {
+	const rec = (
+		date: string,
+		status: "active" | "inactive" | "archived",
+		note?: string,
+	): StatusRecord => ({ date: date as StatusRecord["date"], status, ...(note ? { note } : {}) });
+
+	it("defaults to active with no bounds and no note when history is empty", () => {
+		expect(effectiveRecord([], "2026-08-04")).toEqual({
+			status: "active",
+			note: "",
+			since: null,
+			until: null,
+		});
+	});
+
+	it("surfaces the effective record's status, note, and open span", () => {
+		const h = [rec("2026-01-01", "active", "baseline")];
+		expect(effectiveRecord(h, "2026-08-04")).toEqual({
+			status: "active",
+			note: "baseline",
+			since: "2026-01-01",
+			until: null, // still open
+		});
+	});
+
+	it("bounds the span with the next record's date as 'until'", () => {
+		const h = [rec("2026-01-01", "active", "hard"), rec("2026-06-01", "inactive")];
+		expect(effectiveRecord(h, "2026-03-01")).toEqual({
+			status: "active",
+			note: "hard",
+			since: "2026-01-01",
+			until: "2026-06-01",
+		});
+	});
+
+	it("keeps active status for a future-dated close, surfacing it as a scheduled 'until'", () => {
+		const h = [rec("2026-01-01", "active"), rec("2026-08-07", "inactive")];
+		// As of Aug 4 the effective status is still active (the inactive record is
+		// scheduled, not yet in effect), but the popover can surface Aug 7 as the
+		// date it's scheduled to end.
+		expect(effectiveRecord(h, "2026-08-04")).toEqual({
+			status: "active",
+			note: "",
+			since: "2026-01-01",
+			until: "2026-08-07",
+		});
+	});
+});
+
 describe("parseDomain", () => {
 	it("parses a domain file", () => {
 		const d = parseDomain(DOMAIN, "Domains/Health.md");
@@ -122,6 +211,39 @@ describe("parseStatus", () => {
 	it("handles a missing status gracefully", () => {
 		expect(parseStatus(undefined)).toEqual([]);
 	});
+
+	it("parses the { status, note } object form and carries the note", () => {
+		const records = parseStatus({
+			"2026-07-18": { status: "active", note: "baseline" },
+			"2026-07-23": { status: "active", note: "hard" },
+		});
+		expect(records).toEqual([
+			{ date: "2026-07-18", status: "active", note: "baseline" },
+			{ date: "2026-07-23", status: "active", note: "hard" },
+		]);
+	});
+
+	it("keeps a note verbatim regardless of status (annotation, not logic)", () => {
+		const records = parseStatus({
+			"2026-07-18": { status: "inactive", note: "on hold" },
+		});
+		expect(records[0]?.note).toBe("on hold");
+	});
+
+	it("drops an empty/whitespace/non-string note rather than round-tripping ''", () => {
+		expect(parseStatus({ "2026-07-18": { status: "active", note: "  " } })).toEqual([
+			{ date: "2026-07-18", status: "active" },
+		]);
+		expect(parseStatus({ "2026-07-18": { status: "active", note: 5 } })).toEqual([
+			{ date: "2026-07-18", status: "active" },
+		]);
+	});
+
+	it("still tolerates the bare-string form on read", () => {
+		expect(parseStatus({ "2026-07-18": "inactive" })).toEqual([
+			{ date: "2026-07-18", status: "inactive" },
+		]);
+	});
 });
 
 describe("caveat: tab-indented status is invalid YAML", () => {
@@ -143,6 +265,23 @@ describe("serialization round-trip", () => {
 		expect(reparsed.aliases).toEqual(original.aliases);
 		expect(reparsed.domain).toBe(original.domain);
 		expect(reparsed.description).toBe("a blurb");
+		expect(reparsed.history).toEqual(original.history);
+	});
+
+	it("round-trips status notes through serialize → parse", () => {
+		const base = parseProject(PROJECT, "Projects/Alpha.md")!;
+		const original: Project = {
+			...base,
+			history: [
+				{ date: "2026-07-18", status: "active", note: "baseline" },
+				{ date: "2026-07-23", status: "inactive" },
+				{ date: "2026-07-25", status: "active", note: "hard" },
+			],
+		};
+		const reparsed = parseProject(
+			serializeProjectFrontmatter(original),
+			"Projects/Alpha.md",
+		)!;
 		expect(reparsed.history).toEqual(original.history);
 	});
 
@@ -177,10 +316,13 @@ describe("appendStatus", () => {
 	});
 
 	it("replaces a same-day record rather than stacking", () => {
-		const once = appendStatus(proj(), "2026-08-03", "inactive");
-		const twice = appendStatus(once, "2026-08-03", "active");
+		// The prior record (2026-07-23) is active, so the final day-03 record must
+		// differ from active to be observable (an active-after-active would be a
+		// redundant transition and collapse — see the normalizeHistory tests).
+		const once = appendStatus(proj(), "2026-08-03", "active");
+		const twice = appendStatus(once, "2026-08-03", "inactive");
 		const onThatDay = twice.history.filter((r) => r.date === "2026-08-03");
-		expect(onThatDay).toEqual([{ date: "2026-08-03", status: "active" }]);
+		expect(onThatDay).toEqual([{ date: "2026-08-03", status: "inactive" }]);
 	});
 
 	it("keeps history sorted oldest → newest", () => {
@@ -199,6 +341,113 @@ describe("appendStatus", () => {
 		const d = appendStatus(dom(), "2026-08-03", "inactive");
 		expect(d.history.at(-1)?.status).toBe("inactive");
 		expect(d.archived).toBe(false);
+	});
+
+	it("carries a note and collapses a redundant consecutive transition", () => {
+		// PROJECT ends active on 2026-07-23 (no note). Appending active-with-note
+		// is a distinct transition (note differs) and is kept.
+		const p = appendStatus(proj(), "2026-08-01", "active", "hard");
+		expect(p.history.at(-1)).toEqual({ date: "2026-08-01", status: "active", note: "hard" });
+		// Appending the same {active, hard} again the next day is a no-op transition.
+		const q = appendStatus(p, "2026-08-05", "active", "hard");
+		expect(q.history.at(-1)?.date).toBe("2026-08-01");
+	});
+});
+
+describe("normalizeHistory", () => {
+	const r = (date: string, status: "active" | "inactive" | "archived", note?: string) =>
+		({ date, status, ...(note ? { note } : {}) }) as StatusRecord;
+
+	it("sorts chronologically", () => {
+		expect(normalizeHistory([r("2026-03-01", "active"), r("2026-01-01", "inactive")])).toEqual([
+			r("2026-01-01", "inactive"),
+			r("2026-03-01", "active"),
+		]);
+	});
+
+	it("keeps one record per date (later input wins)", () => {
+		expect(
+			normalizeHistory([r("2026-01-01", "active"), r("2026-01-01", "inactive")]),
+		).toEqual([r("2026-01-01", "inactive")]);
+	});
+
+	it("collapses consecutive records with identical status AND note", () => {
+		expect(
+			normalizeHistory([
+				r("2026-01-01", "active", "hard"),
+				r("2026-02-01", "active", "hard"),
+			]),
+		).toEqual([r("2026-01-01", "active", "hard")]);
+	});
+
+	it("does NOT collapse when the note differs (intensity change is meaningful)", () => {
+		const h = normalizeHistory([
+			r("2026-01-01", "active", "baseline"),
+			r("2026-02-01", "active", "hard"),
+		]);
+		expect(h).toHaveLength(2);
+	});
+
+	it("does NOT collapse when the status differs", () => {
+		const h = normalizeHistory([r("2026-01-01", "active"), r("2026-02-01", "inactive")]);
+		expect(h).toHaveLength(2);
+	});
+});
+
+describe("editStatusRecord", () => {
+	it("edits a prior record's status/note and re-derives archived", () => {
+		const p = editStatusRecord(proj(), "2026-07-23", {
+			date: "2026-07-23",
+			status: "archived",
+		});
+		expect(p.history.find((x) => x.date === "2026-07-23")?.status).toBe("archived");
+		expect(p.archived).toBe(true);
+	});
+
+	it("moves a record's date and re-sorts", () => {
+		const p = editStatusRecord(proj(), "2026-07-18", {
+			date: "2026-08-01",
+			status: "inactive",
+		});
+		expect(p.history.map((x) => x.date)).toEqual(["2026-07-23", "2026-08-01"]);
+	});
+
+	it("is a no-op when originalDate is not present", () => {
+		const before = proj();
+		expect(editStatusRecord(before, "1999-01-01", { date: "1999-01-02", status: "active" })).toBe(
+			before,
+		);
+	});
+
+	it("refuses to archive a domain (durable), unchanged", () => {
+		const d = dom();
+		expect(editStatusRecord(d, "2026-07-23", { date: "2026-07-23", status: "archived" })).toBe(d);
+	});
+});
+
+describe("removeStatusRecord", () => {
+	it("removes a record and re-derives archived", () => {
+		const p = removeStatusRecord(proj(), "2026-07-23");
+		expect(p.history.map((x) => x.date)).toEqual(["2026-07-18"]);
+	});
+
+	it("collapses a now-consecutive duplicate exposed by the removal", () => {
+		const p: Project = {
+			...proj(),
+			history: [
+				{ date: "2026-01-01", status: "active" },
+				{ date: "2026-02-01", status: "inactive" },
+				{ date: "2026-03-01", status: "active" },
+			],
+		};
+		// Removing the inactive record leaves two consecutive actives → collapse.
+		const after = removeStatusRecord(p, "2026-02-01");
+		expect(after.history).toEqual([{ date: "2026-01-01", status: "active" }]);
+	});
+
+	it("is a no-op when the date is not present", () => {
+		const before = proj();
+		expect(removeStatusRecord(before, "1999-01-01")).toBe(before);
 	});
 });
 

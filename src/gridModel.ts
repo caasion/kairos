@@ -10,14 +10,29 @@
 // Svelte or Obsidian: given the same snapshot it always yields the same rows.
 //
 // Row axis, in order:
-//   1. project rows       — one per non-archived project NOT under a domain
-//   2. domain rows        — one per non-archived domain, always expanded:
+//   1. project rows       — one per visible project NOT under a domain
+//   2. domain rows        — one per visible domain, always expanded:
 //        · the domain row itself holds tasks tagged [D:Domain] directly
 //        · a child row per project under the domain
 //   3. unassigned row     — tasks with no owner (always last, only if non-empty)
+//
+// "Visible" is window-aware, not a today snapshot: a project/domain shows as a
+// row when it was *active on any visible day* OR *carries a tagged task on any
+// visible day* (spec: archiving/inactivating an entity must not erase its past
+// — an archived-today project still appears for the days it was active). The
+// per-day effective status then drives cell dimming (see `dayStatus`): a column
+// where the entity was inactive/archived reads as read-only history.
 
-import type { Project, ResolvedTask } from "./types";
+import type {
+	Domain,
+	ISODate,
+	LifecycleState,
+	Project,
+	ResolvedTask,
+} from "./types";
 import type { GridSnapshot } from "./index";
+import { effectiveStatus } from "./projectFile";
+import { rowLabelInfo, type RowLabelInfo } from "./ui/components/rowLabel";
 
 // ─── row types ─────────────────────────────────────────────────
 
@@ -32,6 +47,8 @@ export type GridRow =
 			color?: string;
 			/** Indent depth: 0 top-level, 1 child under a domain. */
 			depth: number;
+			/** Presentation for the row-label column + its hover card. */
+			info: RowLabelInfo;
 	  }
 	| {
 			kind: "domain";
@@ -40,6 +57,7 @@ export type GridRow =
 			domainId: string;
 			color?: string;
 			depth: 0;
+			info: RowLabelInfo;
 	  }
 	| { kind: "unassigned"; key: RowKey; name: string; depth: 0 };
 
@@ -61,13 +79,55 @@ function ownerIdentity(
 	return { kind: owner.kind, name: resolved.displayName || owner.id };
 }
 
+// ─── window-aware visibility ───────────────────────────────────
+
+/** Does any task, on any visible day, name this project/domain as its owner? */
+function hasTaskInWindow(
+	entity: Project | Domain,
+	kind: "project" | "domain",
+	snap: GridSnapshot,
+): boolean {
+	return snap.days.some((day) =>
+		day.tasks.some((t) => {
+			const id = ownerIdentity(t, snap);
+			return id?.kind === kind && id.name === entity.name;
+		}),
+	);
+}
+
+/** Was the entity active (its effective status) on any visible day? */
+function activeOnAnyVisibleDay(
+	entity: Project | Domain,
+	snap: GridSnapshot,
+): boolean {
+	return snap.days.some(
+		(day) => effectiveStatus(entity.history, day.date) === "active",
+	);
+}
+
+/**
+ * Whether a project/domain earns a row for the current window: it was active on
+ * a visible day, or it carried a tagged task on a visible day. An entity that is
+ * archived/inactive *today* but was active (or worked) within the window still
+ * shows, so its history isn't hidden.
+ */
+function visibleInWindow(
+	entity: Project | Domain,
+	kind: "project" | "domain",
+	snap: GridSnapshot,
+): boolean {
+	return (
+		activeOnAnyVisibleDay(entity, snap) || hasTaskInWindow(entity, kind, snap)
+	);
+}
+
 // ─── row assembly ──────────────────────────────────────────────
 
 /**
  * Build the ordered rows for the current snapshot. Domains are always fully
  * expanded — every child project row is always visible.
  */
-export function buildRows(snap: GridSnapshot): GridRow[] {
+export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 	const rows: GridRow[] = [];
 
 	const projectColor = (p: Project): string | undefined => {
@@ -78,43 +138,54 @@ export function buildRows(snap: GridSnapshot): GridRow[] {
 		return undefined;
 	};
 
-	// 1. Top-level projects (not filed under any domain).
+	// 1. Top-level projects (not filed under any domain) visible in the window.
 	const topProjects = [...snap.projects.values()]
-		.filter((p) => !p.archived && !p.domain)
+		.filter((p) => !p.domain && visibleInWindow(p, "project", snap))
 		.sort(byName);
 	for (const p of topProjects) {
+		const color = projectColor(p);
 		rows.push({
 			kind: "project",
 			key: `project:${p.name}`,
 			name: p.name,
-			...(projectColor(p) ? { color: projectColor(p) } : {}),
+			...(color ? { color } : {}),
 			depth: 0,
+			info: rowLabelInfo(p, false, color, asOf),
 		});
 	}
 
-	// 2. Domains — always fully expanded.
-	const domains = [...snap.domains.values()]
-		.filter((d) => !d.archived)
-		.sort((a, b) => a.order - b.order || byName(a, b));
+	// 2. Domains — always fully expanded. Keep a domain if it itself is visible in
+	//    the window, or any of its (visible) child projects are — so a child row
+	//    never appears orphaned from its domain header.
+	const domains = [...snap.domains.values()].sort(
+		(a, b) => a.order - b.order || byName(a, b),
+	);
 
 	for (const d of domains) {
+		const children = (snap.byDomainProjects.get(d.id) ?? []).filter((p) =>
+			visibleInWindow(p, "project", snap),
+		);
+		if (!visibleInWindow(d, "domain", snap) && children.length === 0) continue;
+
+		const domainColor = d.color || undefined;
 		rows.push({
 			kind: "domain",
 			key: `domain:${d.name}`,
 			name: d.name,
 			domainId: d.id,
-			...(d.color ? { color: d.color } : {}),
+			...(domainColor ? { color: domainColor } : {}),
 			depth: 0,
+			info: rowLabelInfo(d, true, domainColor, asOf),
 		});
 
-		const children = snap.byDomainProjects.get(d.id) ?? [];
 		for (const p of children) {
 			rows.push({
 				kind: "project",
 				key: `project:${p.name}`,
 				name: p.name,
-				...(d.color ? { color: d.color } : {}),
+				...(domainColor ? { color: domainColor } : {}),
 				depth: 1,
+				info: rowLabelInfo(p, false, domainColor, asOf),
 			});
 		}
 	}
@@ -166,6 +237,26 @@ export function cellTasks(
 				return id?.kind === "domain" && id.name === row.name;
 			});
 	}
+}
+
+/**
+ * The row entity's effective lifecycle status on a given day. Used to dim and
+ * lock a cell for days when the project/domain was inactive/archived — the row
+ * is present for its history, but those columns are read-only. The unassigned
+ * row is a virtual bucket with no lifecycle, so it always reads active.
+ */
+export function dayStatus(
+	row: GridRow,
+	date: ISODate,
+	snap: GridSnapshot,
+): LifecycleState {
+	if (row.kind === "unassigned") return "active";
+	const entity =
+		row.kind === "domain"
+			? snap.domains.get(row.name)
+			: snap.projects.get(row.name);
+	if (!entity) return "active";
+	return effectiveStatus(entity.history, date);
 }
 
 /** The association a create-in-cell applies for this row. */

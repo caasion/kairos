@@ -27,6 +27,8 @@
 	} from "../../types";
 	import {
 		addTaskToUnscheduled,
+		copyBlockIntoDay,
+		copyTaskIntoDay,
 		deleteTask,
 		moveBlockAcrossDays,
 		moveTaskAcrossDays,
@@ -43,6 +45,7 @@
 	import {
 		buildRows,
 		cellTasks,
+		dayStatus,
 		rowAssociation,
 		type GridRow,
 	} from "../../gridModel";
@@ -62,6 +65,7 @@
 	} from "../../dayNote";
 	import { nextDraftLine } from "../../draftLine";
 	import GridCell from "./GridCell.svelte";
+	import RowLabel from "../components/RowLabel.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -124,11 +128,15 @@
 			});
 		return `${fmt(dates[0]!)} – ${fmt(dates[dates.length - 1]!)}`;
 	});
-	function columnLabel(date: ISODate): string {
-		return dateFromISO(date).toLocaleDateString(undefined, {
-			weekday: "short",
-			day: "numeric",
-		});
+	// A date card's two lines: an uppercase day-of-week label over the day number
+	// (Holos-style header). Kept as separate accessors so the markup can stack them.
+	function dowLabel(date: ISODate): string {
+		return dateFromISO(date)
+			.toLocaleDateString(undefined, { weekday: "short" })
+			.toUpperCase();
+	}
+	function dayNumber(date: ISODate): string {
+		return dateFromISO(date).toLocaleDateString(undefined, { day: "numeric" });
 	}
 	function isToday(date: ISODate): boolean {
 		return date === todayISO();
@@ -152,11 +160,30 @@
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
 	const rows = $derived<GridRow[]>(
-		snapshot ? buildRows(snapshot) : [],
+		snapshot ? buildRows(snapshot, todayISO()) : [],
 	);
+
+	// Whether a row is the last of its domain group — a domain header and its child
+	// project rows share one accent color and read as one block, so the divider
+	// between them is dropped and only reappears after the group's last child. We
+	// mark each row's group-end position from the flat row list.
+	function isGroupEnd(i: number): boolean {
+		const row = rows[i]!;
+		if (row.kind === "unassigned") return true;
+		const next = rows[i + 1];
+		const nextIsChild = next?.kind === "project" && next.depth > 0;
+		return !nextIsChild;
+	}
 
 	function tasksFor(row: GridRow, day: GridDay): ResolvedTask[] {
 		return snapshot ? cellTasks(row, day.tasks, snapshot) : [];
+	}
+
+	// The row's entity was inactive/archived on this day — the cell is read-only
+	// history (dimmed, no create, no drop). Drives both the cell's presentation
+	// and the drag guard below.
+	function isCellInactive(row: GridRow, date: ISODate): boolean {
+		return snapshot ? dayStatus(row, date, snapshot) !== "active" : false;
 	}
 
 	// ── Resurfaced backlog nudges ──
@@ -260,7 +287,9 @@
 	}
 
 	// Send a task back to the backlog (task context menu). Only offered on genuine
-	// nested tasks — a colocated task is a block, which can't leave its line.
+	// nested tasks — a colocated task is a block, which can't leave its line. The
+	// shared helper lifts the task's text + materialized association into a fresh
+	// entry and commits the day removal + backlog append as one optimistic unit.
 	function onMoveToBacklog(task: ResolvedTask) {
 		const day = dayOf(task.date);
 		if (!day || day.path === null) return;
@@ -320,6 +349,7 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			label: task.text,
+			duplicate: event.ctrlKey || event.metaKey,
 		};
 		taskDrop = hitTestGridCell(event);
 	}
@@ -328,7 +358,12 @@
 		if (!taskDrag) return;
 		lastPointerX = event.clientX;
 		lastPointerY = event.clientY;
-		taskDrag = { ...taskDrag, ghostX: event.clientX, ghostY: event.clientY };
+		taskDrag = {
+			...taskDrag,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			duplicate: event.ctrlKey || event.metaKey,
+		};
 		taskDrop = hitTestGridCell(event);
 	}
 
@@ -348,6 +383,8 @@
 
 		// Resolve the target row's association from the drop's row key.
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
+		// Never drop into a read-only history cell (row inactive/archived that day).
+		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
 		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
 		// Convert RowAssociation → Association (or null to clear).
 		const newAssoc: Association | null | undefined = targetAssoc
@@ -355,6 +392,24 @@
 			: targetAssoc === undefined
 				? undefined  // no target row found — preserve existing assoc
 				: null;      // unassigned row — clear assoc
+
+		// Ctrl/Cmd-drag: drop a copy into the target cell's Unscheduled, leaving
+		// the source task untouched. Same-day and cross-day collapse to one path —
+		// the source day is never modified, so we only write the target day.
+		if (drag.duplicate) {
+			const targetDay = dayOf(drop.date as ISODate);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetBlocks = targetDay?.blocks ?? [];
+			const next = copyTaskIntoDay(
+				targetBlocks,
+				drag.task,
+				targetPath,
+				nextDraftLine(),
+				newAssoc,
+			);
+			commit(drop.date as ISODate, targetPath, next);
+			return;
+		}
 
 		if (drop.date === drag.task.date) {
 			// Same day, different row: this is a *re-filing*, not a move. Only the
@@ -455,7 +510,14 @@
 		const childCount = block.tasks.length;
 		const label = childCount > 0 ? `${block.title} (+${childCount})` : block.title;
 		// Stash the source date on the drag state so onBlockDragUp can find the day.
-		blockDrag = { block, sourceDate: task.date, ghostX: event.clientX, ghostY: event.clientY, label };
+		blockDrag = {
+			block,
+			sourceDate: task.date,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			label,
+			duplicate: event.ctrlKey || event.metaKey,
+		};
 		blockDrop = hitTestGridCell(event);
 	}
 
@@ -463,7 +525,12 @@
 		if (!blockDrag) return;
 		lastPointerX = event.clientX;
 		lastPointerY = event.clientY;
-		blockDrag = { ...blockDrag, ghostX: event.clientX, ghostY: event.clientY };
+		blockDrag = {
+			...blockDrag,
+			ghostX: event.clientX,
+			ghostY: event.clientY,
+			duplicate: event.ctrlKey || event.metaKey,
+		};
 		blockDrop = hitTestGridCell(event);
 	}
 
@@ -482,12 +549,32 @@
 
 		// Resolve the target row's association.
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
+		// Never drop into a read-only history cell (row inactive/archived that day).
+		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
 		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
 		const newAssoc: Association | null | undefined = targetAssoc
 			? { kind: targetAssoc.kind, id: targetAssoc.id }
 			: targetAssoc === undefined
 				? undefined
 				: null; // unassigned row — clear assoc
+
+		// Ctrl/Cmd-drag: drop a copy of the whole block (time, title, children)
+		// onto the target day, leaving the source block in place. Same-day and
+		// cross-day both just append a copy to the target — never touch the source.
+		if (drag.duplicate) {
+			const targetDay = dayOf(drop.date as ISODate);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetBlocks = targetDay?.blocks ?? [];
+			const next = copyBlockIntoDay(
+				targetBlocks,
+				drag.block,
+				targetPath,
+				undefined, // keep existing time
+				newAssoc,
+			);
+			commit(drop.date as ISODate, targetPath, next);
+			return;
+		}
 
 		if (drop.date === sourceDate) {
 			// Same day: only the association changes.
@@ -674,7 +761,23 @@
 		}
 	}
 
+	// The body scroll reserves a stable scrollbar gutter so its columns keep a
+	// constant width. The header strip sits outside that scroll, so it reserves the
+	// same trailing width — the measured scrollbar width, published as a CSS var on
+	// the root — to stay column-aligned with the body below.
+	let viewEl = $state<HTMLDivElement>();
+	function measureScrollbar(el: HTMLElement) {
+		const probe = document.createElement("div");
+		probe.style.cssText =
+			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+		el.appendChild(probe);
+		const width = probe.offsetWidth - probe.clientWidth;
+		probe.remove();
+		el.style.setProperty("--gv-scrollbar", `${width}px`);
+	}
+
 	onMount(() => {
+		if (viewEl) measureScrollbar(viewEl);
 		const unsub = index.resolver().subscribe((r) => {
 			resolve = r;
 		});
@@ -705,7 +808,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="grid-view" onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
+<div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
 	<div class="grid-header">
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
@@ -765,7 +868,7 @@
 				}}
 				aria-label="Grid settings"
 			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
 			</button>
 			{#if showControls}
 				<div class="controls-popup">
@@ -782,50 +885,60 @@
 		</div>
 	</div>
 
+	<!-- Header strip: corner + day columns. Fixed above the scroll so the vertical
+	     scrollbar only runs alongside the body rows, not the date header. Reserves
+	     the scrollbar gutter on its right so its columns line up with the body. -->
+	<div class="grid-head" style={`grid-template-columns: ${gridTemplate};`}>
+		<div class="grid-corner grid-corner-head"></div>
+		{#each dates as date (date)}
+			<button
+				class="grid-colhead date-card"
+				class:today={isToday(date)}
+				title="Click to open daily note"
+				onclick={(e) => {
+					e.stopPropagation();
+					void openDayNote(date);
+				}}
+			>
+				<span class="dow-label">{dowLabel(date)}</span>
+				<span class="date-number">{dayNumber(date)}</span>
+				{#if isToday(date)}
+					<span class="today-indicator"></span>
+				{/if}
+			</button>
+		{/each}
+	</div>
+
 	<div class="grid-scroll">
 		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
-			<!-- Header row: corner + day columns -->
-			<div class="grid-corner"></div>
-			{#each dates as date (date)}
-				<button
-					class="grid-colhead"
-					class:today={isToday(date)}
-					title="Open the daily note"
-					onclick={(e) => {
-						e.stopPropagation();
-						void openDayNote(date);
-					}}
-				>
-					{columnLabel(date)}
-				</button>
-			{/each}
-
 			<!-- Body rows -->
-			{#each rows as row (row.key)}
+			{#each rows as row, i (row.key)}
+				{@const rowArchived = isCellInactive(row, todayISO())}
 				<div
 					class="grid-rowlabel"
 					class:child={row.depth > 0}
 					class:domain={row.kind === "domain"}
 					class:unassigned={row.kind === "unassigned"}
+					class:dim={rowArchived}
+					class:group-end={isGroupEnd(i)}
+					style={row.kind !== "unassigned" && "color" in row && row.color
+						? `--row-accent: ${row.color};`
+						: undefined}
 				>
-					{#if row.kind !== "unassigned"}
-						<span
-							class="row-accent"
-							style={`background-color: ${("color" in row && row.color) || "var(--text-faint)"};`}
-						></span>
-					{/if}
-					<span class="row-name" title={row.name}>{row.name}</span>
-					{#if row.kind === "domain"}
-						<!-- Domain icon — matches the association tag icon in task rows. -->
-						<svg class="row-kind-icon" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+					{#if row.kind === "unassigned"}
+						<span class="row-name" title={row.name}>{row.name}</span>
+					{:else}
+						<RowLabel info={row.info} />
 					{/if}
 				</div>
 
 				{#each dates as date (date)}
 					{@const day = dayOf(date)}
 					{@const nudges = nudgesFor(row, date)}
+					{@const inactive = isCellInactive(row, date)}
 					<div
 						class="grid-datacell"
+						class:today={isToday(date)}
 						data-grid-date={date}
 						data-grid-row-key={row.key}
 					>
@@ -848,7 +961,8 @@
 								tasks={tasksFor(row, day)}
 								{resolve}
 								color={"color" in row ? row.color : undefined}
-								allowCreate={row.kind !== "unassigned" && row.kind !== "domain"}
+								allowCreate={row.kind !== "unassigned"}
+								{inactive}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
 								onDelete={onDelete}
@@ -916,9 +1030,11 @@
 {#if taskDrag}
 	<div
 		class="task-ghost"
+		class:duplicating={taskDrag.duplicate}
 		use:portal
 		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
 	>
+		{#if taskDrag.duplicate}<span class="ghost-copy-badge">+</span>{/if}
 		{taskDrag.label}
 	</div>
 {/if}
@@ -926,9 +1042,11 @@
 {#if blockDrag}
 	<div
 		class="task-ghost task-ghost-block"
+		class:duplicating={blockDrag.duplicate}
 		use:portal
 		style={`left: ${blockDrag.ghostX + 12}px; top: ${blockDrag.ghostY + 8}px;`}
 	>
+		{#if blockDrag.duplicate}<span class="ghost-copy-badge">+</span>{/if}
 		{blockDrag.label}
 	</div>
 {/if}
@@ -1070,82 +1188,149 @@
 	}
 
 	/* ── The grid table ── */
+	/* The header strip is fixed above the scroll (so the vertical scrollbar runs
+	   only alongside the body). It reserves the scrollbar's width on its right
+	   (--gv-scrollbar) so its columns align with the body's, which reserves the
+	   same width via `scrollbar-gutter: stable`. Rounds only its top corners; the
+	   body table rounds its bottom corners, so together they read as one framed
+	   table. */
+	.grid-head {
+		display: grid;
+		flex-shrink: 0;
+		margin: 0 10px;
+		margin-right: calc(10px + var(--gv-scrollbar, 0px));
+	}
+
 	.grid-scroll {
 		flex: 1;
 		overflow: auto;
+		/* Always reserve the scrollbar gutter so the body columns keep a constant
+		   width and stay aligned with the fixed header strip above. */
+		scrollbar-gutter: stable;
 		padding: 0 10px 12px;
 	}
 
 	.grid-table {
 		display: grid;
 		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		overflow: hidden;
+		border-radius: 0 0 8px 8px;
 	}
 
 	.grid-corner {
 		background: var(--background-secondary);
-		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
 		position: sticky;
-		top: 0;
 		left: 0;
+		z-index: 1;
+	}
+	/* The header-strip corner carries the header's bottom divider. */
+	.grid-corner-head {
+		border-bottom: 1px solid var(--background-modifier-border);
+		border-radius: 8px 0 0 0;
 		z-index: 3;
 	}
 
-	.grid-colhead {
-		position: sticky;
-		top: 0;
-		z-index: 2;
-		text-align: center;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-muted);
+	/* Holos-style date card: an uppercase day-of-week label over a large serif
+	   day number, left-aligned, one per header-strip column. Kept identical to the
+	   Week view's .col-head.date-card so the two headers read the same.
+
+	   The two text lines flow normally in the button; the today underline is
+	   absolutely positioned in the reserved bottom strip (padding-bottom) so it
+	   never overlaps the number. */
+	.grid-colhead.date-card {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1px;
 		background: var(--background-secondary);
 		border: none;
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
-		padding: 7px 4px;
+		padding: 8px 8px 12px 12px;
 		cursor: pointer;
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		box-shadow: none;
+		transition: filter 150ms ease;
+		height: 100%;
 	}
-	.grid-colhead:hover {
+	.grid-colhead.date-card:hover {
+		filter: brightness(1.15);
+	}
+	.grid-colhead .dow-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 1px;
+		line-height: 1.4;
+	}
+	.grid-colhead .date-number {
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 24px;
+		font-weight: 400;
 		color: var(--text-normal);
+		line-height: 1.1;
+		font-variant-numeric: tabular-nums;
+	}
+	.grid-colhead .today-indicator {
+		position: absolute;
+		left: 10%;
+		bottom: 0px;
+		width: 80%;
+		height: 2px;
+		background: var(--interactive-accent);
+		border-radius: 1px;
 	}
 	.grid-colhead.today {
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 5%,
+			var(--background-secondary)
+		);
+	}
+	.grid-colhead.today .date-number {
 		color: var(--interactive-accent);
 	}
 
 	.grid-rowlabel {
+		/* Top-left aligned content. The group accent is the row's left border
+		   (a domain + its projects share the same accent color, so the border
+		   reads as one continuous stripe down the group). */
 		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 10px;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 8px 10px 8px 8px;
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
+		border-left: 3px solid var(--row-accent, var(--text-faint));
 		min-width: 0;
 		position: sticky;
 		left: 0;
 		z-index: 1;
 	}
+	/* The Unassociated row has no association, so no accent border. */
+	.grid-rowlabel.unassigned {
+		border-left-color: transparent;
+	}
+	/* Child project rows sit deeper and share the domain's continuous accent, so
+	   the divider between a domain and its children is dropped — the group reads as
+	   one block. */
 	.grid-rowlabel.child {
-		padding-left: 22px;
-		background: var(--background-secondary-alt);
+		padding-left: 16px;
+	}
+	.grid-rowlabel.child:not(.group-end),
+	.grid-rowlabel.domain {
+		border-bottom-color: transparent;
+	}
+	/* A row for an entity that is inactive/archived today — present for its
+	   history, but dimmed to read as past (mirrors the Projects page). */
+	.grid-rowlabel.dim {
+		opacity: 0.5;
 	}
 	.grid-rowlabel.unassigned .row-name {
 		color: var(--text-faint);
 		font-style: italic;
-	}
-
-	.row-accent {
-		width: 3px;
-		height: 16px;
-		border-radius: 2px;
-		flex-shrink: 0;
 	}
 
 	.row-name {
@@ -1157,11 +1342,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.row-kind-icon {
-		flex-shrink: 0;
-		color: var(--text-faint);
 	}
 
 	.grid-nudges {
@@ -1185,6 +1365,10 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
 		min-width: 0;
+	}
+	/* Faint tint marking the currently active day's column. */
+	.grid-datacell.today {
+		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
 	}
 	.grid-datacell-empty {
 		height: 100%;
@@ -1211,5 +1395,27 @@
 	:global(.task-ghost-block) {
 		border-color: var(--interactive-accent) !important;
 		background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary)) !important;
+	}
+
+	/* Ctrl-drag duplicate: green-tinted frame + a leading "+" badge so the ghost
+	   reads as "drop a copy" rather than "move". */
+	:global(.task-ghost.duplicating) {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		border-color: var(--color-green, #3aa675) !important;
+	}
+	:global(.ghost-copy-badge) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--color-green, #3aa675);
+		color: var(--text-on-accent, #fff);
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1;
 	}
 </style>

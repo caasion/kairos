@@ -19,7 +19,6 @@
 	import type { Unsubscriber } from "svelte/store";
 	import type {
 		Domain,
-		ISODate,
 		LifecycleState,
 		Project,
 	} from "../../types";
@@ -35,11 +34,11 @@
 		setProjectDomain,
 		setProjectStatus,
 	} from "../../projectActions";
-	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
+	import { todayISO } from "../../dayNote";
+	import { effectiveStatus } from "../../projectFile";
 	import { DomainReorderModal } from "./DomainReorderModal";
+	import { StatusHistoryModal } from "./StatusHistoryModal";
 	import { ConfirmModal, PromptModal } from "./modals";
-	import Datepicker from "../components/Datepicker.svelte";
-	import Portal from "../components/Portal.svelte";
 
 	interface Props {
 		app: App;
@@ -69,13 +68,25 @@
 		filter = next;
 	}
 
-	/** An entity's current lifecycle state: the latest status record, or active. */
+	/** An entity's lifecycle state in effect today (future-dated records don't
+	    take effect until their date), or active when none applies. */
 	function statusOf(e: Project | Domain): LifecycleState {
-		return e.history.at(-1)?.status ?? "active";
+		return effectiveStatus(e.history, todayISO());
 	}
 
 	function passesFilter(e: Project | Domain): boolean {
 		return filter.has(statusOf(e) as Filter);
+	}
+
+	// Active entities always sort above non-active ones (inactive/archived sink to
+	// the bottom), preserving the source order within each band. A stable partition
+	// keeps domain order (the global reorder) and file order (projects) intact
+	// among peers of the same activity.
+	function activeFirst<T extends Project | Domain>(items: T[]): T[] {
+		const active: T[] = [];
+		const rest: T[] = [];
+		for (const e of items) (statusOf(e) === "active" ? active : rest).push(e);
+		return [...active, ...rest];
 	}
 
 	// ── Rows: domains (filtered, keeping any that still have visible children) ──
@@ -87,18 +98,21 @@
 	const domainRows = $derived.by<DomainRow[]>(() => {
 		const rows: DomainRow[] = [];
 		for (const domain of feed.domains) {
-			const projects = (feed.projectsByDomain.get(domain.id) ?? []).filter(
-				passesFilter,
+			const projects = activeFirst(
+				(feed.projectsByDomain.get(domain.id) ?? []).filter(passesFilter),
 			);
 			// Show a domain if it itself passes, or it still has visible children.
 			if (passesFilter(domain) || projects.length > 0) {
 				rows.push({ domain, projects });
 			}
 		}
-		return rows;
+		// Active domains first; inactive domains sink to the bottom of the list.
+		return activeFirst(rows.map((r) => r.domain)).map(
+			(domain) => rows.find((r) => r.domain === domain)!,
+		);
 	});
 
-	const orphanRows = $derived(feed.orphans.filter(passesFilter));
+	const orphanRows = $derived(activeFirst(feed.orphans.filter(passesFilter)));
 
 	// ── Editing state ──
 	let editingName = $state<string | null>(null); // source.path of the row being renamed
@@ -145,39 +159,28 @@
 		else setProjectStatus(index, e as Project, todayISO(), next);
 	}
 
-	// ── Status history overlay (in-view portal) ──
-	// Read-only view of the append-only history, plus the ability to add a new
-	// record at a chosen date. We never edit or delete past records: an out-of-
-	// order date later than an existing one would break the "latest = current"
-	// rule (spec §4.4). Power users can hand-edit the frontmatter JSON if needed.
-	let historyRow = $state<Project | Domain | null>(null);
-	let historyIsDomain = $state(false);
-	let historyDate = $state<Date>(dateFromISO(todayISO()));
-	let historyPickDate = $state(false);
+	// Archive (projects only — domains are durable and can't archive). A one-click
+	// path to the archived state, stamped today; if already archived it swings
+	// back to active, mirroring toggleStatus's shape.
+	function archiveProject(project: Project) {
+		const next: LifecycleState =
+			statusOf(project) === "archived" ? "active" : "archived";
+		setProjectStatus(index, project, todayISO(), next);
+	}
 
+	// ── Status history (native modal) ──
+	// The history is an editable log; adding/editing/deleting a record routes
+	// through the pure edit functions (they own the invariants). The modal owns
+	// the chrome and mounts the editable log as a Svelte component that re-resolves
+	// the row from the live feed, so edits refresh in place.
 	function openHistory(e: Project | Domain) {
-		historyRow = e;
-		historyIsDomain = feed.domains.some((d) => d.source.path === e.source.path);
-		historyDate = dateFromISO(todayISO());
-		historyPickDate = false;
+		const isDomain = feed.domains.some((d) => d.source.path === e.source.path);
+		new StatusHistoryModal(app, index, {
+			name: e.name,
+			path: e.source.path,
+			isDomain,
+		}).open();
 	}
-	function closeHistory() {
-		historyRow = null;
-		historyPickDate = false;
-	}
-	function addStatusRecord(status: LifecycleState) {
-		const e = historyRow;
-		if (!e) return;
-		const date = isoFromDate(historyDate);
-		closeHistory();
-		if (historyIsDomain) setDomainStatus(index, e as Domain, date, status);
-		else setProjectStatus(index, e as Project, date, status);
-	}
-
-	// The states offered when adding a record: domains can't archive.
-	const historyStates = $derived<LifecycleState[]>(
-		historyIsDomain ? ["active", "inactive"] : ["active", "inactive", "archived"],
-	);
 
 	// ── Domain color ──
 	function pickColor(domain: Domain, color: string) {
@@ -305,6 +308,17 @@
 				.setIcon("circle-dot")
 				.onClick(() => toggleStatus(project, false)),
 		);
+		// Archive is a one-click shortcut to the archived state (spec §4.4:
+		// archiving is the preferred alternative to deletion). Toggles back to
+		// active when the project is already archived.
+		menu.addItem((item) =>
+			item
+				.setTitle(
+					statusOf(project) === "archived" ? "Unarchive" : "Archive",
+				)
+				.setIcon("archive")
+				.onClick(() => archiveProject(project)),
+		);
 		menu.addItem((item) =>
 			item
 				.setTitle("Status history…")
@@ -422,15 +436,6 @@
 
 	function handleClickOutside() {
 		editingName = null;
-		closeHistory();
-	}
-
-	function formatDate(date: ISODate): string {
-		return dateFromISO(date).toLocaleDateString(undefined, {
-			year: "numeric",
-			month: "short",
-			day: "numeric",
-		});
 	}
 
 	onMount(() => {
@@ -493,25 +498,28 @@
 
 	<div class="pv-scroll">
 		{#each domainRows as row (row.domain.id)}
-			<section class="domain-group">
+			{@const domainInactive = statusOf(row.domain) !== "active"}
+			<section
+				class="domain-group"
+				style={`--domain-accent: ${row.domain.color || "var(--text-faint)"};`}
+			>
 				<!-- The whole header is one interactive object: hovering highlights the
 				     full line, right-click opens the context menu (change status, add
-				     project, delete, …). Only color and backlog stay as inline icons. -->
+				     project, delete, …). Only color and backlog stay as inline icons.
+				     The group's accent is the domain color: it tints the kind icon here
+				     and runs as a continuous left line down the project list below (like
+				     the grid/week views), so a domain and its projects read as one block. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<header
 					class="domain-header"
-					class:dim={statusOf(row.domain) !== "active"}
+					class:dim={domainInactive}
 					oncontextmenu={(e) => openDomainMenu(row.domain, e)}
 				>
-					<span
-						class="domain-accent"
-						style={`background-color: ${row.domain.color || "var(--text-faint)"};`}
-					></span>
-
 					<!-- Kind icon: this page's top-level rows are always domains. Same
-					     icon the grid/timeline/backlog use for a domain association. -->
+					     icon the grid/timeline/backlog use for a domain association,
+					     tinted the domain's color to accent it (in place of a stripe). -->
 					<span class="kind-icon" title="Domain">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
 					</span>
 
 					{#if isEditing(row.domain)}
@@ -571,9 +579,12 @@
 				{#if row.projects.length === 0}
 					<div class="group-empty">No projects here.</div>
 				{:else}
-					<ul class="project-list">
+					<!-- The continuous accent line lives on the list, so it spans every
+					     child project and stops at the last one — extending the domain's
+					     accent down through its projects. -->
+					<ul class="project-list accented" class:dim={domainInactive}>
 						{#each row.projects as project (project.source.path)}
-							{@render projectRow(project)}
+							{@render projectRow(project, domainInactive)}
 						{/each}
 					</ul>
 				{/if}
@@ -594,7 +605,7 @@
 				</header>
 				<ul class="project-list">
 					{#each orphanRows as project (project.source.path)}
-						{@render projectRow(project)}
+						{@render projectRow(project, false)}
 					{/each}
 				</ul>
 			</section>
@@ -608,66 +619,15 @@
 	</div>
 </div>
 
-<!-- Status history overlay (portal) — read-only past records + add-at-date. -->
-{#if historyRow}
-	<Portal>
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="history-scrim" onclick={closeHistory}>
-			<div class="history-card" onclick={(e) => e.stopPropagation()}>
-				<div class="history-head">
-					<span class="history-title">{historyRow.name}</span>
-					<span class="history-sub">Status history</span>
-					<span class="pv-spacer"></span>
-					<button class="history-x" title="Close" aria-label="Close" onclick={closeHistory}>
-						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-					</button>
-				</div>
-
-				{#if historyRow.history.length === 0}
-					<div class="history-empty">No status changes recorded — defaults to Active.</div>
-				{:else}
-					<ul class="history-list">
-						{#each [...historyRow.history].reverse() as rec, i}
-							<li class="history-item" class:current={i === 0}>
-								<span class="history-dot" class:active={rec.status === "active"}></span>
-								<span class="history-status">{STATUS_LABEL[rec.status]}</span>
-								<span class="pv-spacer"></span>
-								<span class="history-date">{formatDate(rec.date)}</span>
-								{#if i === 0}<span class="history-badge">current</span>{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
-
-				<!-- Add a new record. Past records are read-only (append-only history):
-				     to correct one, edit the frontmatter JSON directly. -->
-				<div class="history-add">
-					<span class="history-add-label">Add change</span>
-					<div class="history-add-row">
-						<button class="history-date-btn" onclick={() => (historyPickDate = !historyPickDate)}>
-							<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-							<span>{formatDate(isoFromDate(historyDate))}</span>
-						</button>
-						<span class="pv-spacer"></span>
-						{#each historyStates as s}
-							<button class="history-set" onclick={() => addStatusRecord(s)}>{STATUS_LABEL[s]}</button>
-						{/each}
-					</div>
-					{#if historyPickDate}
-						<div class="history-datepicker">
-							<Datepicker inline bind:value={historyDate} onselect={() => (historyPickDate = false)} />
-						</div>
-					{/if}
-				</div>
-			</div>
-		</div>
-	</Portal>
-{/if}
-
-{#snippet projectRow(project: Project)}
+{#snippet projectRow(project: Project, disabled: boolean)}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<li class="project-row" oncontextmenu={(e) => openProjectMenu(project, e)}>
+	<!-- When the parent domain is inactive its projects are read-only history:
+	     the row dims and its rename / context-menu / action buttons go inert. -->
+	<li
+		class="project-row"
+		class:disabled
+		oncontextmenu={(e) => { if (!disabled) openProjectMenu(project, e); }}
+	>
 		<span class="project-bullet"></span>
 
 		{#if isEditing(project)}
@@ -687,8 +647,11 @@
 			<button
 				class="project-name"
 				class:dim={statusOf(project) !== "active"}
-				title="Click to rename · Ctrl/Cmd-click to open file · Right-click for more"
-				onclick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) openFile(project, e); else startRename(project); }}
+				{disabled}
+				title={disabled
+					? "Its domain is inactive"
+					: "Click to rename · Ctrl/Cmd-click to open file · Right-click for more"}
+				onclick={(e) => { e.stopPropagation(); if (disabled) return; if (e.ctrlKey || e.metaKey) openFile(project, e); else startRename(project); }}
 			>{project.name}</button>
 		{/if}
 
@@ -704,16 +667,16 @@
 
 		<!-- The frequent action (open backlog) stays inline; the rest — change
 		     domain, change status, delete — live in the context menu (right-click
-		     the row, or the ⋯ button). -->
+		     the row, or the ⋯ button). All inert while the domain is inactive. -->
 		<div class="row-actions">
 			<!-- Backlog -->
-			<button class="icon-btn" title="View this project's backlog"
+			<button class="icon-btn" title="View this project's backlog" {disabled}
 				onclick={(e) => { e.stopPropagation(); backlogForProject(project); }} aria-label="View backlog">
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
 			</button>
 
 			<!-- More (context menu) -->
-			<button class="icon-btn" title="More actions"
+			<button class="icon-btn" title="More actions" {disabled}
 				onclick={(e) => openProjectMenu(project, e)} aria-label="More actions">
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
 			</button>
@@ -804,6 +767,7 @@
 		font-style: italic;
 		padding: 30px 8px;
 		text-align: center;
+		pointer-events: none;
 	}
 
 	/* ── Domain group ── */
@@ -827,12 +791,6 @@
 	}
 	.domain-header.dim {
 		opacity: 0.55;
-	}
-	.domain-accent {
-		width: 4px;
-		height: 17px;
-		border-radius: 2px;
-		flex-shrink: 0;
 	}
 	.domain-name {
 		font-size: 13px;
@@ -900,6 +858,17 @@
 		margin: 0;
 		padding: 0;
 	}
+	/* The domain's accent continues as a left line down its project list (mirrors
+	   the grid/week views), so a domain and its projects read as one block. The
+	   line descends from under the domain's tinted kind icon (~15px in); rows are
+	   indented to clear it. It fades with the group when the domain is inactive. */
+	.project-list.accented {
+		margin-left: 15px;
+		border-left: 2px solid var(--domain-accent, var(--text-faint));
+	}
+	.project-list.accented.dim {
+		opacity: 0.55;
+	}
 	.project-row {
 		display: flex;
 		align-items: center;
@@ -908,8 +877,26 @@
 		border-radius: 7px;
 		position: relative;
 	}
+	.project-list.accented .project-row {
+		padding-left: 10px;
+	}
 	.project-row:hover {
 		background: var(--background-modifier-hover);
+	}
+	/* A project whose domain is inactive is read-only history: dim it and let the
+	   inert buttons/name (disabled) show the not-allowed affordance. */
+	.project-row.disabled {
+		opacity: 0.55;
+	}
+	.project-row.disabled:hover {
+		background: transparent;
+	}
+	.project-name:disabled {
+		cursor: default;
+		color: var(--text-muted);
+	}
+	.project-name:disabled:hover {
+		color: var(--text-muted);
 	}
 	.project-bullet {
 		width: 5px;
@@ -964,11 +951,13 @@
 	}
 
 	/* ── Kind icon (domain marker in the header) ── */
+	/* The domain kind icon carries the domain's accent color (its stripe used to);
+	   falls back to faint when no color is set. */
 	.kind-icon {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		color: var(--text-muted);
+		color: var(--domain-accent, var(--text-faint));
 		flex-shrink: 0;
 		/* Obsidian's base styling can collapse an inline SVG to 0 width; pin it. */
 		min-width: min-content;
@@ -1008,6 +997,7 @@
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 		border-color: var(--background-modifier-border);
+		box-shadow: none;
 	}
 	.icon-btn:disabled {
 		opacity: 0.3;
@@ -1036,166 +1026,5 @@
 		padding: 0;
 		margin: 0;
 		cursor: pointer;
-	}
-
-	/* ── Status history overlay ── */
-	.history-scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 200;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(0, 0, 0, 0.35);
-	}
-	.history-card {
-		width: 340px;
-		max-width: calc(100vw - 32px);
-		max-height: 70vh;
-		overflow: auto;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 10px;
-		box-shadow: var(--shadow-l, 0 8px 30px rgba(0, 0, 0, 0.3));
-		padding: 14px 14px 12px;
-	}
-	.history-head {
-		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		margin-bottom: 10px;
-	}
-	.history-title {
-		font-size: 14px;
-		font-weight: 700;
-		color: var(--text-normal);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.history-sub {
-		font-size: 11px;
-		color: var(--text-faint);
-	}
-	.history-x {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
-		min-width: min-content;
-		border: none;
-		box-shadow: none;
-		border-radius: 5px;
-		background: transparent;
-		color: var(--text-muted);
-		cursor: pointer;
-		align-self: center;
-	}
-	.history-x:hover {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-	}
-	.history-empty {
-		font-size: 12px;
-		color: var(--text-faint);
-		font-style: italic;
-		padding: 4px 0 10px;
-	}
-	.history-list {
-		list-style: none;
-		margin: 0 0 10px;
-		padding: 0;
-	}
-	.history-item {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 4px;
-		border-bottom: 1px solid var(--background-modifier-border);
-	}
-	.history-item.current {
-		font-weight: 600;
-	}
-	.history-dot {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--text-faint);
-		flex-shrink: 0;
-	}
-	.history-dot.active {
-		background: var(--interactive-accent);
-	}
-	.history-status {
-		font-size: 12px;
-		color: var(--text-normal);
-	}
-	.history-date {
-		font-size: 11px;
-		color: var(--text-muted);
-		font-variant-numeric: tabular-nums;
-	}
-	.history-badge {
-		font-size: 9px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		color: var(--text-on-accent);
-		background: var(--interactive-accent);
-		border-radius: 4px;
-		padding: 1px 5px;
-	}
-	.history-add {
-		border-top: 1px solid var(--background-modifier-border);
-		padding-top: 10px;
-	}
-	.history-add-label {
-		font-size: 10px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--text-faint);
-	}
-	.history-add-row {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		margin-top: 6px;
-	}
-	.history-date-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		height: 26px;
-		padding: 0 8px;
-		font-size: 11px;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary-alt);
-		color: var(--text-normal);
-		cursor: pointer;
-	}
-	.history-date-btn:hover {
-		background: var(--background-modifier-hover);
-	}
-	.history-set {
-		height: 26px;
-		padding: 0 10px;
-		font-size: 11px;
-		font-weight: 600;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary-alt);
-		color: var(--text-normal);
-		cursor: pointer;
-	}
-	.history-set:hover {
-		background: var(--interactive-accent);
-		color: var(--text-on-accent);
-		border-color: var(--interactive-accent);
-	}
-	.history-datepicker {
-		margin-top: 8px;
 	}
 </style>

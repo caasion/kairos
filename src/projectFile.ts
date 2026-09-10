@@ -8,8 +8,9 @@
 // The `yaml` library is a plain-JS dependency, so this runs under vitest.
 //
 // Status is stored as a `YYYY-MM-DD: state` map in frontmatter and parsed into a
-// chronologically-sorted `StatusRecord[]`. `archived` is derived: a project or
-// domain is archived iff its most recent status record is `archived`.
+// chronologically-sorted `StatusRecord[]`. The state *in effect* is the most
+// recent record dated on-or-before today (future-dated records are scheduled,
+// not yet active); `archived` is derived from that effective state.
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {
@@ -106,25 +107,117 @@ const LIFECYCLE = new Set<LifecycleState>(["active", "inactive", "archived"]);
 
 /**
  * Parse the `status` frontmatter map into records sorted oldest→newest by date.
- * Keys are `YYYY-MM-DD`; values are lifecycle states. Unknown states and
- * malformed dates are dropped rather than throwing.
+ * Keys are `YYYY-MM-DD`. Each value is either a bare lifecycle state string or a
+ * `{ status, note? }` object — the object form carries the freeform `note`
+ * annotation (open-label, never logic). The bare-string form is still tolerated
+ * on read for robustness; we always write the object form (see `statusMap`).
+ * Unknown states and malformed dates are dropped rather than throwing; an empty
+ * or non-string note is dropped so it never round-trips as a synthetic "".
  */
 export function parseStatus(v: unknown): StatusRecord[] {
 	if (!v || typeof v !== "object") return [];
 	const records: StatusRecord[] = [];
-	for (const [date, state] of Object.entries(v as Record<string, unknown>)) {
+	for (const [date, value] of Object.entries(v as Record<string, unknown>)) {
 		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+		let state: unknown = value;
+		let rawNote: unknown;
+		if (value && typeof value === "object") {
+			state = (value as { status?: unknown }).status;
+			rawNote = (value as { note?: unknown }).note;
+		}
 		const status = String(state) as LifecycleState;
 		if (!LIFECYCLE.has(status)) continue;
-		records.push({ date: date as ISODate, status });
+		const note = typeof rawNote === "string" ? rawNote.trim() : "";
+		records.push({
+			date: date as ISODate,
+			status,
+			...(note ? { note } : {}),
+		});
 	}
 	records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 	return records;
 }
 
-/** Archived iff the most recent status record is `archived`. */
+/**
+ * Today's date as `YYYY-MM-DD` in local time. Kept local rather than imported
+ * from `dayNote` so this module stays vault-free (obsidian-dependency-free) and
+ * runnable under vitest — see the file header.
+ */
+function localTodayISO(): ISODate {
+	const d = new Date();
+	const p = (n: number) => String(n).padStart(2, "0");
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` as ISODate;
+}
+
+/**
+ * The lifecycle state in effect as of `asOf` (default: today): the most recent
+ * record dated on-or-before `asOf`, or "active" when none applies yet. Records
+ * dated in the future are ignored so scheduling a change (e.g. "inactive on
+ * Aug 7") doesn't take effect until that date arrives. History is stored
+ * oldest→newest, so we scan from the end for the first in-range record.
+ */
+export function effectiveStatus(
+	history: StatusRecord[],
+	asOf: ISODate = localTodayISO(),
+): LifecycleState {
+	for (let i = history.length - 1; i >= 0; i--) {
+		const r = history[i];
+		if (r && r.date <= asOf) return r.status;
+	}
+	return "active";
+}
+
+/**
+ * The lifecycle record in effect as of `asOf`, plus the bounds of the current
+ * span. Same "most recent record on-or-before asOf" rule as `effectiveStatus`,
+ * but also surfaces:
+ *   • `status` / `note` — the effective record's state and its freeform note
+ *     (the "status description"; empty when none or when no record applies).
+ *   • `since` — the date the *current* span (the run of consecutive records
+ *     sharing this status) began. Null when the default "active" applies with no
+ *     record at all.
+ *   • `until` — the date the current span ends: the next record's date (which may
+ *     be future-dated, i.e. a *scheduled* end), or null when no later record
+ *     exists (the span is open-ended / ongoing). Note `status` still reflects the
+ *     record in effect *now*, so a future-dated close leaves `status` unchanged
+ *     while `until` surfaces the scheduled end.
+ *
+ * Consecutive same-status records can't normally exist (normalizeHistory
+ * collapses them), but we walk backward defensively so `since` is the true start
+ * of the run rather than the last record's own date.
+ */
+export function effectiveRecord(
+	history: StatusRecord[],
+	asOf: ISODate = localTodayISO(),
+): { status: LifecycleState; note: string; since: ISODate | null; until: ISODate | null } {
+	// Index of the record in effect (most recent dated on-or-before asOf).
+	let idx = -1;
+	for (let i = history.length - 1; i >= 0; i--) {
+		const r = history[i];
+		if (r && r.date <= asOf) {
+			idx = i;
+			break;
+		}
+	}
+	if (idx < 0) {
+		return { status: "active", note: "", since: null, until: null };
+	}
+	const rec = history[idx]!;
+	// Walk back over any records sharing this status to find where the span began.
+	let start = idx;
+	while (start > 0 && history[start - 1]!.status === rec.status) start--;
+	const until = idx + 1 < history.length ? history[idx + 1]!.date : null;
+	return {
+		status: rec.status,
+		note: rec.note ?? "",
+		since: history[start]!.date,
+		until,
+	};
+}
+
+/** Archived iff the status in effect today is `archived`. */
 function deriveArchived(history: StatusRecord[]): boolean {
-	return history.at(-1)?.status === "archived";
+	return effectiveStatus(history) === "archived";
 }
 
 /** Base name of a file path, without extension — the project/domain name. */
@@ -186,10 +279,21 @@ export function parseDomain(content: string, path: string): Domain | null {
 
 // ─── serialization ─────────────────────────────────────────────
 
-/** Turn a `StatusRecord[]` back into a frontmatter status map. */
-function statusMap(history: StatusRecord[]): Record<string, LifecycleState> {
-	const map: Record<string, LifecycleState> = {};
-	for (const r of history) map[r.date] = r.status;
+/**
+ * Turn a `StatusRecord[]` back into a frontmatter status map. Each value is a
+ * `{ status, note? }` object; the `note` key is emitted only when present, so a
+ * record without a note stays `{ status }` rather than `{ status, note: "" }`.
+ */
+interface StatusValue {
+	status: LifecycleState;
+	note?: string;
+}
+
+function statusMap(history: StatusRecord[]): Record<string, StatusValue> {
+	const map: Record<string, StatusValue> = {};
+	for (const r of history) {
+		map[r.date] = r.note ? { status: r.status, note: r.note } : { status: r.status };
+	}
 	return map;
 }
 
@@ -297,12 +401,19 @@ export function serializeDomainFile(domain: Domain): string {
 //
 // Each takes an entity and returns a NEW entity — never mutates. They own no
 // I/O and no markdown; the index serializes the result and writes it. Status
-// history is the one time-varying fact these carry (spec §4.4): editing it means
-// appending a record, never rewriting the past. `archived` is always re-derived
-// from the (possibly new) latest record so it can't drift out of sync.
+// history is the one time-varying fact these carry: it can be appended to,
+// edited, or trimmed. `archived` is always re-derived from the resulting latest
+// record so it can't drift out of sync.
+//
+// Every history edit funnels through `normalizeHistory`, which is the single
+// place the invariants live: chronological order, one record per date, and no
+// two *consecutive* records carrying the same `{ status, note }` (a no-op
+// transition holds no information, so the redundant later one is dropped). The
+// Gantt/strength view and the status-history overlay both call these functions,
+// so they are the guardrail — invariant-breaking states can't be written.
 //
 // Domains are DURABLE (they never terminate as an identity): a domain may go
-// active/inactive but is never archived. `appendStatus` enforces that by
+// active/inactive but is never archived. The edit functions enforce that by
 // refusing an `archived` transition on a domain; a project may archive freely.
 
 /** True for a `Project` (has a `domain?` field); false for a `Domain`. */
@@ -310,29 +421,109 @@ function isProject(entity: Project | Domain): entity is Project {
 	return "domain" in entity || !("order" in entity);
 }
 
+/** Two records represent the same transition iff status AND note match. */
+function sameTransition(a: StatusRecord, b: StatusRecord): boolean {
+	return a.status === b.status && (a.note ?? "") === (b.note ?? "");
+}
+
 /**
- * Append a status record dated `date` (spec §4.4). Additive: it never edits an
- * existing record, so the history stays a faithful log of when focus shifted.
- * A same-day re-status replaces that day's record (one status per day) rather
- * than stacking two. `archived` is re-derived from the resulting latest record.
+ * Enforce the history invariants and return a fresh, sorted array:
+ *  1. chronological order (oldest → newest),
+ *  2. one record per date (later write wins on a collision),
+ *  3. no two consecutive records with identical `{ status, note }` — the
+ *     redundant later one is dropped, since a no-op transition carries nothing.
+ * Pure: the input is never mutated.
+ */
+export function normalizeHistory(records: StatusRecord[]): StatusRecord[] {
+	// One record per date: later entries in the input win on a date collision.
+	const byDate = new Map<ISODate, StatusRecord>();
+	for (const r of records) byDate.set(r.date, r);
+
+	const sorted = [...byDate.values()].sort((a, b) =>
+		a.date < b.date ? -1 : a.date > b.date ? 1 : 0,
+	);
+
+	const out: StatusRecord[] = [];
+	for (const r of sorted) {
+		const prev = out.at(-1);
+		if (prev && sameTransition(prev, r)) continue; // collapse redundant transition
+		out.push(r);
+	}
+	return out;
+}
+
+/** Recompute an entity's derived state from a (already-normalized) history. */
+function withHistory<T extends Project | Domain>(
+	entity: T,
+	history: StatusRecord[],
+): T {
+	return { ...entity, history, archived: deriveArchived(history) };
+}
+
+/**
+ * Append a status record dated `date` with an optional `note`. A same-day record
+ * is replaced (one status per day); everything else is handled by
+ * `normalizeHistory` (ordering, consecutive-duplicate collapse). `archived` is
+ * re-derived from the resulting latest record.
  *
- * Domains cannot be archived (they are durable, spec §2.5 as constrained): an
- * `archived` transition on a domain is rejected and the entity returned
- * unchanged. Callers should gate the UI so this never fires, but the guard keeps
- * the invariant true even if it does.
+ * Domains cannot be archived (they are durable): an `archived` transition on a
+ * domain is rejected and the entity returned unchanged. Callers should gate the
+ * UI so this never fires, but the guard keeps the invariant true even if it does.
  */
 export function appendStatus<T extends Project | Domain>(
 	entity: T,
 	date: ISODate,
 	status: LifecycleState,
+	note?: string,
 ): T {
 	if (!isProject(entity) && status === "archived") return entity;
 
-	const history = entity.history.filter((r) => r.date !== date);
-	history.push({ date, status });
-	history.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+	const trimmed = note?.trim();
+	const record: StatusRecord = {
+		date,
+		status,
+		...(trimmed ? { note: trimmed } : {}),
+	};
+	const history = normalizeHistory([...entity.history, record]);
+	return withHistory(entity, history);
+}
 
-	return { ...entity, history, archived: deriveArchived(history) };
+/**
+ * Edit a prior record identified by `originalDate`, replacing its date, status,
+ * and/or note. A no-op if no record carries `originalDate`. The result runs
+ * through `normalizeHistory`, so moving a record's date past a neighbour re-sorts
+ * it and any resulting consecutive duplicate is collapsed. The domain-archived
+ * guard is preserved (an `archived` edit on a domain is refused, unchanged).
+ */
+export function editStatusRecord<T extends Project | Domain>(
+	entity: T,
+	originalDate: ISODate,
+	next: { date: ISODate; status: LifecycleState; note?: string },
+): T {
+	if (!isProject(entity) && next.status === "archived") return entity;
+	if (!entity.history.some((r) => r.date === originalDate)) return entity;
+
+	const trimmed = next.note?.trim();
+	const replacement: StatusRecord = {
+		date: next.date,
+		status: next.status,
+		...(trimmed ? { note: trimmed } : {}),
+	};
+	const history = normalizeHistory([
+		...entity.history.filter((r) => r.date !== originalDate),
+		replacement,
+	]);
+	return withHistory(entity, history);
+}
+
+/** Remove the record dated `date` (a no-op if none matches). */
+export function removeStatusRecord<T extends Project | Domain>(
+	entity: T,
+	date: ISODate,
+): T {
+	if (!entity.history.some((r) => r.date === date)) return entity;
+	const history = normalizeHistory(entity.history.filter((r) => r.date !== date));
+	return withHistory(entity, history);
 }
 
 /**

@@ -48,9 +48,11 @@
 		// a parent block (e.g. the grid's scheduled tasks) pass "Change parent
 		// block"; the default fits a task being nested for the first time.
 		nestLabel?: string;
-		// Move this task out of the day and into the backlog. Omitted where the
-		// task can't leave its line (a colocated/checkable-block task) or where
-		// there is no backlog to move it to (the backlog view itself).
+		// Move this task off its day and back into the backlog (spec §2.6). The
+		// parent lifts the task's text + materialized association into a fresh
+		// backlog entry and drops the day task. Omitted where the task can't leave
+		// its line (a colocated/checkable-block task) or where there is no backlog
+		// to move it to (the backlog view itself).
 		onMoveToBacklog?: () => void;
 		// Extra metadata rendered inside the row, beneath the text on the same line
 		// as the association (so it shares the row's hover region). The grid uses
@@ -216,6 +218,7 @@
 
 	function openContextMenu(event: MouseEvent) {
 		event.preventDefault();
+		event.stopPropagation();
 		const menu = new Menu();
 
 		menu.addItem((item) =>
@@ -358,34 +361,40 @@
 		{/if}
 	</div>
 
-	{#if association}
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="k-task-assoc"
-			class:inherited
-			class:domain={association.kind === "domain"}
-			class:linked={resolved?.resolved}
-			title={resolved?.resolved ? "Ctrl+click to open" : undefined}
-			onclick={(e) => {
-				if ((e.ctrlKey || e.metaKey) && onNavigate) {
-					e.stopPropagation();
-					onNavigate();
-				}
-			}}
-		>
-			{#if association.kind === "domain"}
-				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-			{:else}
-				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+	{#if association || meta}
+		<!-- Association and any extra metadata (e.g. the grid's block-nesting badge)
+		     share one inline row: association first, then the metadata. Both align
+		     under the task text, past the checkbox. -->
+		<div class="k-task-meta">
+			{#if association}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="k-task-assoc"
+					class:inherited
+					class:domain={association.kind === "domain"}
+					class:linked={resolved?.resolved}
+					title={resolved?.resolved ? "Ctrl+click to open" : undefined}
+					onclick={(e) => {
+						if ((e.ctrlKey || e.metaKey) && onNavigate) {
+							e.stopPropagation();
+							onNavigate();
+						}
+					}}
+				>
+					{#if association.kind === "domain"}
+						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+					{:else}
+						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+					{/if}
+					<span class="k-task-assoc-label">{assocLabel}</span>
+				</div>
 			{/if}
-			<span class="k-task-assoc-label">{assocLabel}</span>
+
+			<!-- Extra metadata (e.g. the grid's block-nesting badge). -->
+			{@render meta?.()}
 		</div>
 	{/if}
-
-	<!-- Extra metadata (e.g. the grid's block-nesting badge), inside the row so it
-	     shares the hover region and sits on the same line as the association. -->
-	{@render meta?.()}
 </div>
 
 <style>
@@ -443,6 +452,7 @@
 	.k-task-action:hover {
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+		box-shadow: none;
 	}
 
 	.k-task-action-danger:hover {
@@ -512,15 +522,28 @@
 		outline: none;
 	}
 
+	/* ── Meta line: association + any extra metadata, inline ──
+	   One row under the task text (past the 18px checkbox + gap), holding the
+	   association first and the parent-supplied metadata after it. The indent
+	   lives here so both children align without each carrying its own padding. */
+	.k-task-meta {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding-left: 24px;
+		min-width: 0;
+	}
+
 	/* ── Association line (small text + icon under the task) ── */
 	.k-task-assoc {
 		display: flex;
 		align-items: center;
 		gap: 3px;
-		padding-left: 24px; /* align under the text, past the 18px checkbox + gap */
 		font-size: 10px;
 		color: var(--text-muted);
 		min-width: 0;
+		flex-shrink: 0;
+		max-width: 100%;
 	}
 
 	.k-task-assoc.inherited {

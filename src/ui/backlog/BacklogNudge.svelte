@@ -181,6 +181,7 @@
 	.nudge-insert:hover {
 		background: var(--nudge-accent);
 		color: var(--text-on-accent);
+		box-shadow: none;
 	}
 
 	.nudge-text {
@@ -228,6 +229,7 @@
 	.nudge-action:hover {
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+		box-shadow: none;
 	}
 
 	/* ── Association line (small text + icon under the text) ── */

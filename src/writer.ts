@@ -609,6 +609,125 @@ export function setBlockAssoc(
   });
 }
 
+// ─── duplicate (Ctrl-drag) ─────────────────────────────────────
+//
+// Ctrl/Cmd-drag drops a *copy* of the dragged item at the target instead of
+// moving it: the source stays put and a fresh clone lands where a plain drag
+// would have moved the original. These mirror the move primitives above but
+// never touch the source array — they only build the copy the caller inserts.
+//
+// The clone gets throwaway negative source lines (like `makeBlock`) so keyed
+// rendering doesn't collide with the original before the reparse re-derives
+// real lines. Association resolution matches the move counterparts: an explicit
+// override wins, else the inherited-or-explicit owner is materialized so the
+// copy reads literally true wherever it lands.
+
+/**
+ * A fresh copy of `task` destined for `toPath`, with a throwaway `line`.
+ * `assoc` overrides the copy's association (the drop row's / block's); when
+ * omitted the source task's own explicit association is kept verbatim. Pass
+ * `null` to clear it.
+ */
+function cloneTask(
+  task: Task,
+  toPath: string,
+  line: number,
+  assoc?: Association | null,
+): Task {
+  const nextAssoc = assoc !== undefined ? assoc ?? undefined : task.assoc;
+  const copy: Task = {
+    ...task,
+    source: { path: toPath, line },
+    ...(nextAssoc ? { assoc: nextAssoc } : {}),
+  };
+  if (!nextAssoc) delete (copy as Partial<Task>).assoc;
+  return copy;
+}
+
+/**
+ * Append a copy of `task` to `toBlocks`' Unscheduled inbox (creating it if
+ * absent), leaving the source untouched. Used by the Grid's Ctrl-drag to
+ * duplicate a task within the same day or onto another day.
+ *
+ * `assoc` materializes the drop row's owner onto the copy (undefined keeps the
+ * task's own explicit assoc; null clears it). `toInboxLine` is the throwaway
+ * negative line for the copy itself; a freshly-created inbox block draws its own.
+ */
+export function copyTaskIntoDay(
+  toBlocks: Block[],
+  task: Task,
+  toPath: string,
+  toInboxLine: number,
+  assoc?: Association | null,
+): Block[] {
+  const copy = cloneTask(task, toPath, toInboxLine, assoc);
+  return insertIntoUnscheduled(toBlocks, copy, toPath);
+}
+
+/**
+ * Insert a copy of `task` under `destination` at `index` (clamped; append by
+ * default), leaving the source task in place. The Day/Week Ctrl-drag-to-nest
+ * duplicate. Materializes the task's inherited-or-explicit association onto the
+ * copy so its owner survives (mirroring `nestTaskUnderBlock`).
+ *
+ * `sourceOwner` is the block the task currently lives in, used only to resolve
+ * the inherited association. No-op-safe: if `destination` isn't found the input
+ * is returned unchanged.
+ */
+export function copyTaskUnderBlock(
+  blocks: Block[],
+  sourceOwner: Block,
+  task: Task,
+  destination: Block,
+  line: number,
+  index = Number.MAX_SAFE_INTEGER,
+): Block[] {
+  const dest = blocks.find((b) => isOwner(b, destination));
+  if (!dest) return blocks;
+
+  // Materialize the association the task would carry when nested (explicit, else
+  // inherited from its current owner) so the copy's owner matches the original.
+  const source = blocks.find((b) => isOwner(b, sourceOwner));
+  const inherited = task.assoc ?? source?.assoc;
+  const copy = cloneTask(task, dest.source.path, line, inherited ?? null);
+
+  return blocks.map((b) => {
+    if (!isOwner(b, dest)) return b;
+    const at = Math.max(0, Math.min(index, b.tasks.length));
+    return { ...b, tasks: [...b.tasks.slice(0, at), copy, ...b.tasks.slice(at)] };
+  });
+}
+
+/**
+ * Append a copy of `block` (its title, time, association, and all child tasks)
+ * to `toBlocks`, leaving the source untouched. The Grid / Week Ctrl-drag block
+ * duplicate. `time` retimes the copy (a drop at a new hour); omit to keep the
+ * block's own range. `targetAssoc` overrides the copy's association (null
+ * clears it); omit to keep the block's own.
+ */
+export function copyBlockIntoDay(
+  toBlocks: Block[],
+  block: Block,
+  toPath: string,
+  time?: TimeRange,
+  targetAssoc?: Association | null,
+): Block[] {
+  const assoc =
+    targetAssoc !== undefined ? targetAssoc ?? undefined : block.assoc;
+  const copy: Block = {
+    ...block,
+    source: { path: toPath, line: -1 },
+    ...(time ? { time } : {}),
+    ...(assoc ? { assoc } : {}),
+    tasks: block.tasks.map((t, i) => ({
+      ...t,
+      source: { path: toPath, line: -(i + 2) },
+    })),
+  };
+  if (!assoc) delete (copy as Partial<Block>).assoc;
+  return [...toBlocks, copy];
+}
+
 /** Return a copy of `blocks` with every block in `targets` removed. */
 export function deleteBlocks(
   blocks: Block[],

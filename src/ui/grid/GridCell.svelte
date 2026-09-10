@@ -17,6 +17,12 @@
 		color?: string;
 		/** True on the Unassigned row, where "+" would have no association. */
 		allowCreate: boolean;
+		/**
+		 * The row's entity was inactive/archived on this day: the cell is history,
+		 * shown dimmed and read-only (existing tasks visible, no "+" to add work to
+		 * a period the project/domain wasn't active in).
+		 */
+		inactive?: boolean;
 		onSetStatus: (task: ResolvedTask, status: TaskStatus) => void;
 		onSetText: (task: ResolvedTask, text: string) => void;
 		onDelete: (task: ResolvedTask) => void;
@@ -28,8 +34,9 @@
 		// Open the block picker to change a nested task's parent block, anchored at
 		// `rect`. Wired only for non-colocated tasks (a checkable block can't move).
 		onNest: (task: ResolvedTask, anchor: DOMRect) => void;
-		// Move a nested task out of its day and into the backlog. Not offered for
-		// a colocated task — that task is a block, which can't leave its line.
+		// Move a task off this day and back into the backlog. Wired only for
+		// non-colocated tasks — a colocated task is a block, which can't leave
+		// its line.
 		onMoveToBacklog: (task: ResolvedTask) => void;
 		// A long-press on a regular task began a grid drag-to-reschedule.
 		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
@@ -48,6 +55,7 @@
 		resolve,
 		color,
 		allowCreate,
+		inactive = false,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -103,8 +111,14 @@
 	}
 </script>
 
-<div class="grid-cell" class:drop-target={isDropTarget}>
+<div class="grid-cell" class:drop-target={isDropTarget} class:inactive>
+	{#if inactive}
+		<!-- Read-only history: a project/domain that wasn't active on this day. The
+		     dim/hatch reads the column as past context, not a place to add work. -->
+		<div class="grid-cell-inactive-badge" title="Not active on this day"></div>
+	{/if}
 	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
+		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
 			class:dragging-origin={dragTaskLine === task.source.line || (task.colocated && dragBlockLine === task.block.source.line)}
@@ -112,7 +126,12 @@
 		>
 			<Task_
 				{task}
-				{color}
+				color={color ?? tr?.color}
+				association={task.owner}
+				inherited={task.assoc === undefined}
+				resolved={tr}
+				onNavigate={() => task.owner && onNavigate(task.owner)}
+				onEditAssoc={(rect) => onEditAssoc(task, rect)}
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
@@ -162,7 +181,7 @@
 		</div>
 	{/each}
 
-	{#if allowCreate}
+	{#if allowCreate && !inactive}
 		<button class="grid-cell-add" title="Add task" onclick={onCreate}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
 			<span>Task</span>
@@ -184,6 +203,30 @@
 	   Inset box-shadow instead of outline so it isn't clipped by the grid table's overflow:hidden. */
 	.grid-cell.drop-target {
 		box-shadow: inset 0 0 0 2px var(--interactive-accent);
+	}
+
+	/* Read-only history: the entity wasn't active on this day. Dim the existing
+	   tasks and lay a faint hatch behind them (matching the empty-cell hatch) so
+	   the column reads as past context, not an editable slot. Pointer events on
+	   the tasks stay live so the user can still open/inspect them. */
+	.grid-cell.inactive {
+		position: relative;
+	}
+	.grid-cell.inactive .grid-cell-item {
+		opacity: 0.4;
+	}
+	.grid-cell-inactive-badge {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		background: repeating-linear-gradient(
+			45deg,
+			transparent,
+			transparent 6px,
+			var(--background-modifier-border) 6px,
+			var(--background-modifier-border) 7px
+		);
+		opacity: 0.25;
 	}
 
 	/* Dim the row whose task is being dragged. */
@@ -235,11 +278,12 @@
 	   checkbox. Ctrl+click reveals it in the Day view — signalled, like the assoc
 	   line, by a pointer cursor and a hover underline on `.linked`. No pill, no
 	   hover fill — it reads as the same kind of metadata as the assoc tag. */
+	/* Rendered inside Task's inline meta row (after the association), so it needs
+	   no indent of its own — the meta row supplies the alignment past the checkbox. */
 	.grid-cell-badge {
 		display: flex;
 		align-items: center;
 		gap: 3px;
-		padding-left: 24px;
 		font-size: 10px;
 		color: var(--text-muted);
 		min-width: 0;

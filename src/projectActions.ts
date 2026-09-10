@@ -14,6 +14,8 @@ import type { Domain, ISODate, LifecycleState, Project } from "./types";
 import type { KairosIndex } from "./index";
 import {
 	appendStatus,
+	editStatusRecord,
+	removeStatusRecord,
 	renameWithAlias,
 	setColor,
 	setDescription,
@@ -21,15 +23,21 @@ import {
 	setOrder,
 } from "./projectFile";
 
-// ── status (spec §4.4: a hands-off, additive history) ──
+// ── status history (a hands-off log; editable through the guarded views) ──
+//
+// `set*Status` appends a change; `edit*StatusRecord` / `remove*StatusRecord`
+// revise the past. All route through the pure edit functions in projectFile.ts,
+// which own the invariants (order, one-per-date, no consecutive duplicates), so
+// these verbs stay thin. `note` is a freeform open-label annotation (never logic).
 
 export function setProjectStatus(
 	index: KairosIndex,
 	project: Project,
 	date: ISODate,
 	status: LifecycleState,
+	note?: string,
 ): void {
-	index.applyProjectEdit(appendStatus(project, date, status));
+	index.applyProjectEdit(appendStatus(project, date, status, note));
 }
 
 /** Domains are durable: `archived` is refused by `appendStatus`, so the UI
@@ -39,8 +47,73 @@ export function setDomainStatus(
 	domain: Domain,
 	date: ISODate,
 	status: LifecycleState,
+	note?: string,
 ): void {
-	index.applyDomainEdit(appendStatus(domain, date, status));
+	index.applyDomainEdit(appendStatus(domain, date, status, note));
+}
+
+/**
+ * Author a *bounded* active period on the Gantt in one write: an `active` record
+ * at `start` (carrying the intensity `note`) and an `inactive` record at `end`
+ * that closes it. Composed as nested pure edits so the two records land in a
+ * single entity replacement — no interleaved async writes, and `normalizeHistory`
+ * still owns the invariants (order, one-per-date, consecutive-duplicate collapse).
+ * `end` must be after `start`; the caller (the drag gesture) guarantees that.
+ */
+export function setProjectActivePeriod(
+	index: KairosIndex,
+	project: Project,
+	start: ISODate,
+	end: ISODate,
+	note?: string,
+): void {
+	const withActive = appendStatus(project, start, "active", note);
+	index.applyProjectEdit(appendStatus(withActive, end, "inactive"));
+}
+
+export function setDomainActivePeriod(
+	index: KairosIndex,
+	domain: Domain,
+	start: ISODate,
+	end: ISODate,
+	note?: string,
+): void {
+	const withActive = appendStatus(domain, start, "active", note);
+	index.applyDomainEdit(appendStatus(withActive, end, "inactive"));
+}
+
+export function editProjectStatusRecord(
+	index: KairosIndex,
+	project: Project,
+	originalDate: ISODate,
+	next: { date: ISODate; status: LifecycleState; note?: string },
+): void {
+	index.applyProjectEdit(editStatusRecord(project, originalDate, next));
+}
+
+export function editDomainStatusRecord(
+	index: KairosIndex,
+	domain: Domain,
+	originalDate: ISODate,
+	next: { date: ISODate; status: LifecycleState; note?: string },
+): void {
+	index.applyDomainEdit(editStatusRecord(domain, originalDate, next));
+}
+
+export function removeProjectStatusRecord(
+	index: KairosIndex,
+	project: Project,
+	date: ISODate,
+): void {
+	index.applyProjectEdit(removeStatusRecord(project, date));
+}
+
+export function removeDomainStatusRecord(
+	index: KairosIndex,
+	domain: Domain,
+	date: ISODate,
+): void {
+	index.applyDomainEdit(removeStatusRecord(domain, date));
 }
 
 // ── description (either kind) ──

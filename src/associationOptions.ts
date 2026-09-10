@@ -11,8 +11,8 @@ import type {
 	Domain,
 	LifecycleState,
 	Project,
-	StatusRecord,
 } from "./types";
+import { effectiveStatus } from "./projectFile";
 
 /** One selectable row in the association picker. */
 export interface AssociationOption {
@@ -23,11 +23,6 @@ export interface AssociationOption {
 	kind: "project" | "domain";
 	/** Current lifecycle state (latest status record; defaults to active). */
 	status: LifecycleState;
-}
-
-/** The latest status in a history, or "active" when none is recorded. */
-function currentStatus(history: StatusRecord[]): LifecycleState {
-	return history.at(-1)?.status ?? "active";
 }
 
 /**
@@ -47,7 +42,7 @@ export function associationOptions(
 			association: { kind: "project", id: project.name },
 			name: project.name,
 			kind: "project",
-			status: currentStatus(project.history),
+			status: effectiveStatus(project.history),
 		});
 	}
 
@@ -57,7 +52,7 @@ export function associationOptions(
 			association: { kind: "domain", id: domain.name },
 			name: domain.name,
 			kind: "domain",
-			status: currentStatus(domain.history),
+			status: effectiveStatus(domain.history),
 		});
 	}
 
