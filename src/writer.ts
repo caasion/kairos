@@ -576,15 +576,19 @@ export function moveBlockAcrossDays(
       : target.assoc;
 
   // Repoint the moved block (and its child tasks) at the destination file with
-  // throwaway lines; the reparse on write re-derives real lines.
+  // throwaway lines from the plugin-wide allocator; the reparse on write
+  // re-derives real lines. The destination day may already be holding unsaved
+  // objects of its own — an Unscheduled inbox another view just drafted into it
+  // — and a fixed -1/-2 would sooner or later land on one of them, which makes
+  // every later edit to the moved block hit that object instead (draftLine.ts).
   const moved: Block = {
     ...target,
-    source: { path: toPath, line: -1 },
+    source: { path: toPath, line: nextDraftLine() },
     ...(time ? { time } : {}),
     ...(assoc ? { assoc } : {}),
-    tasks: target.tasks.map((t, i) => ({
+    tasks: target.tasks.map((t) => ({
       ...t,
-      source: { path: toPath, line: -(i + 2) },
+      source: { path: toPath, line: nextDraftLine() },
     })),
   };
   if (!assoc) delete (moved as Partial<Block>).assoc;
@@ -716,12 +720,12 @@ export function copyBlockIntoDay(
     targetAssoc !== undefined ? targetAssoc ?? undefined : block.assoc;
   const copy: Block = {
     ...block,
-    source: { path: toPath, line: -1 },
+    source: { path: toPath, line: nextDraftLine() },
     ...(time ? { time } : {}),
     ...(assoc ? { assoc } : {}),
-    tasks: block.tasks.map((t, i) => ({
+    tasks: block.tasks.map((t) => ({
       ...t,
-      source: { path: toPath, line: -(i + 2) },
+      source: { path: toPath, line: nextDraftLine() },
     })),
   };
   if (!assoc) delete (copy as Partial<Block>).assoc;

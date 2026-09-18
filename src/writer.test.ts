@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { moveBlockAcrossDays, nestTaskUnderBlock, unnestTask } from "./writer";
+import {
+	addTaskToUnscheduled,
+	copyBlockIntoDay,
+	deleteBlock,
+	makeBlock,
+	moveBlockAcrossDays,
+	nestTaskUnderBlock,
+	retimeBlock,
+	setBlockTitle,
+	unnestTask,
+} from "./writer";
 import type { Block, Task } from "./types";
 
 // A timed block with an explicit project association and two child tasks: one
@@ -340,5 +350,175 @@ describe("nestTaskUnderBlock", () => {
 		nestTaskUnderBlock(input, source, inheritingTask("mon.md"), dest);
 		expect(input[0]!.tasks).toHaveLength(2);
 		expect(input[1]!.tasks).toHaveLength(1);
+	});
+});
+
+// ─── the Unscheduled inbox vs. the day's first block ───────────
+//
+// Issue #4: creating the first timed block in a day could replace that day's
+// Unscheduled section instead of sitting beside it. The fault was never in the
+// serializer — both blocks are always emitted. It was two blocks sharing a
+// `SourceRef.line`, which is the only handle `isOwner` has: every edit aimed at
+// one then lands on the other, and a delete takes both. So the invariant to pin
+// is that no two blocks in a day carry the same line, and that an edit aimed at
+// the new block leaves the inbox alone.
+
+describe("a new block alongside the Unscheduled inbox", () => {
+	// A day whose note already has an Unscheduled section with two entries. Its
+	// lines are real (>= 0) because it was read off disk.
+	function savedInbox(path: string): Block {
+		return {
+			source: { path, line: 4 },
+			title: "Unscheduled",
+			scheduled: false,
+			tasks: [
+				{ source: { path, line: 5 }, text: "Buy milk", status: " " },
+				{ source: { path, line: 6 }, text: "Call bank", status: " " },
+			],
+		};
+	}
+
+	/** The same day's inbox, but drafted this session and not yet written. */
+	function draftedInbox(path: string): Block[] {
+		let blocks = addTaskToUnscheduled([], path, "Buy milk", undefined);
+		blocks = addTaskToUnscheduled(blocks, path, "Call bank", undefined);
+		return blocks;
+	}
+
+	function expectDistinctLines(blocks: Block[]): void {
+		const lines = blocks.map((b) => b.source.line);
+		expect(new Set(lines).size).toBe(lines.length);
+	}
+
+	function expectInboxIntact(blocks: Block[]): void {
+		const inboxes = blocks.filter((b) => b.title === "Unscheduled");
+		expect(inboxes).toHaveLength(1);
+		expect(inboxes[0]!.time).toBeUndefined();
+		expect(inboxes[0]!.scheduled).toBe(false);
+		expect(inboxes[0]!.tasks.map((t) => t.text)).toEqual([
+			"Buy milk",
+			"Call bank",
+		]);
+	}
+
+	it("leaves a saved inbox untouched when the first block is created", () => {
+		const day = [
+			savedInbox("mon.md"),
+			makeBlock({ start: 540, end: 600 }, "mon.md", "Deep work"),
+		];
+		const block = day[1]!;
+
+		expectDistinctLines(day);
+		expectInboxIntact(day);
+		expect(block.time).toEqual({ start: 540, end: 600 });
+	});
+
+	it("leaves an inbox this session drafted untouched too", () => {
+		// The case that actually bit: the Grid files a task into a day with no
+		// inbox yet, so the inbox is unsaved and carries a negative line — the
+		// same shape of line a brand-new block carries.
+		const day = [
+			...draftedInbox("mon.md"),
+			makeBlock({ start: 540, end: 600 }, "mon.md", "Deep work"),
+		];
+
+		expectDistinctLines(day);
+		expectInboxIntact(day);
+	});
+
+	it("aims a retime, a rename and a delete at the block, never the inbox", () => {
+		const day = [
+			...draftedInbox("mon.md"),
+			makeBlock({ start: 540, end: 600 }, "mon.md", "Deep work"),
+		];
+		const block = day.at(-1)!;
+
+		expectInboxIntact(retimeBlock(day, block, { start: 600, end: 660 }));
+		expectInboxIntact(setBlockTitle(day, block, "Renamed"));
+
+		// The reported symptom in its bluntest form: removing the new block used
+		// to remove the Unscheduled section with it.
+		const afterDelete = deleteBlock(day, block);
+		expect(afterDelete.map((b) => b.title)).toEqual(["Unscheduled"]);
+		expectInboxIntact(afterDelete);
+	});
+
+	it("keeps the block when the inbox is created after it (reverse order)", () => {
+		// The Day view draws the first block, then the Grid files a task into the
+		// same day — so the inbox is the second unsaved object, not the first.
+		const block = makeBlock({ start: 540, end: 600 }, "mon.md", "Deep work");
+		let day = addTaskToUnscheduled([block], "mon.md", "Buy milk", undefined);
+		day = addTaskToUnscheduled(day, "mon.md", "Call bank", undefined);
+
+		expectDistinctLines(day);
+		expectInboxIntact(day);
+
+		// Deleting the inbox leaves the block with its time and its title.
+		const inbox = day.find((b) => b.title === "Unscheduled")!;
+		const afterDelete = deleteBlock(day, inbox);
+		expect(afterDelete).toHaveLength(1);
+		expect(afterDelete[0]!.title).toBe("Deep work");
+		expect(afterDelete[0]!.time).toEqual({ start: 540, end: 600 });
+	});
+
+	it("gives an empty day's first block and first inbox distinct lines", () => {
+		// A day with no note at all: everything in it is unsaved, so the allocator
+		// is the only thing keeping the two apart.
+		const day = [
+			...addTaskToUnscheduled([], "mon.md", "Buy milk", undefined),
+			makeBlock({ start: 540, end: 600 }, "mon.md", "Deep work"),
+		];
+
+		expect(day).toHaveLength(2);
+		expectDistinctLines(day);
+		// The inbox's own entry must not share the inbox's line either, or
+		// patching the task would fold onto the block.
+		const inbox = day.find((b) => b.title === "Unscheduled")!;
+		expect(inbox.tasks[0]!.source.line).not.toBe(inbox.source.line);
+		expect(day.every((b) => b.source.line < 0)).toBe(true);
+	});
+
+	it("gives a block arriving from another day a line the inbox can't hold", () => {
+		// A block dragged into the day is a first block too. Its line used to be a
+		// fixed -1, which is exactly the first line the allocator hands out — so a
+		// day whose inbox was the session's first draft collided with it.
+		const arriving = sampleBlock("sun.md");
+		const inbox: Block = {
+			source: { path: "mon.md", line: -1 },
+			title: "Unscheduled",
+			scheduled: false,
+			tasks: [
+				{ source: { path: "mon.md", line: -2 }, text: "Buy milk", status: " " },
+				{ source: { path: "mon.md", line: -3 }, text: "Call bank", status: " " },
+			],
+		};
+
+		const { to } = moveBlockAcrossDays([arriving], [inbox], arriving, "mon.md");
+		expectDistinctLines(to);
+		expectInboxIntact(to);
+
+		const moved = to.find((b) => b.title === "Deep work")!;
+		const afterDelete = deleteBlock(to, moved);
+		expect(afterDelete.map((b) => b.title)).toEqual(["Unscheduled"]);
+
+		// The copy (Ctrl-drag) path draws from the same allocator.
+		expectDistinctLines(copyBlockIntoDay([inbox], arriving, "mon.md"));
+	});
+
+	it("gives two blocks arriving into the same day distinct lines", () => {
+		// Both drops land before either reparse, so nothing but the allocator
+		// separates them — a shared line would freeze the keyed `{#each}`.
+		const first = sampleBlock("sun.md");
+		const second: Block = { ...sampleBlock("sat.md"), title: "Review" };
+
+		let day = moveBlockAcrossDays([first], [], first, "mon.md").to;
+		day = moveBlockAcrossDays([second], day, second, "mon.md").to;
+
+		expectDistinctLines(day);
+		const taskLines = day.flatMap((b) => b.tasks.map((t) => t.source.line));
+		expect(new Set(taskLines).size).toBe(taskLines.length);
+		// No task shares a line with a block either.
+		const all = [...day.map((b) => b.source.line), ...taskLines];
+		expect(new Set(all).size).toBe(all.length);
 	});
 });
