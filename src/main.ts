@@ -1,10 +1,8 @@
-import { MarkdownView, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { Plugin, WorkspaceLeaf } from 'obsidian';
 import { writable } from 'svelte/store';
 import type { Readable, Writable } from 'svelte/store';
 import { DEFAULT_SETTINGS, KairosSettingTab } from './settings';
 import type { KairosSettings } from './settings';
-import { parseSchedule } from './parser';
-import { resolveBlocks } from './resolver';
 import type { ISODate } from './types';
 import { KAIROS_VIEW_TYPE, KairosView } from './KairosView';
 import { KAIROS_WEEK_VIEW_TYPE, KairosWeekView } from './KairosWeekView';
@@ -19,13 +17,6 @@ import {
 } from './KairosProjectsView';
 import { KAIROS_GANTT_VIEW_TYPE, KairosGanttView } from './KairosGanttView';
 import { IndexAdapter } from './indexAdapter';
-
-// Derive an ISO date from a daily-note basename (YYYY-MM-DD), falling back to
-// the basename itself when it doesn't look like a date.
-function dateFromBasename(basename: string): ISODate {
-	const m = /(\d{4}-\d{2}-\d{2})/.exec(basename);
-	return m?.[1] ?? basename;
-}
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -142,94 +133,64 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosGanttView(leaf, this),
 		);
 
-		this.addRibbonIcon('clock', 'Open Kairos Day view', () => {
+		this.addRibbonIcon('clock', 'Open Kairos day view', () => {
 			void this.activateView();
 		});
 
-		this.addRibbonIcon('calendar-range', 'Open Kairos Week view', () => {
+		this.addRibbonIcon('calendar-range', 'Open Kairos week view', () => {
 			void this.activateWeekView();
 		});
 
-		this.addRibbonIcon('layout-grid', 'Open Kairos Grid view', () => {
+		this.addRibbonIcon('layout-grid', 'Open Kairos grid view', () => {
 			void this.activateGridView();
 		});
 
-		this.addRibbonIcon('inbox', 'Open Kairos Backlog view', () => {
+		this.addRibbonIcon('inbox', 'Open Kairos backlog view', () => {
 			void this.activateBacklogView();
 		});
 
-		this.addRibbonIcon('folder-kanban', 'Open Kairos Projects view', () => {
+		this.addRibbonIcon('folder-kanban', 'Open Kairos projects view', () => {
 			void this.activateProjectsView();
 		});
 
-		this.addRibbonIcon('gantt-chart', 'Open Kairos Timeline view', () => {
+		this.addRibbonIcon('gantt-chart', 'Open Kairos timeline view', () => {
 			void this.activateGanttView();
 		});
 
 		this.addCommand({
-			id: 'open-kairos-day-view',
-			name: 'Open Day view',
+			id: 'open-day-view',
+			name: 'Open day view',
 			callback: () => void this.activateView(),
 		});
 
 		this.addCommand({
-			id: 'open-kairos-week-view',
-			name: 'Open Week view',
+			id: 'open-week-view',
+			name: 'Open week view',
 			callback: () => void this.activateWeekView(),
 		});
 
 		this.addCommand({
-			id: 'open-kairos-grid-view',
-			name: 'Open Grid view',
+			id: 'open-grid-view',
+			name: 'Open grid view',
 			callback: () => void this.activateGridView(),
 		});
 
 		this.addCommand({
-			id: 'open-kairos-backlog-view',
-			name: 'Open Backlog view',
+			id: 'open-backlog-view',
+			name: 'Open backlog view',
 			callback: () => void this.activateBacklogView(),
 		});
 
 		this.addCommand({
-			id: 'open-kairos-projects-view',
-			name: 'Open Projects & domains view',
+			id: 'open-projects-view',
+			name: 'Open projects & domains view',
 			callback: () => void this.activateProjectsView(),
 		});
 
 		this.addCommand({
-			id: 'open-kairos-gantt-view',
-			name: 'Open Timeline view',
+			id: 'open-gantt-view',
+			name: 'Open timeline view',
 			callback: () => void this.activateGanttView(),
-		});
-
-		// Dev command: parse the active note's Schedule section and log the JSON.
-		this.addCommand({
-			id: 'test-parse-active-file',
-			name: 'Test: parse active file schedule',
-			checkCallback: (checking: boolean) => {
-				const view =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
-				const file = view?.file;
-				if (!file) return false;
-
-				if (!checking) void this.testParse();
-				return true;
-			},
-		});
-
-		// Dev command: parse the active note's Schedule section and log the JSON.
-		this.addCommand({
-			id: 'test-parse-and-resolve-active-file',
-			name: 'Test: parse and resolve active file schedule',
-			checkCallback: (checking: boolean) => {
-				const view =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
-				const file = view?.file;
-				if (!file) return false;
-
-				if (!checking) void this.testParseAndResolve();
-				return true;
-			},
 		});
 
 		this.addSettingTab(new KairosSettingTab(this.app, this));
@@ -375,40 +336,6 @@ export default class Kairos extends Plugin {
 	async openBacklogFiltered(names: string[], label: string) {
 		await this.activateBacklogView(false);
 		this.pushBacklogFilter({ names, label, nonce: ++this.revealNonce });
-	}
-
-	private async testParse() {
-		const file = this.app.workspace.getActiveFile();
-		if (!file) {
-			new Notice('Kairos: no active file');
-			return;
-		}
-
-		const markdown = await this.app.vault.read(file);
-		const blocks = parseSchedule(markdown, file.path);
-
-		console.log(`[Kairos] parsed ${blocks.length} block(s) from ${file.path}`);
-		console.log(JSON.stringify(blocks, null, 2));
-		new Notice(`Kairos: parsed ${blocks.length} block(s) — see console`);
-	}
-
-	private async testParseAndResolve() {
-		const file = this.app.workspace.getActiveFile();
-		if (!file) {
-			new Notice('Kairos: no active file');
-			return;
-		}
-
-		const markdown = await this.app.vault.read(file);
-		const blocks = parseSchedule(markdown, file.path);
-
-		console.log(`[Kairos] parsed ${blocks.length} block(s) from ${file.path}`);
-		console.log(JSON.stringify(blocks, null, 2));
-		new Notice(`Kairos: parsed ${blocks.length} block(s) — see console`);
-
-		const tasks = resolveBlocks(blocks, dateFromBasename(file.basename));
-		console.log(`[Kairos] resolve ${blocks.length} blocks(s) from ${file.path}`)
-		console.log(JSON.stringify(tasks, null, 2))
 	}
 
 	async loadSettings() {
