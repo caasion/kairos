@@ -106,7 +106,10 @@
 			...(assoc ? { assoc } : {}),
 		};
 		commit([...entries, draft]);
-		if (settings.askAssocOnBacklogCreate) {
+		// Only ask when the answer isn't already known. Creating inside a project
+		// or domain group states the association by where you created it, so
+		// prompting there asks a question the gesture just answered.
+		if (settings.askAssocOnBacklogCreate && !assoc) {
 			// Ask first: the picker owns the focus, so text editing has to wait
 			// until it closes (answered or dismissed) — see `editAfterPick`.
 			pickerEntry = draft;

@@ -40,7 +40,11 @@ export interface KairosSettings {
 	 * on every one gets in the way unless you asked for it.
 	 */
 	askAssocOnBlockCreate: boolean;
-	/** The same prompt after a new backlog item is created. */
+	/**
+	 * The same prompt after a new backlog item is created, but only when the
+	 * item's association isn't already implied. Creating inside a project or
+	 * domain group answers the question by where you created it.
+	 */
 	askAssocOnBacklogCreate: boolean;
 }
 
@@ -205,7 +209,8 @@ export class KairosSettingTab extends PluginSettingTab {
 			.setName('Ask when creating a backlog item')
 			.setDesc(
 				'Open the association picker as soon as a new item is added to ' +
-					'the backlog.',
+					'the backlog. Skipped when you create the item inside a ' +
+					'project or domain group, which already sets its association.',
 			)
 			.addToggle((toggle) =>
 				toggle
