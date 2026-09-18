@@ -2,10 +2,9 @@
 	"id": "kairos",
 	"name": "Kairos",
 	"version": "0.5.3",
-	"minAppVersion": "1.1.0",
-	"description": "Seize the moment. Get things done.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"minAppVersion": "1.7.2",
+	"description": "Time-blocked daily planning in your notes. Blocks own your hours; tasks live inside them.",
+	"author": "caasion",
+	"authorUrl": "https://github.com/caasion",
 	"isDesktopOnly": false
 }
