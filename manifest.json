@@ -1,7 +1,7 @@
 {
 	"id": "kairos",
 	"name": "Kairos",
-	"version": "0.5.3",
+	"version": "0.5.4",
 	"minAppVersion": "1.7.2",
 	"description": "Time-blocked daily planning in your notes. Blocks own your hours; tasks live inside them.",
 	"author": "caasion",
