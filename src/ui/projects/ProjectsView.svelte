@@ -782,12 +782,20 @@
 		border-radius: 7px;
 		position: sticky;
 		top: 0;
+		/* Sticky at the top of the scroll, with the project rows passing
+		   underneath it — so its fill has to stay opaque. */
 		background: var(--background-primary);
 		z-index: 1;
 	}
-	/* The whole domain row is one hover object (spec §5). */
+	/* The whole domain row is one hover object (spec §5). The hover token is a
+	   translucent tint, so it is painted as a layer *over* the opaque base rather
+	   than assigned to `background`: the shorthand would drop the primary fill and
+	   let whatever is scrolled under the header read through it. */
 	.domain-header:hover {
-		background: var(--background-modifier-hover);
+		background-image: linear-gradient(
+			var(--background-modifier-hover),
+			var(--background-modifier-hover)
+		);
 	}
 	.domain-header.dim {
 		opacity: 0.55;
