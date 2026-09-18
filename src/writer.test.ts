@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { moveBlockAcrossDays, nestTaskUnderBlock, unnestTask } from "./writer";
+import {
+	copyBlockIntoDay,
+	makeBlock,
+	moveBlockAcrossDays,
+	nestTaskUnderBlock,
+	unnestTask,
+} from "./writer";
 import type { Block, Task } from "./types";
 
 // A timed block with an explicit project association and two child tasks: one
@@ -340,5 +346,76 @@ describe("nestTaskUnderBlock", () => {
 		nestTaskUnderBlock(input, source, inheritingTask("mon.md"), dest);
 		expect(input[0]!.tasks).toHaveLength(2);
 		expect(input[1]!.tasks).toHaveLength(1);
+	});
+});
+
+// ─── draft-line uniqueness ─────────────────────────────────────
+//
+// Every unsaved block and task carries a negative placeholder line until the
+// note is rewritten and reparsed. Views key their `{#each}` by that line, and
+// writes are debounced, so several drafts coexist routinely — two of them
+// sharing a line is the duplicate-key error that freezes a view. These pin the
+// invariant on the two cross-day primitives, which are the ones that land a
+// whole block (plus its children) in a day the user is already looking at.
+
+/** Every source line in `blocks`, including each block's child tasks. */
+function allLines(blocks: Block[]): number[] {
+	return blocks.flatMap((b) => [
+		b.source.line,
+		...b.tasks.map((t) => t.source.line),
+	]);
+}
+
+describe("draft lines are unique across the cross-day primitives", () => {
+	it("gives a moved block and each of its tasks a distinct negative line", () => {
+		const { to } = moveBlockAcrossDays(
+			[sampleBlock("mon.md")],
+			[],
+			sampleBlock("mon.md"),
+			"tue.md",
+		);
+		const lines = allLines(to);
+		expect(lines).toHaveLength(3); // block + two tasks
+		expect(lines.every((l) => l < 0)).toBe(true);
+		expect(new Set(lines).size).toBe(lines.length);
+	});
+
+	it("never reuses a line when two blocks move into the same day", () => {
+		// Two drops inside the debounce window: the second reads the first's
+		// optimistic array, so both drafts are live in one keyed list.
+		const first = moveBlockAcrossDays(
+			[sampleBlock("mon.md")],
+			[],
+			sampleBlock("mon.md"),
+			"wed.md",
+		).to;
+		const both = moveBlockAcrossDays(
+			[sampleBlock("tue.md")],
+			first,
+			sampleBlock("tue.md"),
+			"wed.md",
+		).to;
+
+		const lines = allLines(both);
+		expect(both).toHaveLength(2);
+		expect(new Set(lines).size).toBe(lines.length);
+	});
+
+	it("never reuses a line when one block is duplicated twice into a day", () => {
+		const block = sampleBlock("mon.md");
+		const once = copyBlockIntoDay([], block, "wed.md");
+		const twice = copyBlockIntoDay(once, block, "wed.md");
+
+		const lines = allLines(twice);
+		expect(twice).toHaveLength(2);
+		expect(new Set(lines).size).toBe(lines.length);
+	});
+
+	it("never collides with a block created by makeBlock in the same day", () => {
+		const fresh = makeBlock({ start: 540, end: 600 }, "wed.md");
+		const to = copyBlockIntoDay([fresh], sampleBlock("mon.md"), "wed.md");
+
+		const lines = allLines(to);
+		expect(new Set(lines).size).toBe(lines.length);
 	});
 });

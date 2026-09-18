@@ -541,6 +541,33 @@ export function moveTaskAcrossDays(
 // `makeBlock`. Its `time` may be replaced (a drag can drop it at a new hour on
 // the destination day); pass the same range to move it to the same time.
 
+/**
+ * Repoint a block and its child tasks at `toPath`, each with its own throwaway
+ * line from the plugin-wide allocator.
+ *
+ * The allocator, not a literal: the caller commits optimistically and debounces
+ * the write, so a second block can land in the same day before the first one's
+ * reparse re-derives real lines. A fixed placeholder would hand both the same
+ * line, and the keyed `{#each}` rendering that day would collide and stop
+ * reconciling — a frozen view (see draftLine.ts).
+ *
+ * The block's line is taken before its tasks', so the draft lines keep the same
+ * descending order the real ones will have after the reparse.
+ */
+function repointToDraft(
+  block: Block,
+  toPath: string,
+): Pick<Block, "source" | "tasks"> {
+  const source: SourceRef = { path: toPath, line: nextDraftLine() };
+  return {
+    source,
+    tasks: block.tasks.map((t) => ({
+      ...t,
+      source: { path: toPath, line: nextDraftLine() },
+    })),
+  };
+}
+
 export interface CrossDayMove {
   /** The source day's blocks, with the moved block removed. */
   from: Block[];
@@ -579,13 +606,9 @@ export function moveBlockAcrossDays(
   // throwaway lines; the reparse on write re-derives real lines.
   const moved: Block = {
     ...target,
-    source: { path: toPath, line: -1 },
+    ...repointToDraft(target, toPath),
     ...(time ? { time } : {}),
     ...(assoc ? { assoc } : {}),
-    tasks: target.tasks.map((t, i) => ({
-      ...t,
-      source: { path: toPath, line: -(i + 2) },
-    })),
   };
   if (!assoc) delete (moved as Partial<Block>).assoc;
 
@@ -616,11 +639,12 @@ export function setBlockAssoc(
 // would have moved the original. These mirror the move primitives above but
 // never touch the source array — they only build the copy the caller inserts.
 //
-// The clone gets throwaway negative source lines (like `makeBlock`) so keyed
-// rendering doesn't collide with the original before the reparse re-derives
-// real lines. Association resolution matches the move counterparts: an explicit
-// override wins, else the inherited-or-explicit owner is materialized so the
-// copy reads literally true wherever it lands.
+// The clone gets throwaway negative source lines from the plugin-wide allocator
+// (like `makeBlock`) so keyed rendering collides with neither the original nor
+// any other unsaved clone before the reparse re-derives real lines. Association
+// resolution matches the move counterparts: an explicit override wins, else the
+// inherited-or-explicit owner is materialized so the copy reads literally true
+// wherever it lands.
 
 /**
  * A fresh copy of `task` destined for `toPath`, with a throwaway `line`.
@@ -716,13 +740,9 @@ export function copyBlockIntoDay(
     targetAssoc !== undefined ? targetAssoc ?? undefined : block.assoc;
   const copy: Block = {
     ...block,
-    source: { path: toPath, line: -1 },
+    ...repointToDraft(block, toPath),
     ...(time ? { time } : {}),
     ...(assoc ? { assoc } : {}),
-    tasks: block.tasks.map((t, i) => ({
-      ...t,
-      source: { path: toPath, line: -(i + 2) },
-    })),
   };
   if (!assoc) delete (copy as Partial<Block>).assoc;
   return [...toBlocks, copy];
