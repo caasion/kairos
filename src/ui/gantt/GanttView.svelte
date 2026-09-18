@@ -9,7 +9,8 @@
 	//
 	// Rows mirror the Projects page grouping: each domain, its child projects
 	// nested beneath, then unassigned (orphan) projects. Same data as the Projects
-	// page — different question (retrospective spans vs. present snapshot).
+	// page — different question (retrospective spans vs. present snapshot). Which
+	// of them earn a row depends on the viewport, not on today alone (gantt/rows).
 
 	import { onMount } from "svelte";
 	import { Menu } from "obsidian";
@@ -50,6 +51,7 @@
 		type Interval,
 	} from "../../gantt/ganttUtils";
 	import { historyToSpans, type Span } from "../../gantt/spans";
+	import { visibleEntities } from "../../gantt/rows";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
@@ -76,65 +78,6 @@
 
 	const today = $derived(todayISO());
 
-	// ── A row is one entity (domain or project) plus its label / color / kind ──
-	interface GanttRow {
-		key: string; // source.path (stable identity for keyed each)
-		entity: Domain | Project;
-		isDomain: boolean;
-		label: string;
-		indent: boolean; // child project under a domain
-		color: string; // base hue; "" → neutral accent
-		info: RowLabelInfo; // presentation for the sidebar label + hover card
-	}
-
-	const rows = $derived.by<GanttRow[]>(() => {
-		const out: GanttRow[] = [];
-		for (const domain of feed.domains) {
-			const color = domain.color || undefined;
-			out.push({
-				key: domain.source.path,
-				entity: domain,
-				isDomain: true,
-				label: domain.name,
-				indent: false,
-				color: domain.color,
-				info: rowLabelInfo(domain, true, color, today),
-			});
-			for (const p of feed.projectsByDomain.get(domain.id) ?? []) {
-				out.push({
-					key: p.source.path,
-					entity: p,
-					isDomain: false,
-					label: p.name,
-					indent: true,
-					color: domain.color, // inherit domain hue
-					info: rowLabelInfo(p, false, color, today),
-				});
-			}
-		}
-		for (const p of feed.orphans) {
-			out.push({
-				key: p.source.path,
-				entity: p,
-				isDomain: false,
-				label: p.name,
-				indent: false,
-				color: "",
-				info: rowLabelInfo(p, false, undefined, today),
-			});
-		}
-		return out;
-	});
-
-	// Group flags for the continuous accent stripe: a domain + its child projects
-	// share one unbroken stripe. A child continues the group; a domain or orphan
-	// opens a new one.
-	function ganttGroup(i: number): { start: boolean; end: boolean } {
-		const row = rows[i]!;
-		const next = rows[i + 1];
-		return { start: !row.indent, end: !(next?.indent) };
-	}
-
 	// ── Viewport / interval / pan ──
 	// The view snaps to whole calendar units. `interval` picks the unit granularity
 	// (week/month/quarter/year); `anchor` is any date inside the shown unit, and the
@@ -158,6 +101,72 @@
 	// Today marker sits on the *left boundary* of today's column, aligning with the
 	// date-on-line header labels (which mark day boundaries, not column centers).
 	const todayX = $derived(dateToX(today, viewport.start, pxPerDay));
+
+	// ── A row is one entity (domain or project) plus its label / color / kind ──
+	interface GanttRow {
+		key: string; // source.path (stable identity for keyed each)
+		entity: Domain | Project;
+		isDomain: boolean;
+		label: string;
+		indent: boolean; // child project under a domain
+		color: string; // base hue; "" → neutral accent
+		info: RowLabelInfo; // presentation for the sidebar label + hover card
+	}
+
+	// Archived entities drop out of the row axis, but window-aware rather than
+	// flat (see gantt/rows.ts): one keeps its row for a viewport it was active in,
+	// so panning back to a season still draws the bars that were worked then.
+	const visible = $derived(
+		visibleEntities(feed, viewport.start, viewport.end, today),
+	);
+
+	const rows = $derived.by<GanttRow[]>(() => {
+		const out: GanttRow[] = [];
+		for (const { domain, projects } of visible.domains) {
+			const color = domain.color || undefined;
+			out.push({
+				key: domain.source.path,
+				entity: domain,
+				isDomain: true,
+				label: domain.name,
+				indent: false,
+				color: domain.color,
+				info: rowLabelInfo(domain, true, color, today),
+			});
+			for (const p of projects) {
+				out.push({
+					key: p.source.path,
+					entity: p,
+					isDomain: false,
+					label: p.name,
+					indent: true,
+					color: domain.color, // inherit domain hue
+					info: rowLabelInfo(p, false, color, today),
+				});
+			}
+		}
+		for (const p of visible.orphans) {
+			out.push({
+				key: p.source.path,
+				entity: p,
+				isDomain: false,
+				label: p.name,
+				indent: false,
+				color: "",
+				info: rowLabelInfo(p, false, undefined, today),
+			});
+		}
+		return out;
+	});
+
+	// Group flags for the continuous accent stripe: a domain + its child projects
+	// share one unbroken stripe. A child continues the group; a domain or orphan
+	// opens a new one.
+	function ganttGroup(i: number): { start: boolean; end: boolean } {
+		const row = rows[i]!;
+		const next = rows[i + 1];
+		return { start: !row.indent, end: !(next?.indent) };
+	}
 
 	function pan(dir: 1 | -1) {
 		anchor = stepUnit(interval, viewport.start, dir);
@@ -700,7 +709,13 @@
 	</div>
 
 	{#if rows.length === 0}
-		<div class="gantt-empty">No projects or domains yet.</div>
+		<!-- An empty axis means one of two different things: nothing exists yet, or
+		     everything that exists is archived with no activity in this period. -->
+		<div class="gantt-empty">
+			{feed.domains.length === 0 && feed.orphans.length === 0
+				? "No projects or domains yet."
+				: "Nothing was active in this period."}
+		</div>
 	{:else}
 		<div class="gantt-grid">
 			<!-- Sidebar labels -->

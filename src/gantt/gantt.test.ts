@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { Project, StatusRecord } from "../types";
-import { appendStatus } from "../projectFile";
+import type { Domain, Project, StatusRecord } from "../types";
+import type { ProjectsDomains } from "../index";
+import { appendStatus, effectiveStatus } from "../projectFile";
 import { historyToSpans, noteToIntensity } from "./spans";
+import { activeInWindow, visibleEntities } from "./rows";
 import {
 	dateToX,
 	daysBetween,
@@ -246,5 +248,111 @@ describe("calendar-unit intervals", () => {
 		expect(unitLabel("month", "2026-08-01")).toBe("Aug 2026");
 		expect(unitLabel("quarter", "2026-07-01")).toBe("Q3 2026");
 		expect(unitLabel("year", "2026-01-01")).toBe("2026");
+	});
+});
+
+describe("row visibility", () => {
+	// The Timeline's window is its own viewport (a whole calendar unit), so every
+	// case below is the *same* entity read against two different viewports.
+	const TODAY = "2026-08-20";
+	const AUG = { start: "2026-08-01", end: "2026-08-31" };
+	const JAN = { start: "2026-01-01", end: "2026-01-31" };
+
+	const project = (name: string, history: StatusRecord[]): Project => ({
+		id: `p-${name}`,
+		name,
+		aliases: [],
+		description: "",
+		history,
+		archived: effectiveStatus(history, TODAY) === "archived",
+		source: { path: `${name}.md`, line: 0 },
+	});
+	const domain = (name: string, history: StatusRecord[]): Domain => ({
+		id: `d-${name}`,
+		name,
+		aliases: [],
+		description: "",
+		order: 0,
+		color: "",
+		history,
+		archived: effectiveStatus(history, TODAY) === "archived",
+		source: { path: `${name}.md`, line: 0 },
+	});
+	const feed = (
+		domains: Domain[],
+		children: Project[][] = [],
+		orphans: Project[] = [],
+	): ProjectsDomains => ({
+		domains,
+		projectsByDomain: new Map(
+			domains.map((d, i) => [d.id, children[i] ?? []] as const),
+		),
+		orphans,
+	});
+	const shown = (f: ProjectsDomains, w: { start: string; end: string }) =>
+		visibleEntities(f, w.start, w.end, TODAY).orphans.map((p) => p.name);
+
+	it("activeInWindow reads an empty history as active (nothing recorded ≠ paused)", () => {
+		expect(activeInWindow([], "2026-08-01", "2026-08-31")).toBe(true);
+	});
+
+	it("activeInWindow counts a record opening on the window's last day", () => {
+		const hist = h(["2026-01-01", "inactive"], ["2026-08-31", "active"]);
+		expect(activeInWindow(hist, "2026-08-01", "2026-08-31")).toBe(true);
+		expect(activeInWindow(hist, "2026-08-01", "2026-08-30")).toBe(false);
+	});
+
+	it("omits an archived project once the viewport is past its activity", () => {
+		const p = project("Old", h(["2026-01-01", "active"], ["2026-02-01", "archived"]));
+		expect(shown(feed([], [], [p]), AUG)).toEqual([]);
+	});
+
+	it("keeps that same archived project for a viewport it was active in", () => {
+		const p = project("Old", h(["2026-01-01", "active"], ["2026-02-01", "archived"]));
+		expect(shown(feed([], [], [p]), JAN)).toEqual(["Old"]);
+	});
+
+	it("keeps an archived project whose active span merely spans the viewport", () => {
+		// No record falls inside January at all — the span it was active for runs
+		// straight through, and its bar is clamped to both viewport edges.
+		const p = project("Long", h(["2025-11-01", "active"], ["2026-02-15", "archived"]));
+		expect(shown(feed([], [], [p]), JAN)).toEqual(["Long"]);
+		expect(shown(feed([], [], [p]), AUG)).toEqual([]);
+	});
+
+	it("keeps a paused project so a new period can still be drawn on its row", () => {
+		// Inactive, not archived: the Timeline is the authoring surface, so the row
+		// stays reachable even in a viewport with nothing to draw.
+		const p = project("Paused", h(["2026-01-01", "active"], ["2026-03-01", "inactive"]));
+		expect(shown(feed([], [], [p]), AUG)).toEqual(["Paused"]);
+	});
+
+	it("doesn't hide a row for an archive record that hasn't taken effect yet", () => {
+		const p = project("Ending", h(["2026-01-01", "inactive"], ["2026-12-01", "archived"]));
+		expect(shown(feed([], [], [p]), AUG)).toEqual(["Ending"]);
+	});
+
+	it("keeps an archived domain's header when a child still earns a row", () => {
+		const d = domain("Health", h(["2026-02-01", "archived"]));
+		const child = project("Alpha", h(["2026-01-01", "active"]));
+		const out = visibleEntities(feed([d], [[child]]), AUG.start, AUG.end, TODAY);
+		expect(out.domains.map((r) => [r.domain.name, r.projects.map((p) => p.name)]))
+			.toEqual([["Health", ["Alpha"]]]);
+	});
+
+	it("keeps an archived domain for its own active days, without archived children", () => {
+		const d = domain("Health", h(["2025-06-01", "active"], ["2026-02-01", "archived"]));
+		const child = project("Alpha", h(["2025-06-01", "active"], ["2025-09-01", "archived"]));
+		const out = visibleEntities(feed([d], [[child]]), JAN.start, JAN.end, TODAY);
+		expect(out.domains.map((r) => [r.domain.name, r.projects.length])).toEqual([
+			["Health", 0],
+		]);
+	});
+
+	it("omits an archived domain whose children are archived too", () => {
+		const d = domain("Health", h(["2026-02-01", "archived"]));
+		const child = project("Alpha", h(["2026-02-01", "archived"]));
+		const out = visibleEntities(feed([d], [[child]]), AUG.start, AUG.end, TODAY);
+		expect(out.domains).toEqual([]);
 	});
 });
