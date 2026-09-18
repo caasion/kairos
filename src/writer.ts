@@ -605,7 +605,7 @@ export function setBlockAssoc(
     if (!isOwner(b, target)) return b;
     if (assoc) return { ...b, assoc };
     const { assoc: _drop, ...rest } = b;
-    return rest as Block;
+    return rest;
   });
 }
 

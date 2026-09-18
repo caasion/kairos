@@ -48,7 +48,7 @@ function parseUTCNoon(date: ISODate): number {
 function isoFromUTC(ms: number): ISODate {
 	const dt = new Date(ms);
 	const p = (n: number) => String(n).padStart(2, "0");
-	return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}` as ISODate;
+	return `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
 }
 
 /** Whole days from `from` to `to` (positive when `to` is later). */
@@ -89,21 +89,21 @@ export function isoWeekNumber(date: ISODate): number {
 	// The Thursday of this date's ISO week determines the owning year.
 	const monday = startOfWeek(date);
 	const thursday = shiftDays(monday, 3);
-	const yearStart = `${thursday.slice(0, 4)}-01-01` as ISODate;
+	const yearStart = `${thursday.slice(0, 4)}-01-01`;
 	const firstThursday = shiftDays(startOfWeek(yearStart), 3);
 	return Math.round(daysBetween(firstThursday, thursday) / 7) + 1;
 }
 export function startOfMonth(date: ISODate): ISODate {
-	return `${date.slice(0, 7)}-01` as ISODate;
+	return `${date.slice(0, 7)}-01`;
 }
 /** First day of the calendar quarter (Jan/Apr/Jul/Oct) containing `date`. */
 export function startOfQuarter(date: ISODate): ISODate {
 	const q = Math.floor((month(date) - 1) / 3); // 0..3
 	const m = q * 3 + 1;
-	return `${date.slice(0, 4)}-${String(m).padStart(2, "0")}-01` as ISODate;
+	return `${date.slice(0, 4)}-${String(m).padStart(2, "0")}-01`;
 }
 export function startOfYear(date: ISODate): ISODate {
-	return `${date.slice(0, 4)}-01-01` as ISODate;
+	return `${date.slice(0, 4)}-01-01`;
 }
 
 /** First day of the next calendar month after `date`. */
@@ -112,7 +112,7 @@ function startOfNextMonth(date: ISODate): ISODate {
 	const m = month(date);
 	const ny = m === 12 ? y + 1 : y;
 	const nm = m === 12 ? 1 : m + 1;
-	return `${ny}-${String(nm).padStart(2, "0")}-01` as ISODate;
+	return `${ny}-${String(nm).padStart(2, "0")}-01`;
 }
 
 /** The [start, end] inclusive ISO dates of the unit of `interval` containing `date`. */
@@ -135,7 +135,7 @@ export function unitRange(interval: Interval, date: ISODate): { start: ISODate; 
 		}
 		case "year": {
 			const start = startOfYear(date);
-			return { start, end: `${date.slice(0, 4)}-12-31` as ISODate };
+			return { start, end: `${date.slice(0, 4)}-12-31` };
 		}
 	}
 }
@@ -156,10 +156,10 @@ export function stepUnit(interval: Interval, unitStart: ISODate, dir: 1 | -1): I
 			let ny = y;
 			if (nq < 0) { nq = 3; ny -= 1; }
 			if (nq > 3) { nq = 0; ny += 1; }
-			return `${ny}-${String(nq * 3 + 1).padStart(2, "0")}-01` as ISODate;
+			return `${ny}-${String(nq * 3 + 1).padStart(2, "0")}-01`;
 		}
 		case "year":
-			return `${year(unitStart) + dir}-01-01` as ISODate;
+			return `${year(unitStart) + dir}-01-01`;
 	}
 }
 

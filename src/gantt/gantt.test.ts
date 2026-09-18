@@ -22,7 +22,7 @@ const h = (
 	...rs: [string, "active" | "inactive" | "archived", string?][]
 ): StatusRecord[] =>
 	rs.map(([date, status, note]) => ({
-		date: date as StatusRecord["date"],
+		date: date,
 		status,
 		...(note ? { note } : {}),
 	}));
@@ -86,8 +86,8 @@ describe("authoring active periods via the Gantt (compound edits)", () => {
 	// entity (see setProjectActivePeriod). Compose the same pure edits here.
 	const activePeriod = (p: Project, start: string, end: string, note?: string) =>
 		appendStatus(
-			appendStatus(p, start as StatusRecord["date"], "active", note),
-			end as StatusRecord["date"],
+			appendStatus(p, start, "active", note),
+			end,
 			"inactive",
 		);
 
@@ -104,7 +104,7 @@ describe("authoring active periods via the Gantt (compound edits)", () => {
 	});
 
 	it("a click-in-place (open-ended active) leaves the trailing span open", () => {
-		const p = appendStatus(project([]), "2026-02-01" as StatusRecord["date"], "active");
+		const p = appendStatus(project([]), "2026-02-01", "active");
 		const spans = historyToSpans(p.history, "2026-08-05");
 		expect(spans).toHaveLength(1);
 		expect(spans[0]).toMatchObject({ status: "active", open: true });
@@ -112,8 +112,8 @@ describe("authoring active periods via the Gantt (compound edits)", () => {
 
 	it("a new active period after an indefinite one is just a note-change boundary", () => {
 		// | abc >  →  | abc | def >
-		let p = appendStatus(project([]), "2026-01-01" as StatusRecord["date"], "active", "abc");
-		p = appendStatus(p, "2026-04-01" as StatusRecord["date"], "active", "def");
+		let p = appendStatus(project([]), "2026-01-01", "active", "abc");
+		p = appendStatus(p, "2026-04-01", "active", "def");
 		const active = historyToSpans(p.history, "2026-08-05").filter((s) => s.status === "active");
 		expect(active.map((s) => [s.start, s.note])).toEqual([
 			["2026-01-01", "abc"],
@@ -125,8 +125,8 @@ describe("authoring active periods via the Gantt (compound edits)", () => {
 	});
 
 	it("ending an indefinite bar inserts an inactive close (no new active span)", () => {
-		let p = appendStatus(project([]), "2026-01-01" as StatusRecord["date"], "active");
-		p = appendStatus(p, "2026-05-01" as StatusRecord["date"], "inactive");
+		let p = appendStatus(project([]), "2026-01-01", "active");
+		p = appendStatus(p, "2026-05-01", "inactive");
 		const spans = historyToSpans(p.history, "2026-08-05");
 		expect(spans.filter((s) => s.status === "active")).toHaveLength(1);
 		expect(spans.find((s) => s.status === "active")).toMatchObject({
@@ -138,11 +138,11 @@ describe("authoring active periods via the Gantt (compound edits)", () => {
 	it("a distinct note lets an active-after-active boundary survive normalization", () => {
 		// Clicking inside an existing (note-less) active span must NOT collapse: the
 		// view seeds a differing note (`boundaryNote`) so the split is a real record.
-		let p = appendStatus(project([]), "2026-01-01" as StatusRecord["date"], "active");
-		const same = appendStatus(p, "2026-04-01" as StatusRecord["date"], "active");
+		let p = appendStatus(project([]), "2026-01-01", "active");
+		const same = appendStatus(p, "2026-04-01", "active");
 		expect(same.history).toHaveLength(1); // identical transition collapsed away
 
-		const distinct = appendStatus(p, "2026-04-01" as StatusRecord["date"], "active", "baseline");
+		const distinct = appendStatus(p, "2026-04-01", "active", "baseline");
 		expect(distinct.history).toHaveLength(2); // survives → the split boundary exists
 		const active = historyToSpans(distinct.history, "2026-08-05");
 		expect(active).toHaveLength(2);

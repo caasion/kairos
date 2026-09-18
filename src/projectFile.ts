@@ -66,7 +66,7 @@ function parseFrontmatter(content: string): RawFrontmatter | null {
 	if (raw === null) return null;
 	try {
 		const value = parseYaml(raw) as unknown;
-		return value && typeof value === "object" ? (value as RawFrontmatter) : {};
+		return value && typeof value === "object" ? (value) : {};
 	} catch {
 		return null; // malformed YAML — treat as not-a-Kairos-file
 	}
@@ -129,7 +129,7 @@ export function parseStatus(v: unknown): StatusRecord[] {
 		if (!LIFECYCLE.has(status)) continue;
 		const note = typeof rawNote === "string" ? rawNote.trim() : "";
 		records.push({
-			date: date as ISODate,
+			date: date,
 			status,
 			...(note ? { note } : {}),
 		});
@@ -146,7 +146,7 @@ export function parseStatus(v: unknown): StatusRecord[] {
 function localTodayISO(): ISODate {
 	const d = new Date();
 	const p = (n: number) => String(n).padStart(2, "0");
-	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` as ISODate;
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 /**

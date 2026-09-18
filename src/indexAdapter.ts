@@ -117,7 +117,7 @@ export class IndexAdapter {
 
 	private async removePath(app: App, path: string): Promise<void> {
 		const file = app.vault.getAbstractFileByPath(path);
-		if (file instanceof TFile) await app.vault.delete(file);
+		if (file instanceof TFile) await app.fileManager.trashFile(file);
 	}
 
 	// ── cold start ──
@@ -147,8 +147,16 @@ export class IndexAdapter {
 			});
 		};
 
-		this.track(app.vault.on("create", (f) => onChange(f as TFile)));
-		this.track(app.vault.on("modify", (f) => onChange(f as TFile)));
+		this.track(
+			app.vault.on("create", (f) => {
+				if (f instanceof TFile) onChange(f);
+			}),
+		);
+		this.track(
+			app.vault.on("modify", (f) => {
+				if (f instanceof TFile) onChange(f);
+			}),
+		);
 		this.track(
 			app.vault.on("delete", (f) => {
 				if (f instanceof TFile) this.index.onFileDeleted(f.path);

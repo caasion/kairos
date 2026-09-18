@@ -3,11 +3,11 @@ import Kairos from './main';
 import { DEFAULT_HEADING, normalizeHeading } from './section';
 
 export interface KairosSettings {
-	/** First hour shown in the Day timeline (0–23). */
+	/** First hour shown in the day timeline (0–23). */
 	timelineStartHour: number;
-	/** Last hour shown in the Day timeline (1–24, must exceed start). */
+	/** Last hour shown in the day timeline (1–24, must exceed start). */
 	timelineEndHour: number;
-	/** Pixels per hour in the Day timeline. */
+	/** Pixels per hour in the day timeline. */
 	timelineHourHeight: number;
 
 	/**
@@ -73,7 +73,7 @@ export class KairosSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Timeline start hour')
-			.setDesc('First hour shown in the Day view (0–23).')
+			.setDesc('First hour shown in the day view (0–23).')
 			.addSlider((slider) =>
 				slider
 					.setLimits(0, 23, 1)
@@ -93,7 +93,7 @@ export class KairosSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Timeline end hour')
-			.setDesc('Last hour shown in the Day view (1–24).')
+			.setDesc('Last hour shown in the day view (1–24).')
 			.addSlider((slider) =>
 				slider
 					.setLimits(1, 24, 1)
@@ -113,7 +113,7 @@ export class KairosSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Timeline hour height')
-			.setDesc('Pixels per hour in the Day view.')
+			.setDesc('Pixels per hour in the day view.')
 			.addSlider((slider) =>
 				slider
 					.setLimits(30, 120, 5)
@@ -130,7 +130,7 @@ export class KairosSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Days before today')
 			.setDesc(
-				'How many days before today the Week view spans by default (1–7).',
+				'How many days before today the week view spans by default (1–7).',
 			)
 			.addSlider((slider) =>
 				slider
@@ -146,7 +146,7 @@ export class KairosSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Days after today')
 			.setDesc(
-				'How many days after today the Week view spans by default (1–7).',
+				'How many days after today the week view spans by default (1–7).',
 			)
 			.addSlider((slider) =>
 				slider

@@ -21,7 +21,11 @@ export default defineConfig(
 			},
 			parserOptions: {
 				projectService: {
-					allowDefaultProject: ['eslint.config.mts', 'manifest.json'],
+					allowDefaultProject: [
+						'eslint.config.mts',
+						'manifest.json',
+						'vitest.config.mts',
+					],
 				},
 				tsconfigRootDir: import.meta.dirname,
 				extraFileExtensions: ['.json'],
@@ -29,4 +33,12 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		// The engine runs in plain Node under vitest and must not reference
+		// `window`. Its debounce timers live for the plugin's lifetime and are
+		// cleared in dispose(), so popout-window compatibility does not apply.
+		// Auto-fixing these breaks both the unit tests and tsc's timer typing.
+		files: ['src/index.ts'],
+		rules: { 'obsidianmd/prefer-window-timers': 'off' },
+	},
 );

@@ -108,7 +108,7 @@ describe("effectiveStatus", () => {
 	const hist = (
 		...rs: [string, "active" | "inactive" | "archived"][]
 	): StatusRecord[] =>
-		rs.map(([date, status]) => ({ date: date as StatusRecord["date"], status }));
+		rs.map(([date, status]) => ({ date: date, status }));
 
 	it("defaults to active with no records", () => {
 		expect(effectiveStatus([], "2026-08-04")).toBe("active");
@@ -143,7 +143,7 @@ describe("effectiveRecord", () => {
 		date: string,
 		status: "active" | "inactive" | "archived",
 		note?: string,
-	): StatusRecord => ({ date: date as StatusRecord["date"], status, ...(note ? { note } : {}) });
+	): StatusRecord => ({ date: date, status, ...(note ? { note } : {}) });
 
 	it("defaults to active with no bounds and no note when history is empty", () => {
 		expect(effectiveRecord([], "2026-08-04")).toEqual({
@@ -356,7 +356,7 @@ describe("appendStatus", () => {
 
 describe("normalizeHistory", () => {
 	const r = (date: string, status: "active" | "inactive" | "archived", note?: string) =>
-		({ date, status, ...(note ? { note } : {}) }) as StatusRecord;
+		({ date, status, ...(note ? { note } : {}) });
 
 	it("sorts chronologically", () => {
 		expect(normalizeHistory([r("2026-03-01", "active"), r("2026-01-01", "inactive")])).toEqual([

@@ -67,7 +67,7 @@ export function historyToSpans(
 		const rec = sorted[i]!;
 		const next = sorted[i + 1];
 		const open = next === undefined;
-		const rawEnd = open ? today : next!.date;
+		const rawEnd = open ? today : next.date;
 		// Never let end precede start (future-dated trailing record).
 		const end = rawEnd < rec.date ? rec.date : rawEnd;
 		spans.push({
