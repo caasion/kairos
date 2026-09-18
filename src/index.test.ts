@@ -23,7 +23,7 @@ import {
 	type IndexPaths,
 } from "./index";
 import { parseSchedule } from "./parser";
-import { addTaskToUnscheduled } from "./writer";
+import { addTaskToUnscheduled, makeBlock } from "./writer";
 import type { BacklogEntry } from "./types";
 
 const PATHS: IndexPaths = {
@@ -335,6 +335,127 @@ describe("KairosIndex", () => {
 		expect(file).toContain("- 09:00 - 10:00 New");
 		expect(file).not.toContain("# My Day");
 		expect(file).not.toContain("Old");
+	});
+
+	// Issue #4, end to end: the day's first timed block must land in the Schedule
+	// section beside the Unscheduled one, never over it. The writer-level tests
+	// pin the block identities; these pin what actually reaches the file.
+	//
+	// A small file harness per test, because these read the note back before
+	// splicing and the shared `deps` above reads a constant empty string.
+	function fileDeps(initial: string): { deps: IndexDeps; read: () => string } {
+		let file = initial;
+		return {
+			deps: {
+				read: async () => file,
+				write: async (_path, content) => {
+					file = content;
+				},
+				rename: async () => {},
+				remove: async () => {},
+				now: () => 1000,
+				settings: PATHS,
+				writeDebounceMs: 500,
+			},
+			read: () => file,
+		};
+	}
+
+	it("keeps the Unscheduled section when the day's first block is created", async () => {
+		const existing =
+			"---\ntags: [daily]\n---\n\n## Schedule\n\n- Unscheduled\n\t- [ ] Buy milk\n\t- [ ] Call bank\n\n## Notes\n\nkeep me\n";
+		const { deps: fd, read } = fileDeps(existing);
+		const idx = new KairosIndex(fd);
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.seed([{ path, content: existing, mtime: 1 }]);
+
+		const before = get(idx.day(date))!.blocks;
+		expect(before.map((b) => b.title)).toEqual(["Unscheduled"]);
+
+		idx.applyDayEdit(date, path, [
+			...before,
+			makeBlock({ start: 540, end: 600 }, path, "Deep work"),
+		]);
+		await vi.advanceTimersByTimeAsync(500);
+
+		const file = read();
+		expect(file).toContain("- 09:00 - 10:00 Deep work");
+		// The inbox survives with both entries, and there is still only one of it.
+		expect(file.match(/- Unscheduled$/gm)).toHaveLength(1);
+		expect(file).toContain("\t- [ ] Buy milk");
+		expect(file).toContain("\t- [ ] Call bank");
+		// Reparsing the written note gives back both blocks, each on its own real
+		// line: the block was added to the section, not written over the inbox.
+		const back = parseSchedule(file, path);
+		expect(back.map((b) => b.title).sort()).toEqual([
+			"Deep work",
+			"Unscheduled",
+		]);
+		expect(new Set(back.map((b) => b.source.line)).size).toBe(2);
+		expect(back.find((b) => b.title === "Unscheduled")?.tasks).toHaveLength(2);
+		// And nothing outside the section moved.
+		expect(file).toContain("tags: [daily]");
+		expect(file).toContain("## Notes");
+		expect(file).toContain("keep me");
+	});
+
+	it("keeps the day's only block when the Unscheduled section is created", async () => {
+		// The reverse order: a day that has a block but no inbox, into which the
+		// Grid files its first task.
+		const existing = note("- 09:00 - 10:00 Deep work");
+		const { deps: fd, read } = fileDeps(existing);
+		const idx = new KairosIndex(fd);
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.seed([{ path, content: existing, mtime: 1 }]);
+
+		const before = get(idx.day(date))!.blocks;
+		idx.applyDayEdit(
+			date,
+			path,
+			addTaskToUnscheduled(before, path, "Buy milk", {
+				kind: "project",
+				id: "Alpha",
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(500);
+
+		const file = read();
+		expect(file).toContain("- 09:00 - 10:00 Deep work");
+		expect(file).toContain("- Unscheduled");
+		expect(file).toContain("\t- [ ] Buy milk [Alpha]");
+
+		// Reparsing what was written gives back both blocks, each on its own real
+		// line — the draft lines are gone and nothing was merged.
+		const back = parseSchedule(file, path);
+		expect(back.map((b) => b.title)).toEqual(["Deep work", "Unscheduled"]);
+		expect(new Set(back.map((b) => b.source.line)).size).toBe(2);
+		expect(back.every((b) => b.source.line >= 0)).toBe(true);
+	});
+
+	it("writes a first block and a first inbox into a day with no note", async () => {
+		// Nothing on disk at all: every object involved is unsaved, so this is the
+		// case where two placeholder lines could collide undetected.
+		const { deps: fd, read } = fileDeps("");
+		const idx = new KairosIndex(fd);
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.seed([]);
+
+		const day = addTaskToUnscheduled(
+			[makeBlock({ start: 540, end: 600 }, path, "Deep work")],
+			path,
+			"Buy milk",
+			undefined,
+		);
+		idx.applyDayEdit(date, path, day);
+		await vi.advanceTimersByTimeAsync(500);
+
+		const back = parseSchedule(read(), path);
+		expect(back.map((b) => b.title)).toEqual(["Deep work", "Unscheduled"]);
+		expect(back[0]?.time).toEqual({ start: 540, end: 600 });
+		expect(back[1]?.tasks.map((t) => t.text)).toEqual(["Buy milk"]);
 	});
 
 	it("drops an echo: a modify matching the schedule notifies no one", () => {
