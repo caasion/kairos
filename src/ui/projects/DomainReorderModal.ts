@@ -12,6 +12,11 @@
 // Styling lives in styles.css under `.kairos-reorder-*` (Obsidian's lint rule
 // forbids inline element.style assignments); only the per-domain color swatch,
 // which is data-driven, is set via a CSS custom property.
+//
+// Dragging is on Pointer Events rather than HTML5 drag-and-drop, which never
+// fires on touch. The list is not re-ordered mid-drag: re-rendering would
+// destroy the element holding the pointer capture and strand the gesture, so a
+// drop target is marked while dragging and the move is committed on pointerup.
 
 import { App, Modal, Setting } from "obsidian";
 import type { Domain } from "../../types";
@@ -20,6 +25,8 @@ export class DomainReorderModal extends Modal {
 	private order: Domain[];
 	private readonly onSave: (ordered: Domain[]) => void;
 	private listEl!: HTMLElement;
+	private dragFrom: number | null = null;
+	private dragTo: number | null = null;
 
 	constructor(app: App, domains: Domain[], onSave: (ordered: Domain[]) => void) {
 		super(app);
@@ -65,7 +72,6 @@ export class DomainReorderModal extends Modal {
 
 		this.order.forEach((domain, i) => {
 			const row = this.listEl.createDiv({ cls: "kairos-reorder-row" });
-			row.setAttr("draggable", "true");
 
 			const swatch = row.createSpan({ cls: "kairos-reorder-swatch" });
 			swatch.style.setProperty("--swatch", domain.color || "var(--text-faint)");
@@ -80,17 +86,62 @@ export class DomainReorderModal extends Modal {
 			down.onclick = () => this.move(i, i + 1);
 
 			// ── Drag to reorder ──
-			row.addEventListener("dragstart", (ev) => {
-				ev.dataTransfer?.setData("text/plain", String(i));
+			row.addEventListener("pointerdown", (ev) => {
+				// Let the arrow buttons keep their own click handling.
+				if (ev.button !== 0 || (ev.target as HTMLElement).closest("button")) return;
+				ev.preventDefault();
+				this.dragFrom = i;
+				this.dragTo = i;
+				row.setPointerCapture(ev.pointerId);
 				row.addClass("is-dragging");
 			});
-			row.addEventListener("dragend", () => row.removeClass("is-dragging"));
-			row.addEventListener("dragover", (ev) => ev.preventDefault());
-			row.addEventListener("drop", (ev) => {
-				ev.preventDefault();
-				const from = Number(ev.dataTransfer?.getData("text/plain"));
-				if (!Number.isNaN(from) && from !== i) this.move(from, i);
+
+			row.addEventListener("pointermove", (ev) => {
+				if (this.dragFrom === null) return;
+				const to = this.rowIndexAt(ev.clientY);
+				if (to === null || to === this.dragTo) return;
+				this.dragTo = to;
+				this.markDropTarget(to);
 			});
+
+			const endDrag = (ev: PointerEvent) => {
+				if (this.dragFrom === null) return;
+				const from = this.dragFrom;
+				const to = this.dragTo;
+				this.dragFrom = null;
+				this.dragTo = null;
+				if (row.hasPointerCapture(ev.pointerId)) {
+					row.releasePointerCapture(ev.pointerId);
+				}
+				row.removeClass("is-dragging");
+				this.clearDropTarget();
+				// renderList() runs inside move(), so this is the single re-render.
+				if (to !== null && to !== from) this.move(from, to);
+			};
+			row.addEventListener("pointerup", endDrag);
+			row.addEventListener("pointercancel", endDrag);
+		});
+	}
+
+	/** Index of the row under `clientY`, or null when the pointer is off the list. */
+	private rowIndexAt(clientY: number): number | null {
+		const rows = Array.from(this.listEl.children);
+		for (let i = 0; i < rows.length; i++) {
+			const rect = rows[i]?.getBoundingClientRect();
+			if (rect && clientY >= rect.top && clientY <= rect.bottom) return i;
+		}
+		return null;
+	}
+
+	private markDropTarget(index: number) {
+		Array.from(this.listEl.children).forEach((el, i) => {
+			el.toggleClass("is-drop-target", i === index);
+		});
+	}
+
+	private clearDropTarget() {
+		Array.from(this.listEl.children).forEach((el) => {
+			el.removeClass("is-drop-target");
 		});
 	}
 

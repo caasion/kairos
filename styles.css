@@ -26,9 +26,15 @@ If your plugin does not need CSS, delete this file.
 	border-radius: 6px;
 	background: var(--background-primary);
 	cursor: grab;
+	/* The rows own the drag gesture, so touch must not scroll the modal instead. */
+	touch-action: none;
 }
 .kairos-reorder-row.is-dragging {
 	opacity: 0.5;
+	cursor: grabbing;
+}
+.kairos-reorder-row.is-drop-target {
+	border-color: var(--interactive-accent);
 }
 .kairos-reorder-swatch {
 	width: 10px;
