@@ -20,7 +20,6 @@
 		ensureNoteForDate,
 		isoFromDate,
 		notePathForDate,
-		shiftISO,
 		todayISO,
 	} from "../../dayNote";
 	import { surfacedOn } from "../../backlogModel";
@@ -43,6 +42,13 @@
 		minutesToOffset,
 		visibleHours,
 	} from "./layout";
+	import {
+		anchorFor,
+		clampSpan,
+		stepAnchor,
+		windowDates,
+		windowWidth,
+	} from "./weekWindow";
 
 	interface Props {
 		app: App;
@@ -71,50 +77,40 @@
 	// ── The week window ──
 	// Default window is [today − before, today + after] from settings. It's still
 	// navigable: `anchor` is the window's first day; arrows shift it, "Today"
-	// snaps back to the settings-defined window around today.
-
-	function clampSpan(n: number): number {
-		return Math.max(1, Math.min(7, Math.floor(n)));
-	}
+	// snaps back to the settings-defined window around today. All of the day
+	// arithmetic lives in weekWindow.ts so it can be unit-tested at every span.
 
 	const before = $derived(clampSpan(settings.weekDaysBefore));
 	const after = $derived(clampSpan(settings.weekDaysAfter));
-	const windowSize = $derived(before + after + 1); // inclusive of today
+	const windowSize = $derived(windowWidth(before, after)); // inclusive of today
 
-	// The window's first day. Initialized to the today-relative default; arrows
-	// move it freely from there.
-	let anchor = $state<ISODate>(shiftISO(todayISO(), -clampSpan(1)));
+	// The window's first day, pinned only once the user navigates. While it's
+	// null we're on the settings-defined default, which is *derived* from today
+	// and the current span rather than stored — so the view can never open on a
+	// window computed from a span it no longer has.
+	let pinnedAnchor = $state<ISODate | null>(null);
+	const atDefault = $derived(pinnedAnchor === null);
+	const anchor = $derived(pinnedAnchor ?? anchorFor(todayISO(), before));
 
-	// Recompute the default anchor whenever the span settings change, but only
-	// while we're still showing the default window (so a user who navigated away
-	// isn't yanked back by a settings tweak).
-	let atDefault = $state(true);
-	$effect(() => {
-		if (atDefault) anchor = shiftISO(todayISO(), -before);
-	});
+	const dates = $derived(windowDates(anchor, windowSize));
 
-	const dates = $derived(
-		Array.from({ length: windowSize }, (_, i) => shiftISO(anchor, i)),
-	);
-
-	function stepWindow(deltaDays: number) {
-		atDefault = false;
-		anchor = shiftISO(anchor, deltaDays);
+	// `steps` counts whole windows, so the next window starts the day after this
+	// one ends: nothing is skipped and nothing is shown twice.
+	function stepWindow(steps: number) {
+		pinnedAnchor = stepAnchor(anchor, windowSize, steps);
 		closeAssocPicker();
 		closeBlockPicker();
 	}
 
 	function goToday() {
-		atDefault = true;
-		anchor = shiftISO(todayISO(), -before);
+		pinnedAnchor = null;
 		closeAssocPicker();
 		closeBlockPicker();
 	}
 
 	function jumpTo(date: ISODate) {
-		atDefault = false;
-		// Center the jumped date within the window as best we can.
-		anchor = shiftISO(date, -before);
+		// Place the jumped-to date where today sits in the default window.
+		pinnedAnchor = anchorFor(date, before);
 		showCalendar = false;
 		closeAssocPicker();
 		closeBlockPicker();
@@ -562,7 +558,7 @@
 				class="icon-btn nav-btn"
 				onclick={(e) => {
 					e.stopPropagation();
-					stepWindow(-windowSize);
+					stepWindow(-1);
 				}}
 				aria-label="Previous window"
 			>
@@ -584,7 +580,7 @@
 				class="icon-btn nav-btn"
 				onclick={(e) => {
 					e.stopPropagation();
-					stepWindow(windowSize);
+					stepWindow(1);
 				}}
 				aria-label="Next window"
 			>
