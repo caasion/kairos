@@ -234,7 +234,7 @@
 	:global(.row-label-card) .rlc-status-badge {
 		font-size: 0.7em;
 		font-weight: var(--font-semibold);
-		text-transform: capitalizee;
+		text-transform: capitalize;
 		letter-spacing: 0.5px;
 		padding: 1px var(--size-4-2);
 		border-radius: var(--radius-s);
