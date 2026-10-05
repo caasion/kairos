@@ -17,7 +17,7 @@
 // kept verbatim where it isn't (an unknown state, an unreadable key) — see
 // `parseStatusWithAnomalies`. Unknown entries never drive derived state and are
 // never deleted. The load-time pass that rewrites fixable files lives in the
-// vault adapter and calls `normalizeStatusMap`.
+// vault adapter and writes them back through the index's ordinary edit path.
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {
@@ -243,21 +243,6 @@ export function isFixable(a: StatusAnomaly): boolean {
 /** Whether `entity`'s file holds status entries a write would canonicalise. */
 export function needsNormalizing(entity: Project | Domain): boolean {
 	return (entity.anomalies ?? []).some(isFixable);
-}
-
-/**
- * Rewrite a raw `status:` map into canonical form: fixable entries become
- * object-form records under real dates, unfixable ones are carried over
- * untouched. Returns null when the map holds nothing fixable, so a clean file is
- * never written. Idempotent: the output parses with no fixable anomalies.
- *
- * Feeds the load-time pass (`app.fileManager.processFrontMatter`), which only
- * swaps the `status` key and leaves the rest of the frontmatter alone.
- */
-export function normalizeStatusMap(v: unknown): Record<string, unknown> | null {
-	const { records, anomalies } = parseStatusWithAnomalies(v);
-	if (!anomalies.some(isFixable)) return null;
-	return statusMap(records, anomalies);
 }
 
 /**

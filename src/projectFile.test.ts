@@ -5,7 +5,6 @@ import {
 	editStatusRecord,
 	isFixable,
 	needsNormalizing,
-	normalizeStatusMap,
 	parseStatusWithAnomalies,
 	effectiveRecord,
 	effectiveStatus,
@@ -875,49 +874,3 @@ describe("writing a file Kairos didn't write (#27, #28)", () => {
 	});
 });
 
-describe("normalizeStatusMap (load-time pass)", () => {
-	it("rewrites a bare-string entry into the object form", () => {
-		expect(normalizeStatusMap({ "2026-08-04": "active" })).toEqual({
-			"2026-08-04": { status: "active" },
-		});
-	});
-
-	it("pads a near-miss date key", () => {
-		expect(
-			normalizeStatusMap({ "2026-8-4": { status: "inactive", why: "travel" } }),
-		).toEqual({ "2026-08-04": { status: "inactive", why: "travel" } });
-	});
-
-	it("preserves unknown states and unreadable keys verbatim alongside the fix", () => {
-		const raw = { status: "draft", note: "sketching" };
-		expect(
-			normalizeStatusMap({ "2026-08-04": "active", "2026-08-10": raw, whenever: "x" }),
-		).toEqual({
-			"2026-08-04": { status: "active" },
-			"2026-08-10": raw,
-			whenever: "x",
-		});
-	});
-
-	it("returns null for a clean map, so the file is never written", () => {
-		expect(
-			normalizeStatusMap({
-				"2026-07-18": { status: "active", note: "three sessions a week" },
-			}),
-		).toBeNull();
-	});
-
-	it("returns null when the only oddities are unfixable", () => {
-		expect(normalizeStatusMap({ "2026-07-23": "draft", whenever: "active" })).toBeNull();
-	});
-
-	it("returns null for a missing status map", () => {
-		expect(normalizeStatusMap(undefined)).toBeNull();
-	});
-
-	it("is idempotent", () => {
-		const once = normalizeStatusMap({ "2026-8-4": "active", "2026-08-10": "draft" });
-		expect(once).not.toBeNull();
-		expect(normalizeStatusMap(once)).toBeNull();
-	});
-});
