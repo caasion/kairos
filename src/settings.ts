@@ -1,67 +1,24 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
+import type { SettingDefinition, SettingDefinitionItem } from 'obsidian';
 import Kairos from './main';
-import { DEFAULT_HEADING, normalizeHeading } from './section';
+import { normalizeHeading } from './section';
+import {
+	SETTING_DEFINITIONS,
+	type KairosSettingKey,
+} from './settingDefinitions';
 
-export interface KairosSettings {
-	/** First hour shown in the day timeline (0–23). */
-	timelineStartHour: number;
-	/** Last hour shown in the day timeline (1–24, must exceed start). */
-	timelineEndHour: number;
-	/** Pixels per hour in the day timeline. */
-	timelineHourHeight: number;
+export { DEFAULT_SETTINGS } from './settingDefinitions';
+export type { KairosSettings } from './settingDefinitions';
 
-	/**
-	 * Week view window, expressed as a span around today. The default window the
-	 * Week view opens on is [today − weekDaysBefore, today + weekDaysAfter],
-	 * inclusive; each side is 1–7 days. The view is still navigable past this
-	 * default (arrows shift the window; "Today" snaps back to it).
-	 */
-	weekDaysBefore: number;
-	weekDaysAfter: number;
-
-	/** Vault folder holding project files. */
-	projectsFolder: string;
-	/** Vault folder holding domain files. */
-	domainsFolder: string;
-	/** Vault path to the single global backlog file. */
-	backlogPath: string;
-
-	/**
-	 * The daily-note section heading Kairos reads and writes, given verbatim with
-	 * its hashtags so the user controls both the title and the heading level
-	 * (e.g. "## Schedule", "# My Day", "### Plan").
-	 */
-	scheduleHeading: string;
-
-	/**
-	 * Open the association picker right after a new timeline block is created, so
-	 * a block is filed the moment it exists instead of being left unassociated.
-	 * Off by default — creating a block is a fast, repeated gesture and a popup
-	 * on every one gets in the way unless you asked for it.
-	 */
-	askAssocOnBlockCreate: boolean;
-	/**
-	 * The same prompt after a new backlog item is created, but only when the
-	 * item's association isn't already implied. Creating inside a project or
-	 * domain group answers the question by where you created it.
-	 */
-	askAssocOnBacklogCreate: boolean;
-}
-
-export const DEFAULT_SETTINGS: KairosSettings = {
-	timelineStartHour: 6,
-	timelineEndHour: 24,
-	timelineHourHeight: 60,
-	weekDaysBefore: 1,
-	weekDaysAfter: 5,
-	projectsFolder: 'Projects',
-	domainsFolder: 'Domains',
-	backlogPath: 'Backlog.md',
-	scheduleHeading: '## Schedule',
-	askAssocOnBlockCreate: false,
-	askAssocOnBacklogCreate: false,
-};
-
+/**
+ * The settings tab, rendered from the one array in settingDefinitions.ts.
+ *
+ * Obsidian 1.13 and later render the tab declaratively from
+ * `getSettingDefinitions()`, which also puts every setting in the settings
+ * search. Older builds never call that method and fall back to `display()`,
+ * which walks the same array. Both paths write through `setControlValue`, so a
+ * setting behaves identically whichever one rendered it.
+ */
 export class KairosSettingTab extends PluginSettingTab {
 	plugin: Kairos;
 
@@ -70,200 +27,203 @@ export class KairosSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return SETTING_DEFINITIONS;
+	}
+
+	/**
+	 * Every write from either render path. The inherited implementation mutates
+	 * and persists `plugin.settings` directly, which would bypass
+	 * `saveSettings()` and leave open Day/Week/Grid views showing stale settings;
+	 * routing through `updateSettings` republishes the store so they re-derive.
+	 * The per-key normalisation, the paired-hour clamp and the index reseed live
+	 * here for the same reason: they have to happen on both Obsidian versions.
+	 */
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		switch (key as KairosSettingKey) {
+			case 'timelineStartHour': {
+				const hour = Number(value);
+				await this.plugin.updateSettings((s) => {
+					s.timelineStartHour = hour;
+					if (s.timelineEndHour <= hour) s.timelineEndHour = hour + 1;
+				});
+				return;
+			}
+			case 'timelineEndHour': {
+				const hour = Number(value);
+				await this.plugin.updateSettings((s) => {
+					s.timelineEndHour = hour;
+					if (s.timelineStartHour >= hour)
+						s.timelineStartHour = hour - 1;
+				});
+				return;
+			}
+			case 'timelineHourHeight': {
+				const height = Number(value);
+				await this.plugin.updateSettings((s) => {
+					s.timelineHourHeight = height;
+				});
+				return;
+			}
+			case 'weekDaysBefore': {
+				const days = Number(value);
+				await this.plugin.updateSettings((s) => {
+					s.weekDaysBefore = days;
+				});
+				return;
+			}
+			case 'weekDaysAfter': {
+				const days = Number(value);
+				await this.plugin.updateSettings((s) => {
+					s.weekDaysAfter = days;
+				});
+				return;
+			}
+			case 'scheduleHeading': {
+				// Store the canonical form; an empty/invalid entry falls back to
+				// the default so the engine always has a usable heading.
+				const next = normalizeHeading(String(value));
+				// Typing fires per keystroke and the reseed below is expensive,
+				// so only act when the canonical heading actually moved.
+				if (next === this.plugin.settings.scheduleHeading) return;
+				await this.plugin.updateSettings((s) => {
+					s.scheduleHeading = next;
+				});
+				// Days already in memory were parsed under the old heading;
+				// rebuild the index so open views re-parse under the new one.
+				await this.plugin.indexAdapter.reseed();
+				return;
+			}
+			case 'projectsFolder': {
+				const folder = normalizeFolder(String(value));
+				await this.plugin.updateSettings((s) => {
+					s.projectsFolder = folder;
+				});
+				return;
+			}
+			case 'domainsFolder': {
+				const folder = normalizeFolder(String(value));
+				await this.plugin.updateSettings((s) => {
+					s.domainsFolder = folder;
+				});
+				return;
+			}
+			case 'backlogPath': {
+				const path = normalizePath(String(value));
+				await this.plugin.updateSettings((s) => {
+					s.backlogPath = path;
+				});
+				return;
+			}
+			case 'askAssocOnBlockCreate': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.askAssocOnBlockCreate = on;
+				});
+				return;
+			}
+			case 'askAssocOnBacklogCreate': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.askAssocOnBacklogCreate = on;
+				});
+				return;
+			}
+		}
+		// Not a key this tab describes. Store it anyway rather than dropping the
+		// user's change, still through the one write path.
+		await this.plugin.updateSettings((s) => {
+			(s as unknown as Record<string, unknown>)[key] = value;
+		});
+	}
+
+	/**
+	 * Fallback renderer for Obsidian below 1.13.0, which has no declarative
+	 * settings API. It emits the same settings, in the same order, from the same
+	 * array. Delete this once the minimum app version reaches 1.13.0.
+	 */
 	display(): void {
 		const { containerEl } = this;
 
 		containerEl.empty();
+		this.renderDefinitions(containerEl, SETTING_DEFINITIONS);
+	}
 
-		new Setting(containerEl)
-			.setName('Timeline start hour')
-			.setDesc('First hour shown in the day view (0–23).')
-			.addSlider((slider) =>
-				slider
-					.setLimits(0, 23, 1)
-					.setValue(this.plugin.settings.timelineStartHour)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.timelineStartHour = value;
-						if (
-							this.plugin.settings.timelineEndHour <=
-							value
-						) {
-							this.plugin.settings.timelineEndHour = value + 1;
-						}
-						await this.plugin.saveSettings();
-					}),
+	private renderDefinitions(
+		containerEl: HTMLElement,
+		items: SettingDefinitionItem<KairosSettingKey>[],
+	): void {
+		for (const item of items) {
+			if ('type' in item) {
+				if (item.type !== 'group') {
+					throw new Error(
+						`Kairos settings: display() cannot render a "${item.type}" definition`,
+					);
+				}
+				if (item.heading) {
+					new Setting(containerEl).setName(item.heading).setHeading();
+				}
+				this.renderDefinitions(containerEl, item.items ?? []);
+				continue;
+			}
+			this.renderDefinition(containerEl, item);
+		}
+	}
+
+	private renderDefinition(
+		containerEl: HTMLElement,
+		def: SettingDefinition<KairosSettingKey>,
+	): void {
+		const control = def.control;
+		if (!control) {
+			throw new Error(
+				`Kairos settings: display() cannot render "${def.name}" without a control`,
 			);
+		}
 
-		new Setting(containerEl)
-			.setName('Timeline end hour')
-			.setDesc('Last hour shown in the day view (1–24).')
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 24, 1)
-					.setValue(this.plugin.settings.timelineEndHour)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.timelineEndHour = value;
-						if (
-							this.plugin.settings.timelineStartHour >=
-							value
-						) {
-							this.plugin.settings.timelineStartHour = value - 1;
-						}
-						await this.plugin.saveSettings();
-					}),
-			);
+		const setting = new Setting(containerEl).setName(def.name);
+		if (def.desc) setting.setDesc(def.desc);
 
-		new Setting(containerEl)
-			.setName('Timeline hour height')
-			.setDesc('Pixels per hour in the day view.')
-			.addSlider((slider) =>
-				slider
-					.setLimits(30, 120, 5)
-					.setValue(this.plugin.settings.timelineHourHeight)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.timelineHourHeight = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		const current = this.plugin.settings[control.key];
+		const commit = (value: unknown) => {
+			void this.setControlValue(control.key, value);
+		};
 
-		new Setting(containerEl).setName('Week view').setHeading();
-
-		new Setting(containerEl)
-			.setName('Days before today')
-			.setDesc(
-				'How many days before today the week view spans by default (1–7).',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 7, 1)
-					.setValue(this.plugin.settings.weekDaysBefore)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.weekDaysBefore = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Days after today')
-			.setDesc(
-				'How many days after today the week view spans by default (1–7).',
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 7, 1)
-					.setValue(this.plugin.settings.weekDaysAfter)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.weekDaysAfter = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl).setName('Daily notes').setHeading();
-
-		new Setting(containerEl)
-			.setName('Schedule section heading')
-			.setDesc(
-				'The daily-note heading Kairos reads and writes. Include the ' +
-					'hashtags so you control the heading level (e.g. "## Schedule").',
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_HEADING)
-					.setValue(this.plugin.settings.scheduleHeading)
-					.onChange(async (value) => {
-						// Store the canonical form; an empty/invalid entry falls back
-						// to the default so the engine always has a usable heading.
-						const next = normalizeHeading(value);
-						if (next === this.plugin.settings.scheduleHeading) return;
-						this.plugin.settings.scheduleHeading = next;
-						await this.plugin.saveSettings();
-						// Days already in memory were parsed under the old heading;
-						// rebuild the index so open views re-parse under the new one.
-						await this.plugin.indexAdapter.reseed();
-					}),
-			);
-
-		new Setting(containerEl).setName('Associations').setHeading();
-
-		new Setting(containerEl)
-			.setName('Ask when creating a block')
-			.setDesc(
-				'Open the association picker as soon as a new block is created ' +
-					'in the Day or Week view.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.askAssocOnBlockCreate)
-					.onChange(async (value) => {
-						this.plugin.settings.askAssocOnBlockCreate = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Ask when creating a backlog item')
-			.setDesc(
-				'Open the association picker as soon as a new item is added to ' +
-					'the backlog. Skipped when you create the item inside a ' +
-					'project or domain group, which already sets its association.',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.askAssocOnBacklogCreate)
-					.onChange(async (value) => {
-						this.plugin.settings.askAssocOnBacklogCreate = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl).setName('Folders').setHeading();
-
-		new Setting(containerEl)
-			.setName('Projects folder')
-			.setDesc('Vault folder holding project files.')
-			.addText((text) =>
-				text
-					.setPlaceholder('Projects')
-					.setValue(this.plugin.settings.projectsFolder)
-					.onChange(async (value) => {
-						this.plugin.settings.projectsFolder =
-							normalizeFolder(value);
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Domains folder')
-			.setDesc('Vault folder holding domain files.')
-			.addText((text) =>
-				text
-					.setPlaceholder('Domains')
-					.setValue(this.plugin.settings.domainsFolder)
-					.onChange(async (value) => {
-						this.plugin.settings.domainsFolder =
-							normalizeFolder(value);
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('Backlog file')
-			.setDesc('Vault path to the single global backlog file.')
-			.addText((text) =>
-				text
-					.setPlaceholder('Backlog.md')
-					.setValue(this.plugin.settings.backlogPath)
-					.onChange(async (value) => {
-						this.plugin.settings.backlogPath =
-							normalizePath(value);
-						await this.plugin.saveSettings();
-					}),
-			);
+		switch (control.type) {
+			case 'slider':
+				setting.addSlider((slider) =>
+					slider
+						.setLimits(control.min, control.max, control.step)
+						.setValue(Number(current))
+						// Lints as deprecated against 1.13 typings, where the
+						// value is always shown inline. This path only ever runs
+						// below 1.13, where a slider without it shows no value at
+						// all, so the call stays until display() goes away.
+						.setDynamicTooltip()
+						.onChange(commit),
+				);
+				break;
+			case 'text':
+				setting.addText((text) =>
+					text
+						.setPlaceholder(control.placeholder ?? '')
+						.setValue(String(current))
+						.onChange(commit),
+				);
+				break;
+			case 'toggle':
+				setting.addToggle((toggle) =>
+					toggle.setValue(Boolean(current)).onChange(commit),
+				);
+				break;
+			default:
+				// A control type was added to the definitions without teaching
+				// this renderer about it. Fail loudly rather than silently
+				// dropping the setting for everyone below 1.13.0.
+				throw new Error(
+					`Kairos settings: display() cannot render a "${control.type}" control`,
+				);
+		}
 	}
 }
 

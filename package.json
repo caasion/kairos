@@ -24,7 +24,7 @@
 		"eslint-plugin-obsidianmd": "^0.4.0",
 		"globals": "^17.6.0",
 		"jiti": "^2.6.1",
-		"obsidian": "latest",
+		"obsidian": "^1.13.1",
 		"svelte": "^5.56.8",
 		"svelte-check": "^4.7.3",
 		"svelte-preprocess": "^6.0.5",
