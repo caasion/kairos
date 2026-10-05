@@ -18,6 +18,7 @@
 	import { Menu } from "obsidian";
 	import type { Association, BacklogEntry } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
+	import { actionZone } from "../actions/actionZone";
 
 	interface Props {
 		entry: BacklogEntry;
@@ -86,10 +87,12 @@
 	class="nudge"
 	style={`--nudge-accent: ${accent};`}
 	title="Resurfaced backlog item — click the arrow to schedule it into this day"
+	use:actionZone
 >
-	<!-- Hover action bar, floating top-right over the row — mirrors the task
-	     row's action bar (revealed only on hover). Holds the snooze action. -->
-	<div class="nudge-actions">
+	<!-- Action bar, floating top-right over the row — mirrors the task row's
+	     action bar (woken from the top-right corner zone, see
+	     actions/actionZone.ts). Holds the snooze action. -->
+	<div class="nudge-actions kairos-action-bar">
 		<button
 			class="nudge-action"
 			title="Resurface later"
@@ -205,12 +208,8 @@
 		padding: 2px;
 		/* Blend into the tinted nudge background so it reads through cleanly. */
 		background: color-mix(in srgb, var(--nudge-accent) 10%, var(--background-primary));
-		opacity: 0;
-		transition: opacity 0.1s;
 		z-index: 2;
-	}
-	.nudge:hover .nudge-actions {
-		opacity: 0.96;
+		/* Shown/hidden by the shared .kairos-action-bar rules in styles.css. */
 	}
 
 	.nudge-action {

@@ -20,6 +20,7 @@
 	import type { Association, BacklogEntry, ISODate } from "../../types";
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
+	import { actionZone } from "../actions/actionZone";
 	import {
 		filterBySchedule,
 		groupBacklog,
@@ -368,7 +369,7 @@
 				{:else}
 					<ul class="entry-list">
 						{#each group.entries as entry (entry.source.line)}
-							<li class="entry-row">
+							<li class="entry-row" use:actionZone={{ anchor: "right" }}>
 								<div class="entry-main">
 									<span class="entry-bullet"></span>
 
@@ -397,9 +398,13 @@
 										</button>
 									{/if}
 
-								<!-- Hover action bar — overlaid on top of the (full-width) text,
-								     revealed on row hover, mirroring the task row's action bar. -->
-								<div class="entry-actions">
+								</div>
+								<!-- Action bar — overlaid on top of the (full-width) text,
+								     centred on the row's right edge. Woken from a triangle
+								     against that edge (see actions/actionZone.ts), mirroring
+								     the task row's action bar. A direct child of the row so
+								     the shared zone styles apply. -->
+								<div class="entry-actions kairos-action-bar">
 									<!-- Resurface date -->
 									<button
 										class="entry-action"
@@ -456,7 +461,6 @@
 										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 									</button>
 									</div>
-								</div>
 
 								<!-- Resurface date shown as a metadata line under the item,
 								     mirroring the task row's association line. A due date
@@ -750,9 +754,9 @@
 		text-overflow: ellipsis;
 	}
 
-	/* ── Hover action bar (resurface, associate, delete) ── */
-	/* Overlaid on top of the full-width text and revealed only on row hover,
-	   mirroring the task row's action bar (same background + opacity). */
+	/* ── Action bar (resurface, associate, delete) ── */
+	/* Overlaid on top of the full-width text, mirroring the task row's action
+	   bar (same background + opacity); woken by actions/actionZone.ts. */
 	.entry-actions {
 		position: absolute;
 		top: 50%;
@@ -765,13 +769,7 @@
 		padding: 2px;
 		border-radius: 4px;
 		background: var(--background-primary);
-		opacity: 0;
-		transition: opacity 0.1s;
-		pointer-events: none;
-	}
-	.entry-row:hover .entry-actions {
-		opacity: 0.96;
-		pointer-events: auto;
+		/* Shown/hidden by the shared .kairos-action-bar rules in styles.css. */
 	}
 	.entry-action {
 		display: flex;

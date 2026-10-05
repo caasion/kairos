@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionZoneWidth, inActionZone } from "./actionZone";
+import { actionZoneWidth, inActionZone } from "./actionZoneGeometry";
 
 describe("actionZoneWidth", () => {
 	it("is the rightmost 20% of a wide row", () => {
@@ -49,5 +49,36 @@ describe("inActionZone (top-right triangle)", () => {
 	it("is false outside the row", () => {
 		expect(inActionZone(710, 205, row, 90)).toBe(false);
 		expect(inActionZone(690, 195, row, 90)).toBe(false);
+	});
+});
+
+describe("inActionZone (right-edge triangle, bar centred vertically)", () => {
+	// Same 600×40 row: widest (120px, x ≥ 580) at the vertical middle y = 220,
+	// tapering to the right corners at the top and bottom edges.
+	const row = { top: 200, right: 700, width: 600, height: 40 };
+	const at = (x: number, y: number) => inActionZone(x, y, row, 90, undefined, "right");
+
+	it("is widest across the vertical middle", () => {
+		expect(at(580, 220)).toBe(true);
+		expect(at(579, 220)).toBe(false);
+	});
+
+	it("narrows symmetrically toward the top and bottom", () => {
+		// A quarter of the height from the middle: half as wide, x ≥ 640.
+		expect(at(640, 210)).toBe(true);
+		expect(at(640, 230)).toBe(true);
+		expect(at(639, 210)).toBe(false);
+		expect(at(639, 230)).toBe(false);
+	});
+
+	it("tapers to the corners", () => {
+		expect(at(700, 200)).toBe(true);
+		expect(at(690, 200)).toBe(false);
+		expect(at(690, 240)).toBe(false);
+	});
+
+	it("is false outside the row", () => {
+		expect(at(690, 241)).toBe(false);
+		expect(at(701, 220)).toBe(false);
 	});
 });
