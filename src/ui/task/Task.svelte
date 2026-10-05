@@ -174,8 +174,12 @@
 
 	function trackEdge(event: PointerEvent) {
 		if (event.pointerType !== "mouse" || !rowEl) return;
+		// Once over the bar itself, keep it: the triangle narrows below the top
+		// edge, and the bar's left buttons must stay reachable.
+		if (nearEdge && event.target instanceof Node && actionsEl?.contains(event.target)) return;
 		nearEdge = inActionZone(
 			event.clientX,
+			event.clientY,
 			rowEl.getBoundingClientRect(),
 			actionsEl?.offsetWidth ?? 0,
 		);
@@ -316,7 +320,8 @@
 	onpointerleave={() => (nearEdge = false)}
 >
 	<!-- Action bar, floating top-right over the row. Shown only while the
-	     pointer is near the row's right edge, not on any hover. -->
+	     pointer is in a triangle at the row's top-right corner (see
+	     actionZone.ts), not on any hover. -->
 	<div class="k-task-actions" class:shown={nearEdge} bind:this={actionsEl}>
 		<button
 			class="k-task-action"
