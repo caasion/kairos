@@ -31,6 +31,7 @@
 	import { nextDraftLine } from "../../draftLine";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import { autogrow, singleLine } from "../actions/autogrow";
 
 	interface BacklogFilter {
 		names: string[];
@@ -175,7 +176,8 @@
 	}
 	function finishEdit(entry: BacklogEntry, value: string) {
 		editingLine = null;
-		if (value !== entry.text) onSetText(entry, value);
+		const next = singleLine(value);
+		if (next !== entry.text) onSetText(entry, next);
 	}
 
 	// ── Association picker (parent-owned so it isn't clipped) ──
@@ -376,21 +378,28 @@
 										<!-- svelte-ignore a11y_autofocus -->
 										<!-- Styled to be indistinguishable from the static text
 										     (no box, no border) so editing feels like typing in
-										     place — same discipline as the task row. -->
-										<input
+										     place — same discipline as the task row. A growing
+										     textarea, so it wraps exactly as the two-line label
+										     did; Enter still commits. -->
+										<textarea
 											class="entry-input kairos-inline-input"
+											rows="1"
 											value={entry.text}
 											autofocus
+											use:autogrow
 											onclick={(e) => e.stopPropagation()}
 											onblur={(e) => finishEdit(entry, e.currentTarget.value)}
 											onkeydown={(e) => {
-												if (e.key === "Enter") e.currentTarget.blur();
+												if (e.key === "Enter") {
+													e.preventDefault();
+													e.currentTarget.blur();
+												}
 												if (e.key === "Escape") {
 													e.currentTarget.value = entry.text;
 													e.currentTarget.blur();
 												}
 											}}
-										/>
+										></textarea>
 									{:else}
 										<button class="entry-text" onclick={(e) => { e.stopPropagation(); startEdit(entry); }}>
 											<span class="entry-text-clamp">{entry.text}</span>

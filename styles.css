@@ -14,13 +14,24 @@ If your plugin does not need CSS, delete this file.
    Each component matches its label's font and padding; this strips the chrome
    Obsidian puts on every text input, which otherwise wins on specificity:
    a fixed `--input-height` (30px desktop, 40px mobile — the jump on edit),
-   the hover fill, the press ring, and mobile's `width: 100%`. */
+   the hover fill, the press ring, and mobile's `width: 100%`.
+   Where the label wraps (grid tasks, backlog items) the editor is a textarea
+   sized to its content by the autogrow action, so it wraps the same way. */
 input.kairos-inline-input {
 	height: auto;
 	min-height: 0;
 }
+textarea.kairos-inline-input {
+	display: block;
+	min-height: 0;
+	resize: none;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
 input[type].kairos-inline-input,
-input[type].kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
+textarea.kairos-inline-input,
+input[type].kairos-inline-input:is(:hover, :focus, :focus-visible, :active),
+textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
 	width: auto;
 	background: transparent;
 	border: none;
