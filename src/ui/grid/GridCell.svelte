@@ -182,18 +182,19 @@
 	{/each}
 
 	{#if allowCreate && !inactive}
-		<button class="grid-cell-add" title="Add task" onclick={onCreate}>
+		<button class="grid-cell-add" title="Add task" aria-label="Add task" onclick={onCreate}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-			<span>Task</span>
 		</button>
 	{/if}
 </div>
 
 <style>
 	.grid-cell {
+		/* Anchors the corner "+" (see .grid-cell-add). */
+		position: relative;
 		display: flex;
 		flex-direction: column;
-		min-height: 44px;
+		min-height: 32px;
 		padding: 4px;
 		gap: 1px;
 		min-width: 0;
@@ -209,9 +210,6 @@
 	   tasks and lay a faint hatch behind them (matching the empty-cell hatch) so
 	   the column reads as past context, not an editable slot. Pointer events on
 	   the tasks stay live so the user can still open/inspect them. */
-	.grid-cell.inactive {
-		position: relative;
-	}
 	.grid-cell.inactive .grid-cell-item {
 		opacity: 0.4;
 	}
@@ -234,22 +232,30 @@
 		opacity: 0.35;
 	}
 
-	/* The add affordance stays quiet until the cell is hovered, so a dense grid
-	   doesn't read as a wall of buttons. */
+	/* The add affordance floats in the cell's top-right corner, so it takes no
+	   room in the layout: a cell is only as tall as its tasks. It stays hidden
+	   until the cell is hovered, so a dense grid doesn't read as a wall of
+	   buttons. It sits under a hovered task's own action bar (z-index 2), so
+	   that bar wins where the two overlap. */
 	.grid-cell-add {
-		display: inline-flex;
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 1;
+		display: flex;
 		align-items: center;
-		gap: 4px;
-		margin-top: 2px;
-		padding: 2px 6px;
-		font-size: 11px;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		border: none;
+		border-radius: var(--radius-s);
 		color: var(--text-muted);
-		background: transparent;
-		border-radius: 5px;
+		background: var(--background-primary);
+		box-shadow: none;
 		cursor: pointer;
 		opacity: 0;
 		transition: opacity 0.1s;
-		box-shadow: none;
 	}
 
 	.grid-cell:hover .grid-cell-add {
@@ -262,8 +268,11 @@
 		background: var(--background-modifier-hover);
 	}
 
-	.grid-cell-add svg {
-		flex-shrink: 0;
+	/* Touch screens have no hover, so keep it faintly visible there. */
+	@media (hover: none) {
+		.grid-cell-add {
+			opacity: 0.45;
+		}
 	}
 
 	/* ── Nested-task block badge ── */
