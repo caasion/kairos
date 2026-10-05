@@ -120,6 +120,11 @@ interface Project {
   aliases: string[];
   description: string; // free-text blurb, shown inline on the projects page
   domain?: string; // at most one, by name
+  // `rollup: true` in frontmatter: the project is "not worth its own row" — in
+  // the Grid its tasks render on its domain's row, grouped under a header (#11).
+  // Absent means false; only meaningful when `domain` is set. Kept optional so a
+  // project that never had the flag never grows a `rollup: false` key.
+  rollup?: boolean;
   history: StatusRecord[];
   // Non-canonical `status:` entries found on parse. Absent when the file is
   // clean, so a parsed entity only carries the key when there is something to

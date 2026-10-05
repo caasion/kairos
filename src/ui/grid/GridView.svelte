@@ -4,7 +4,8 @@
 	// Layout: rows = associations (projects, then domains, then unassigned),
 	// columns = the visible days, cells = the tasks associated with that row on
 	// that day. Domains are always fully expanded — every child project row is
-	// always visible, no collapse state.
+	// always visible, no collapse state. A project flagged `rollup: true` (#11)
+	// has no row: its tasks render on its domain's row under a project header.
 	//
 	// Data comes from the index's reactive `grid(dates)` feed; the row model
 	// (buildRows / cellTasks) is pure and lives in gridModel.ts. This component
@@ -13,6 +14,7 @@
 	// writer transform and commits via `applyDayEdit`, exactly like the timeline.
 
 	import type { App } from "obsidian";
+	import { Menu } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Readable, Unsubscriber } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
@@ -44,11 +46,16 @@
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		buildRows,
-		cellTasks,
+		cellGroups,
 		dayStatus,
+		dropAssociation,
+		ownerRowKey,
+		rolledUpProjects,
 		rowAssociation,
+		type CellGroup,
 		type GridRow,
 	} from "../../gridModel";
+	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
@@ -175,8 +182,14 @@
 		return !nextIsChild;
 	}
 
-	function tasksFor(row: GridRow, day: GridDay): ResolvedTask[] {
-		return snapshot ? cellTasks(row, day.tasks, snapshot) : [];
+	// A cell's own tasks plus, on a domain row, its rolled-up projects' groups.
+	function cellFor(
+		row: GridRow,
+		day: GridDay,
+	): { own: ResolvedTask[]; groups: CellGroup[] } {
+		return snapshot
+			? cellGroups(row, day.tasks, snapshot)
+			: { own: [], groups: [] };
 	}
 
 	// The row's entity was inactive/archived on this day — the cell is read-only
@@ -200,15 +213,12 @@
 		return due.filter((e) => rowMatchesEntry(row, e));
 	}
 
+	// Same routing as tasks (`ownerRowKey`): canonical name, so an alias-tagged
+	// entry matches its row, and a rolled-up project's entry surfaces on its
+	// domain's row.
 	function rowMatchesEntry(row: GridRow, entry: BacklogEntry): boolean {
-		if (!entry.assoc) return row.kind === "unassigned";
-		if (row.kind === "unassigned") return false;
-		if (row.kind !== entry.assoc.kind) return false;
-		// Compare on canonical name so an alias-tagged entry matches its row.
-		const name = snapshot
-			? snapshot.resolve(entry.assoc).displayName || entry.assoc.id
-			: entry.assoc.id;
-		return name === row.name;
+		if (!snapshot) return false;
+		return ownerRowKey(entry.assoc, snapshot) === row.key;
 	}
 
 	function onNudgeInsert(entry: BacklogEntry, date: ISODate) {
@@ -303,6 +313,40 @@
 		);
 	}
 
+	// ── Row label context menu (#11) ──
+	// A project row offers the same project items as the Projects page (shared
+	// via projectMenu.ts): "Change domain", and — under a domain — "Show on
+	// domain's row". A rolled-up project has no row of its own, so the domain
+	// row's menu carries one submenu per rolled-up project with "Give its own
+	// row" and "Change domain". Writes go through projectActions → the index,
+	// which republishes, so the rows rebuild on their own.
+	function openRowMenu(row: GridRow, e: MouseEvent) {
+		if (!snapshot || row.kind === "unassigned") return;
+		const snap = snapshot;
+		const menu = new Menu();
+		if (row.kind === "project") {
+			const project = snap.projects.get(row.name);
+			if (!project) return;
+			addChangeDomainItem(menu, index, project, snap.domains.values());
+			addRollupItem(menu, index, project);
+		} else {
+			const domain = snap.domains.get(row.name);
+			const rolled = domain ? rolledUpProjects(domain, snap) : [];
+			if (rolled.length === 0) return;
+			for (const project of rolled) {
+				menu.addItem((item) => {
+					item.setTitle(project.name).setIcon("folder");
+					const sub = submenuOf(item);
+					addRollupItem(sub, index, project);
+					addChangeDomainItem(sub, index, project, snap.domains.values());
+				});
+			}
+		}
+		e.preventDefault();
+		e.stopPropagation();
+		menu.showAtMouseEvent(e);
+	}
+
 	function onNavigate(assoc: Association) {
 		navigateToAssociation(app, resolve(assoc));
 	}
@@ -385,13 +429,15 @@
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
 		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
-		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
-		// Convert RowAssociation → Association (or null to clear).
-		const newAssoc: Association | null | undefined = targetAssoc
-			? { kind: targetAssoc.kind, id: targetAssoc.id }
-			: targetAssoc === undefined
-				? undefined  // no target row found — preserve existing assoc
-				: null;      // unassigned row — clear assoc
+		// A different row re-files the task to that row's association (null =
+		// unassigned, clear it). The row it already renders on keeps its own
+		// association — on a rolled-up domain row that's the task's project, not
+		// the domain (see `dropAssociation`). Undefined = no row found, preserve.
+		const target = snapshot
+			? dropAssociation(targetRow, drag.task.owner, snapshot)
+			: undefined;
+		const newAssoc: Association | null | undefined = target?.assoc;
+		const sameRow = target?.sameRow ?? false;
 
 		// Ctrl/Cmd-drag: drop a copy into the target cell's Unscheduled, leaving
 		// the source task untouched. Same-day and cross-day collapse to one path —
@@ -412,6 +458,8 @@
 		}
 
 		if (drop.date === drag.task.date) {
+			// Same day, same row: dropped back where it was. Nothing to re-file.
+			if (sameRow) return;
 			// Same day, different row: this is a *re-filing*, not a move. Only the
 			// task's association changes — it stays in whatever block it lives in.
 			// You schedule blocks, not tasks, so changing a task's owner must not
@@ -547,16 +595,16 @@
 		const sourceDay = dayOf(sourceDate);
 		if (!sourceDay || sourceDay.path === null) return;
 
-		// Resolve the target row's association.
+		// Resolve the target row's association (same rule as a task drop: the row
+		// the block already renders on keeps the block's own association).
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
 		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
-		const targetAssoc = targetRow ? rowAssociation(targetRow) : undefined;
-		const newAssoc: Association | null | undefined = targetAssoc
-			? { kind: targetAssoc.kind, id: targetAssoc.id }
-			: targetAssoc === undefined
-				? undefined
-				: null; // unassigned row — clear assoc
+		const target = snapshot
+			? dropAssociation(targetRow, drag.block.assoc, snapshot)
+			: undefined;
+		const newAssoc: Association | null | undefined = target?.assoc;
+		const sameRow = target?.sameRow ?? false;
 
 		// Ctrl/Cmd-drag: drop a copy of the whole block (time, title, children)
 		// onto the target day, leaving the source block in place. Same-day and
@@ -578,7 +626,7 @@
 
 		if (drop.date === sourceDate) {
 			// Same day: only the association changes.
-			if (newAssoc === undefined) return; // no valid target row
+			if (newAssoc === undefined || sameRow) return; // no row / no change
 			const next = setBlockAssoc(sourceDay.blocks, drag.block, newAssoc);
 			if (next !== sourceDay.blocks) commit(sourceDate, sourceDay.path, next);
 			return;
@@ -924,6 +972,7 @@
 					style={row.kind !== "unassigned" && "color" in row && row.color
 						? `--row-accent: ${row.color};`
 						: undefined}
+					oncontextmenu={(e) => openRowMenu(row, e)}
 				>
 					{#if row.kind === "unassigned"}
 						<span class="row-name" title={row.name}>{row.name}</span>
@@ -957,8 +1006,10 @@
 							</div>
 						{/if}
 						{#if day}
+							{@const cell = cellFor(row, day)}
 							<GridCell
-								tasks={tasksFor(row, day)}
+								tasks={cell.own}
+								groups={cell.groups}
 								{resolve}
 								color={"color" in row ? row.color : undefined}
 								allowCreate={row.kind !== "unassigned"}
