@@ -237,9 +237,10 @@
 	/* The add affordance floats in the cell's bottom-right corner, so it takes
 	   no room in the layout: a cell is only as tall as its tasks. It stays
 	   hidden until the cell is hovered, so a dense grid doesn't read as a wall
-	   of buttons. Tasks carry their own hover action bar at their top-right, so
-	   the "+" stands down (hidden and click-through) while any task in the cell
-	   is hovered — the two never compete for the same spot. */
+	   of buttons. Tasks carry their own action bar at their top-right, so the
+	   "+" stands down (hidden and click-through) while any task's bar in the
+	   cell is awake — the two never compete for the same spot, and hovering the
+	   body of a task leaves the "+" alone. */
 	.grid-cell-add {
 		position: absolute;
 		bottom: 2px;
@@ -271,7 +272,9 @@
 		background: var(--background-modifier-hover);
 	}
 
-	.grid-cell:has(:global(.k-task:hover)) .grid-cell-add {
+	/* `kairos-actions-awake` is set by the shared actionZone action (#44) while
+	   the pointer is in a row's corner zone, i.e. exactly while its bar shows. */
+	.grid-cell:has(:global(.kairos-actions-awake)) .grid-cell-add {
 		opacity: 0;
 		pointer-events: none;
 	}
@@ -280,6 +283,13 @@
 	@media (hover: none) {
 		.grid-cell-add {
 			opacity: 0.45;
+		}
+
+		/* Touch has no corner zone: a tapped task shows its bar on its (sticky)
+		   hover, so stand down for that instead. */
+		.grid-cell:has(:global(.k-task:hover)) .grid-cell-add {
+			opacity: 0;
+			pointer-events: none;
 		}
 	}
 
