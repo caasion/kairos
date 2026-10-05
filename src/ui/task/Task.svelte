@@ -354,11 +354,11 @@
 			<span
 				class="k-task-text"
 				class:grabbable={onGrab !== undefined}
-				class:wrapped={lines > 1}
-				style:--k-task-lines={lines > 1 ? lines : undefined}
 				role="textbox"
 				tabindex="0"
 				bind:this={textEl}
+				class:wrapped={lines > 1}
+				style:--k-task-lines={lines > 1 ? lines : undefined}
 				onclick={beginEdit}
 				onpointerdown={onGrab ? armGrab : undefined}
 				use:longpress={400}
