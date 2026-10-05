@@ -18,7 +18,7 @@
 	import { autogrow, singleLine } from "../actions/autogrow";
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
-	import { inActionZone } from "./actionZone";
+	import { actionZone } from "../actions/actionZone";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
 	import { longpress } from "../actions/longpress";
 	import { movedPastSlop, peek, peekIfTruncated } from "../actions/peek";
@@ -194,25 +194,6 @@
 
 	let rowEl = $state<HTMLDivElement>();
 
-	// ── Action bar: wakes near the right edge (see actionZone.ts) ──
-	// Tracked for a mouse only. Touch has no hover to track, so it keeps the
-	// plain `:hover` rule (see the styles).
-	let actionsEl = $state<HTMLDivElement>();
-	let nearEdge = $state(false);
-
-	function trackEdge(event: PointerEvent) {
-		if (event.pointerType !== "mouse" || !rowEl) return;
-		// Once over the bar itself, keep it: the triangle narrows below the top
-		// edge, and the bar's left buttons must stay reachable.
-		if (nearEdge && event.target instanceof Node && actionsEl?.contains(event.target)) return;
-		nearEdge = inActionZone(
-			event.clientX,
-			event.clientY,
-			rowEl.getBoundingClientRect(),
-			actionsEl?.offsetWidth ?? 0,
-		);
-	}
-
 	// Open the association picker anchored at this task row. The parent (which
 	// owns the picker) decides what a pick does.
 	function requestAssociation() {
@@ -386,13 +367,12 @@
 	class:cancelled
 	bind:this={rowEl}
 	oncontextmenu={openContextMenu}
-	onpointermove={trackEdge}
-	onpointerleave={() => (nearEdge = false)}
+	use:actionZone
 >
 	<!-- Action bar, floating top-right over the row. Shown only while the
 	     pointer is in a triangle at the row's top-right corner (see
-	     actionZone.ts), not on any hover. -->
-	<div class="k-task-actions" class:shown={nearEdge} bind:this={actionsEl}>
+	     actions/actionZone.ts), not on any hover. -->
+	<div class="k-task-actions kairos-action-bar">
 		<button
 			class="k-task-action"
 			title={association ? "Edit association" : "Add association"}
@@ -539,28 +519,8 @@
 		gap: 2px;
 		padding: 2px;
 		background: var(--background-primary);
-		/* Semi-transparent so the row underneath reads through for contrast. */
-		opacity: 0;
-		transition: opacity 0.1s;
 		z-index: 2;
-		/* Hidden means inert too: a click on the end of the task text must reach
-		   the text, not an invisible button lying over it. */
-		pointer-events: none;
-	}
-
-	.k-task-actions.shown,
-	.k-task-actions:focus-within {
-		opacity: 0.96;
-		pointer-events: auto;
-	}
-
-	/* Touch has no pointer to track: keep showing the bar on the row's (sticky)
-	   hover after a tap. */
-	@media (hover: none) {
-		.k-task:hover .k-task-actions {
-			opacity: 0.96;
-			pointer-events: auto;
-		}
+		/* Shown/hidden by the shared .kairos-action-bar rules in styles.css. */
 	}
 
 	.k-task-action {

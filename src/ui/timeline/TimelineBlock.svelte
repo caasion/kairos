@@ -13,6 +13,7 @@
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
+  import { actionZone } from "../actions/actionZone";
 
   interface Props {
     block: Block;
@@ -350,6 +351,7 @@
   style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}
   oncontextmenu={openContextMenu}
+  use:actionZone
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
   <div
@@ -360,8 +362,9 @@
     }}
   ></div>
 
-	<!-- Hover action bar: add-task + delete, top-right corner. -->
-	<div class="tl-actions">
+	<!-- Action bar: add-task + delete, top-right corner. Woken from the
+	     top-right corner zone (see actions/actionZone.ts), not on any hover. -->
+	<div class="tl-actions kairos-action-bar">
 		<button
 			type="button"
 			class="tl-action-btn"
@@ -696,15 +699,8 @@
 		gap: 2px;
 		background: var(--background-secondary);
 
-		/* Revealed on block hover. */
-		opacity: 0;
-		pointer-events: none; /* Avoid clicks landing while invisible. */
-		transition: opacity 0.1s;
-	}
-
-	.tl-block:hover .tl-actions {
-		opacity: 1;
-		pointer-events: auto;
+		/* Shown/hidden by the shared .kairos-action-bar rules in styles.css. */
+		--kairos-action-bar-opacity: 1;
 	}
 
 	.tl-action-btn {
