@@ -81,12 +81,37 @@ interface Day {
 type LifecycleState = "active" | "inactive" | "archived";
 
 interface StatusRecord {
-  date: ISODate;
+  date: ISODate; // the day the change was recorded, not an effective-from date
   status: LifecycleState;
-  // Freeform open-label annotation (e.g. "baseline"/"hard"/"taper"), carrying
-  // intensity or intent. Never logic — same principle as a task's metadata tag.
-  // Meaningful only on `active` records by convention; parsed/serialized verbatim.
+  // What this state entails: freeform prose describing what the phase actually
+  // consists of ("getting groceries, meal planning, doing laundry"). An open
+  // label, never logic and never a keyword vocabulary — parsed and serialized
+  // verbatim, and meaningful on any status, not just `active`.
   note?: string;
+  // What moved the entity into this state ("stepped down after the handoff").
+  // Distinct from `note`, which says what the state entails, and from a
+  // project's `description`, which says what the project entails generally.
+  why?: string;
+}
+
+// A `status:` entry Kairos would not itself have written, noted on parse. Two
+// kinds are fixable and already became records — the flat scalar
+// (`2026-08-04: active`) and a near-miss key that pads to a free date
+// (`2026-8-4`) — so the next write emits them canonically. The other two can't
+// become records at all: a state outside the lifecycle vocabulary (`draft`) and
+// a key that isn't a usable date. Those are kept verbatim (`raw`) and re-emitted
+// on every write, so no edit deletes what the user typed, but they never drive
+// derived state.
+type StatusAnomalyKind =
+  | "bare-string" // fixable: `2026-08-04: active`, not the object form
+  | "padded-date" // fixable: `2026-8-4`, pads to a free YYYY-MM-DD
+  | "unknown-state" // kept: a status outside active/inactive/archived
+  | "bad-date"; // kept: a key that isn't (or can't safely become) YYYY-MM-DD
+
+interface StatusAnomaly {
+  kind: StatusAnomalyKind;
+  key: string; // the frontmatter key exactly as written
+  raw: unknown; // the value exactly as written — re-emitted verbatim when kept
 }
 
 interface Project {
@@ -96,6 +121,10 @@ interface Project {
   description: string; // free-text blurb, shown inline on the projects page
   domain?: string; // at most one, by name
   history: StatusRecord[];
+  // Non-canonical `status:` entries found on parse. Absent when the file is
+  // clean, so a parsed entity only carries the key when there is something to
+  // fix or preserve.
+  anomalies?: StatusAnomaly[];
   archived: boolean;
   source: SourceRef; // project file / folder note
 }
@@ -108,6 +137,7 @@ interface Domain {
   order: number;
   color: string;
   history: StatusRecord[];
+  anomalies?: StatusAnomaly[]; // see `Project.anomalies`
   archived: boolean;
   source: SourceRef;
 }
@@ -151,6 +181,8 @@ export type {
   Day,
   LifecycleState,
   StatusRecord,
+  StatusAnomalyKind,
+  StatusAnomaly,
   Project,
   Domain,
   BacklogEntry,

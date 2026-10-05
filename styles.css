@@ -7,6 +7,39 @@ If your plugin does not need CSS, delete this file.
 
 */
 
+/* ── Inline edit inputs ──
+   Inputs that replace a label in place (task text, block title, backlog item,
+   Gantt description, project/domain name) must look exactly like the label they
+   replace, so clicking to edit feels like the text was editable all along.
+   Each component matches its label's font and padding; this strips the chrome
+   Obsidian puts on every text input, which otherwise wins on specificity:
+   a fixed `--input-height` (30px desktop, 40px mobile — the jump on edit),
+   the hover fill, the press ring, and mobile's `width: 100%`.
+   Where the label wraps (grid tasks, backlog items) the editor is a textarea
+   sized to its content by the autogrow action, so it wraps the same way. */
+input.kairos-inline-input {
+	height: auto;
+	min-height: 0;
+}
+textarea.kairos-inline-input {
+	display: block;
+	min-height: 0;
+	resize: none;
+	overflow: hidden;
+	overflow-wrap: anywhere;
+}
+input[type].kairos-inline-input,
+textarea.kairos-inline-input,
+input[type].kairos-inline-input:is(:hover, :focus, :focus-visible, :active),
+textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
+	width: auto;
+	background: transparent;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	outline: none;
+}
+
 /* ── Domain reorder modal (DomainReorderModal.ts) ── */
 .kairos-reorder-hint {
 	margin-top: 0;
@@ -157,6 +190,34 @@ body .kairos-action-stack:focus-within > * {
 	margin-bottom: 0;
 }
 
+/* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
+.kairos-peek {
+	position: fixed;
+	z-index: var(--layer-popover);
+	max-width: min(320px, calc(100vw - 16px));
+	padding: var(--size-4-2) var(--size-4-3);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	pointer-events: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+.kairos-peek-text {
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-tight);
+	color: var(--text-normal);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.kairos-peek-detail {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
 /* ── Status history modal (StatusHistoryModal.ts) ── */
 /* A "Status history" caption trailing the entity name in the modal title. */
 .kairos-history-sub {
@@ -164,4 +225,134 @@ body .kairos-action-stack:focus-within > * {
 	font-size: 12px;
 	font-weight: 400;
 	color: var(--text-faint);
+}
+
+/* ── Task & block metadata (the "icon + muted label" line) ── */
+/* One family for the small metadata line that sits under a task, a timeline
+   block, a backlog nudge and a backlog item. Five components used to hand-copy
+   this rule into their own scoped <style> blocks — which is how they drifted
+   apart on indent, shrink behaviour, hover cue and separator — so the rules
+   live here instead. They have to be global: a Svelte scoped class is compiled
+   per component and cannot be shared, which is why the copies existed. Because
+   styles.css is unscoped and applies to all of Obsidian, every name here keeps
+   the `kairos-` prefix. */
+body {
+	/* Indent for a metadata line sitting under its item's text, past the
+	   leading control (an 18px checkbox/arrow + its 6px gap). A component whose
+	   leading control is a different width overrides this locally. */
+	--kairos-meta-indent: var(--size-4-6, 24px);
+	--kairos-meta-gap: var(--size-4-1, 4px);
+	/* Obsidian's smallest UI font token is 12px (--font-ui-smaller); this line
+	   has always been 10px and moving it up would grow every metadata line in
+	   every view by 20%, so the size stays a plugin-level token. One change
+	   point if that decision is ever revisited. */
+	--kairos-meta-font-size: 10px;
+}
+
+/* The line itself: one or more metadata items side by side. */
+.kairos-meta-row {
+	display: flex;
+	align-items: center;
+	gap: var(--kairos-meta-gap);
+	min-width: 0;
+}
+
+/* Opt-in: the timeline's time+association line is flush with its block title,
+   while a task's, a nudge's and a backlog item's align under the text. */
+.kairos-meta-row.is-indented {
+	padding-left: var(--kairos-meta-indent);
+}
+
+/* One item: icon + label. No flex-shrink here, deliberately — items in the
+   same row truncate proportionally instead of the last one absorbing all of
+   the overflow. */
+.kairos-meta {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	font-size: var(--kairos-meta-font-size);
+	color: var(--text-muted);
+	min-width: 0;
+	max-width: 100%;
+}
+
+.kairos-meta svg {
+	flex-shrink: 0;
+}
+
+.kairos-meta-label {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-variant-numeric: tabular-nums;
+}
+
+/* A trailing count (e.g. the grid badge's "+3"). Sits outside the ellipsizing
+   label so it is never the first thing truncation eats, and takes its spacing
+   from the item's gap rather than a leading space in the string. */
+.kairos-meta-count {
+	flex-shrink: 0;
+	font-variant-numeric: tabular-nums;
+	/* Tinted so the count reads as a quantity distinct from the label beside it,
+	   rather than as more of the same muted text. Carried over from the grid
+	   badge's own rule, which nested this inside the label. */
+	background: color-mix(
+		in srgb,
+		var(--interactive-accent) 20%,
+		var(--background-modifier-border)
+	);
+	padding: 0 3px;
+	border-radius: var(--radius-s, 4px);
+}
+
+/* A fixed-size SVG dot separator: it can't perturb line-height the way a text
+   glyph would. */
+.kairos-meta-dot {
+	flex-shrink: 0;
+	color: var(--text-faint);
+}
+
+/* ── States ── */
+.kairos-meta.is-linked {
+	cursor: pointer;
+}
+
+.kairos-meta.is-linked:hover .kairos-meta-label {
+	text-decoration: underline;
+}
+
+/* Inherited from the parent block rather than set on the item itself. Italic,
+   not dimmed: dimming would stack with the inactive grid cell's opacity. */
+.kairos-meta.is-inherited {
+	font-style: italic;
+}
+
+.kairos-meta.is-due {
+	color: var(--color-orange, var(--interactive-accent));
+}
+
+/* Icon-only: the Grid drops the association's name (the row already states it)
+   and keeps the icon as the marker and the navigation target. Italic means
+   nothing without text, so the inherited signal is re-expressed as a colour,
+   and the hover cue moves off the (absent) label onto the item. */
+.kairos-meta.is-icon-only {
+	gap: 0;
+	/* The shared rule lets items shrink so they truncate proportionally, which
+	   needs something truncatable. This one is a single fixed-width SVG that
+	   refuses to shrink, so an unshrinkable box is the honest shape — without
+	   it the box collapses under its own icon and the glyph overflows the cell. */
+	flex-shrink: 0;
+}
+
+/* Colour, not opacity. Opacity multiplies with the container's, and the Grid
+   is exactly where `.grid-cell.inactive .grid-cell-item` sets 0.4 — the same
+   stacking the comment above `.is-inherited` says to avoid. At 0.55 the only
+   remaining marker of an association rendered at 0.22 of a muted colour. */
+.kairos-meta.is-icon-only.is-inherited {
+	color: var(--text-faint);
+	font-style: normal;
+}
+
+.kairos-meta.is-icon-only.is-linked:hover {
+	color: var(--text-normal);
 }

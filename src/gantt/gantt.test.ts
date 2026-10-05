@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Domain, Project, StatusRecord } from "../types";
 import type { ProjectsDomains } from "../index";
 import { appendStatus, effectiveStatus } from "../projectFile";
-import { historyToSpans, noteToIntensity } from "./spans";
+import { ACTIVE_WEIGHT, historyToSpans } from "./spans";
 import { activeInWindow, visibleEntities } from "./rows";
 import {
 	dateToX,
@@ -54,14 +54,48 @@ describe("historyToSpans", () => {
 		expect(spans[0]).toMatchObject({ start: "2026-12-01", end: "2026-12-01" });
 	});
 
-	it("carries the note and sets intensity only on active spans", () => {
+	it("carries the note and shades only active spans", () => {
 		const spans = historyToSpans(
-			h(["2026-01-01", "active", "hard"], ["2026-02-01", "inactive", "ignored"]),
+			h(["2026-01-01", "active", "laundry"], ["2026-02-01", "inactive", "on hold"]),
 			"2026-08-05",
 		);
-		expect(spans[0]?.note).toBe("hard");
-		expect(spans[0]?.intensity).toBe(1);
+		expect(spans[0]?.note).toBe("laundry");
+		expect(spans[0]?.intensity).toBe(ACTIVE_WEIGHT);
+		expect(spans[1]?.note).toBe("on hold"); // carried on any status
 		expect(spans[1]?.intensity).toBe(0); // non-active → no shading
+	});
+
+	it("shades every active span the same, whatever the note says (#29)", () => {
+		// The note is prose describing what the phase consists of, not a keyword:
+		// a multi-word note renders exactly like a one-word one, and like none.
+		const multi = historyToSpans(h(["2026-01-01", "active", "baseline 3x/week"]), "2026-08-05");
+		const one = historyToSpans(h(["2026-01-01", "active", "baseline"]), "2026-08-05");
+		const none = historyToSpans(h(["2026-01-01", "active"]), "2026-08-05");
+		expect(multi[0]?.intensity).toBe(one[0]?.intensity);
+		expect(one[0]?.intensity).toBe(none[0]?.intensity);
+		expect(multi[0]?.intensity).toBe(ACTIVE_WEIGHT);
+		// Identical but for the note itself — the old keyword ramp is gone.
+		expect({ ...multi[0], note: undefined }).toEqual({ ...one[0], note: undefined });
+	});
+
+	it("leaves inactive and archived spans at 0 whatever their note", () => {
+		const spans = historyToSpans(
+			h(["2026-01-01", "inactive", "hard"], ["2026-02-01", "archived", "hard"]),
+			"2026-08-05",
+		);
+		expect(spans.map((s) => s.intensity)).toEqual([0, 0]);
+	});
+
+	it("carries `why` onto the span it opens", () => {
+		const spans = historyToSpans(
+			[
+				{ date: "2026-01-01", status: "active" },
+				{ date: "2026-02-01", status: "inactive", why: "handed it off" },
+			],
+			"2026-08-05",
+		);
+		expect(spans[0]?.why).toBeUndefined();
+		expect(spans[1]?.why).toBe("handed it off");
 	});
 
 	it("sorts an out-of-order input defensively", () => {
@@ -150,18 +184,6 @@ describe("authoring active periods via the Gantt (compound edits)", () => {
 		expect(active).toHaveLength(2);
 		expect(active[0]).toMatchObject({ start: "2026-01-01", end: "2026-04-01", open: false });
 		expect(active[1]).toMatchObject({ start: "2026-04-01", open: true });
-	});
-});
-
-describe("noteToIntensity", () => {
-	it("ramps known labels and is case-insensitive", () => {
-		expect(noteToIntensity("taper")).toBeLessThan(noteToIntensity("baseline"));
-		expect(noteToIntensity("baseline")).toBeLessThan(noteToIntensity("hard"));
-		expect(noteToIntensity("HARD")).toBe(noteToIntensity("hard"));
-	});
-	it("falls back to a default for unknown/empty notes", () => {
-		expect(noteToIntensity(undefined)).toBeGreaterThan(0);
-		expect(noteToIntensity("something else")).toBe(noteToIntensity(undefined));
 	});
 });
 

@@ -142,3 +142,62 @@ export class ConfirmModal extends Modal {
 		this.contentEl.empty();
 	}
 }
+
+/**
+ * "Why did this change?" (#26). Opened *after* a project or domain has already
+ * moved into inactive or archived, so the change never waits on it: Enter or
+ * **Save** hands back the trimmed reason, while Esc, **Skip** or an empty Enter
+ * just close. Skipping costs nothing — the prompt must never become a toll on
+ * changing status.
+ */
+export class WhyModal extends Modal {
+	private value = "";
+	private saved = false;
+	private readonly title: string;
+	private readonly onSave: (why: string) => void;
+
+	constructor(app: App, opts: { title: string; onSave: (why: string) => void }) {
+		super(app);
+		this.title = opts.title;
+		this.onSave = opts.onSave;
+	}
+
+	onOpen() {
+		const { contentEl, titleEl } = this;
+		titleEl.setText(this.title);
+
+		const setting = new Setting(contentEl).addText((text) => {
+			text.setPlaceholder("Add a reason").onChange((v) => (this.value = v));
+			text.inputEl.addClass("kairos-modal-input");
+			text.inputEl.addEventListener("keydown", (ev) => {
+				if (ev.key === "Enter") {
+					ev.preventDefault();
+					this.save();
+				}
+			});
+			window.setTimeout(() => text.inputEl.focus(), 0);
+		});
+		setting.settingEl.addClass("kairos-modal-field");
+
+		new Setting(contentEl)
+			.addButton((b) => b.setButtonText("Skip").onClick(() => this.close()))
+			.addButton((b) =>
+				b
+					.setButtonText("Save")
+					.setCta()
+					.onClick(() => this.save()),
+			);
+	}
+
+	private save() {
+		if (this.saved) return;
+		this.saved = true;
+		const why = this.value.trim();
+		this.close();
+		if (why !== "") this.onSave(why);
+	}
+
+	onClose() {
+		this.contentEl.empty();
+	}
+}

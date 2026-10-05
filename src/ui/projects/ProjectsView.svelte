@@ -19,11 +19,14 @@
 	import type { Unsubscriber } from "svelte/store";
 	import type {
 		Domain,
+		ISODate,
 		LifecycleState,
 		Project,
 	} from "../../types";
 	import type { KairosIndex, ProjectsDomains } from "../../index";
 	import {
+		editDomainStatusRecord,
+		editProjectStatusRecord,
 		renameDomain,
 		renameProject,
 		setDomainColor,
@@ -38,7 +41,7 @@
 	import { effectiveStatus } from "../../projectFile";
 	import { DomainReorderModal } from "./DomainReorderModal";
 	import { StatusHistoryModal } from "./StatusHistoryModal";
-	import { ConfirmModal, PromptModal } from "./modals";
+	import { ConfirmModal, PromptModal, WhyModal } from "./modals";
 
 	interface Props {
 		app: App;
@@ -157,6 +160,7 @@
 			statusOf(e) === "active" ? (isDomain ? "inactive" : lastNonActive(e)) : "active";
 		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
 		else setProjectStatus(index, e as Project, todayISO(), next);
+		askWhy(e, isDomain, next);
 	}
 
 	// Archive (projects only — domains are durable and can't archive). A one-click
@@ -166,6 +170,39 @@
 		const next: LifecycleState =
 			statusOf(project) === "archived" ? "active" : "archived";
 		setProjectStatus(index, project, todayISO(), next);
+		askWhy(project, false, next);
+	}
+
+	// ── "Why did this change?" (#26) ──
+	// A transition into inactive or archived is applied first and the reason is
+	// asked for afterwards in a modal, so the change never waits on the answer
+	// and skipping it is free. Going active doesn't ask: it is usually
+	// self-evident, and asking on every change trains dismissal. A typed reason is
+	// attached with a second edit against the *re-read* entity — the one this row
+	// rendered went stale the moment the status write landed.
+	function askWhy(e: Project | Domain, isDomain: boolean, status: LifecycleState) {
+		if (status === "active") return;
+		const path = e.source.path;
+		const date: ISODate = todayISO();
+		new WhyModal(app, {
+			title: `${e.name} is now ${STATUS_LABEL[status].toLowerCase()}`,
+			onSave: (why) => attachWhy(path, isDomain, date, why),
+		}).open();
+	}
+
+	function attachWhy(path: string, isDomain: boolean, date: ISODate, why: string) {
+		const { projects, domains } = index.snapshot();
+		const pool: (Project | Domain)[] = isDomain
+			? [...domains.values()]
+			: [...projects.values()];
+		const live = pool.find((x) => x.source.path === path);
+		// The record the transition wrote. Absent if it collapsed as a no-op or was
+		// undone in the meantime — then there is nothing to attach a reason to.
+		const rec = live?.history.find((r) => r.date === date);
+		if (!live || !rec) return;
+		const next = { date, status: rec.status, note: rec.note ?? "", why };
+		if (isDomain) editDomainStatusRecord(index, live as Domain, date, next);
+		else editProjectStatusRecord(index, live as Project, date, next);
 	}
 
 	// ── Status history (native modal) ──
@@ -525,7 +562,7 @@
 					{#if isEditing(row.domain)}
 						<!-- svelte-ignore a11y_autofocus -->
 						<input
-							class="name-input domain"
+							class="name-input domain kairos-inline-input"
 							value={row.domain.name}
 							autofocus
 							onclick={(e) => e.stopPropagation()}
@@ -633,7 +670,7 @@
 		{#if isEditing(project)}
 			<!-- svelte-ignore a11y_autofocus -->
 			<input
-				class="name-input"
+				class="name-input kairos-inline-input"
 				value={project.name}
 				autofocus
 				onclick={(e) => e.stopPropagation()}

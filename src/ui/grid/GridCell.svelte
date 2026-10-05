@@ -23,6 +23,14 @@
 		 * a period the project/domain wasn't active in).
 		 */
 		inactive?: boolean;
+		/**
+		 * Hide the name on each task's association line, leaving just the icon.
+		 * Default true: in the grid the row already names the project/domain, so
+		 * the label only repeats it. It is a prop rather than a constant so a row
+		 * that holds more than its own association — a domain row collapsing its
+		 * child projects — can turn the names back on without touching `Task`.
+		 */
+		hideAssociationLabel?: boolean;
 		onSetStatus: (task: ResolvedTask, status: TaskStatus) => void;
 		onSetText: (task: ResolvedTask, text: string) => void;
 		onDelete: (task: ResolvedTask) => void;
@@ -56,6 +64,7 @@
 		color,
 		allowCreate,
 		inactive = false,
+		hideAssociationLabel = true,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -126,9 +135,11 @@
 		>
 			<Task_
 				{task}
+				lines={2}
 				color={color ?? tr?.color}
 				association={task.owner}
-				inherited={task.assoc === undefined}
+				{hideAssociationLabel}
+				inherited={task.assoc === undefined && task.owner !== undefined}
 				resolved={tr}
 				onNavigate={() => task.owner && onNavigate(task.owner)}
 				onEditAssoc={(rect) => onEditAssoc(task, rect)}
@@ -148,53 +159,61 @@
 
 			<!-- The block-nesting badge renders inside the Task (via its `meta`
 			     snippet) so it shares the row's hover region and lines up with the
-			     association line. Styled with `.grid-cell-badge` to mirror it. -->
+			     association line. It wears the shared `.kairos-meta` classes from
+			     styles.css — the same rules the association line uses — because a
+			     snippet is compiled here, not in `Task`, so Task's scoped styles
+			     can never reach it. That is what the old hand-copied
+			     `.grid-cell-badge` block was working around. -->
 			{#snippet blockBadge()}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="grid-cell-badge linked"
+					class="kairos-meta is-linked"
 					title="Ctrl+click to open in Day view"
 					onclick={(e) => { if (e.ctrlKey || e.metaKey) onReveal(task); }}
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-					<span class="grid-cell-badge-label">
-						{badgeLabel(task)}
-						<span class="grid-cell-badge-block-number">
-							{task.block.tasks.length > 0 ? ` +${task.block.tasks.length}` : ""}
-						</span>
-					</span>
+					<span class="kairos-meta-label">{badgeLabel(task)}</span>
+					<!-- How many other tasks sit in that block. Its own element beside
+					     the label, not inside it: nested in the ellipsizing label it was
+					     the first thing truncation ate. -->
+					{#if task.block.tasks.length > 0}
+						<span class="kairos-meta-count">+{task.block.tasks.length}</span>
+					{/if}
 				</div>
 			{/snippet}
 			{#snippet nestedBadge()}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="grid-cell-badge linked"
+					class="kairos-meta is-linked"
 					title="Ctrl+click to open in Day view"
 					onclick={(e) => { if (e.ctrlKey || e.metaKey) onReveal(task); }}
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-					<span class="grid-cell-badge-label">{badgeLabel(task)}</span>
+					<span class="kairos-meta-label">{badgeLabel(task)}</span>
 				</div>
 			{/snippet}
 		</div>
 	{/each}
 
 	{#if allowCreate && !inactive}
-		<button class="grid-cell-add" title="Add task" onclick={onCreate}>
+		<button class="grid-cell-add" title="Add task" aria-label="Add task" onclick={onCreate}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-			<span>Task</span>
 		</button>
 	{/if}
 </div>
 
 <style>
 	.grid-cell {
+		/* Anchors the corner "+" (see .grid-cell-add). */
+		position: relative;
 		display: flex;
 		flex-direction: column;
-		min-height: 44px;
-		padding: 4px;
+		min-height: 32px;
+		/* A slightly deeper bottom edge leaves a strip below the last task where
+		   the corner "+" can be reached without hovering that task. */
+		padding: 4px 4px 8px;
 		gap: 1px;
 		min-width: 0;
 	}
@@ -209,9 +228,6 @@
 	   tasks and lay a faint hatch behind them (matching the empty-cell hatch) so
 	   the column reads as past context, not an editable slot. Pointer events on
 	   the tasks stay live so the user can still open/inspect them. */
-	.grid-cell.inactive {
-		position: relative;
-	}
 	.grid-cell.inactive .grid-cell-item {
 		opacity: 0.4;
 	}
@@ -234,22 +250,32 @@
 		opacity: 0.35;
 	}
 
-	/* The add affordance stays quiet until the cell is hovered, so a dense grid
-	   doesn't read as a wall of buttons. */
+	/* The add affordance floats in the cell's bottom-right corner, so it takes
+	   no room in the layout: a cell is only as tall as its tasks. It stays
+	   hidden until the cell is hovered, so a dense grid doesn't read as a wall
+	   of buttons. Tasks carry their own action bar at their top-right, so the
+	   "+" stands down (hidden and click-through) while any task's bar in the
+	   cell is awake — the two never compete for the same spot, and hovering the
+	   body of a task leaves the "+" alone. */
 	.grid-cell-add {
-		display: inline-flex;
+		position: absolute;
+		bottom: 2px;
+		right: 4px;
+		z-index: 3;
+		display: flex;
 		align-items: center;
-		gap: 4px;
-		margin-top: 2px;
-		padding: 2px 6px;
-		font-size: 11px;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: var(--radius-s);
 		color: var(--text-muted);
-		background: transparent;
-		border-radius: 5px;
+		background: var(--background-primary);
+		box-shadow: none;
 		cursor: pointer;
 		opacity: 0;
 		transition: opacity 0.1s;
-		box-shadow: none;
 	}
 
 	.grid-cell:hover .grid-cell-add {
@@ -262,8 +288,25 @@
 		background: var(--background-modifier-hover);
 	}
 
-	.grid-cell-add svg {
-		flex-shrink: 0;
+	/* `kairos-actions-awake` is set by the shared actionZone action (#44) while
+	   the pointer is in a row's corner zone, i.e. exactly while its bar shows. */
+	.grid-cell:has(:global(.kairos-actions-awake)) .grid-cell-add {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	/* Touch screens have no hover, so keep it faintly visible there. */
+	@media (hover: none) {
+		.grid-cell-add {
+			opacity: 0.45;
+		}
+
+		/* Touch has no corner zone: a tapped task shows its bar on its (sticky)
+		   hover, so stand down for that instead. */
+		.grid-cell:has(:global(.k-task:hover)) .grid-cell-add {
+			opacity: 0;
+			pointer-events: none;
+		}
 	}
 
 	/* ── Nested-task block badge ── */
@@ -273,41 +316,9 @@
 		min-width: 0;
 	}
 
-	/* The block association mirrors Task's association line (.k-task-assoc): a
-	   flat icon + label in muted text, aligned under the task text past the
-	   checkbox. Ctrl+click reveals it in the Day view — signalled, like the assoc
-	   line, by a pointer cursor and a hover underline on `.linked`. No pill, no
-	   hover fill — it reads as the same kind of metadata as the assoc tag. */
-	/* Rendered inside Task's inline meta row (after the association), so it needs
-	   no indent of its own — the meta row supplies the alignment past the checkbox. */
-	.grid-cell-badge {
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		font-size: 10px;
-		color: var(--text-muted);
-		min-width: 0;
-	}
-	.grid-cell-badge.linked {
-		cursor: pointer;
-	}
-	.grid-cell-badge.linked:hover .grid-cell-badge-label {
-		text-decoration: underline;
-	}
-	.grid-cell-badge svg {
-		flex-shrink: 0;
-	}
-	.grid-cell-badge-label {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-variant-numeric: tabular-nums;
-	}
-	.grid-cell-badge-block-number {
-		background: color-mix(
-			in srgb,
-			var(--interactive-accent) 20%,
-			var(--background-modifier-border)
-		);
-	}
+	/* The block badge itself carries no local styling: it is a `.kairos-meta`
+	   item (styles.css), the same rule the association line uses, rendered inside
+	   Task's meta row — which supplies the alignment past the checkbox. Ctrl+click
+	   reveals it in the Day view, signalled by `.is-linked` exactly as the
+	   association line signals it. */
 </style>

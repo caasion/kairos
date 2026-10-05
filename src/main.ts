@@ -17,6 +17,7 @@ import {
 } from './KairosProjectsView';
 import { KAIROS_GANTT_VIEW_TYPE, KairosGanttView } from './KairosGanttView';
 import { IndexAdapter } from './indexAdapter';
+import { openViewMenu } from './ui/views/viewMenu';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -133,28 +134,14 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosGanttView(leaf, this),
 		);
 
-		this.addRibbonIcon('clock', 'Open Kairos day view', () => {
-			void this.activateView();
-		});
-
-		this.addRibbonIcon('calendar-range', 'Open Kairos week view', () => {
-			void this.activateWeekView();
-		});
-
-		this.addRibbonIcon('layout-grid', 'Open Kairos grid view', () => {
-			void this.activateGridView();
-		});
-
-		this.addRibbonIcon('inbox', 'Open Kairos backlog view', () => {
-			void this.activateBacklogView();
-		});
-
-		this.addRibbonIcon('folder-kanban', 'Open Kairos projects view', () => {
-			void this.activateProjectsView();
-		});
-
-		this.addRibbonIcon('gantt-chart', 'Open Kairos timeline view', () => {
-			void this.activateGanttView();
+		// One ribbon icon for the whole plugin (issue #17). It opens a menu at the
+		// pointer listing all six views; the six commands below stay in the
+		// palette, so the menu is a convenience and not the only route. The icon
+		// is deliberately not `clock` — that one already means the Day view, on
+		// its tab and in the menu — and not any of the other five for the same
+		// reason; `hourglass` stands for Kairos itself.
+		this.addRibbonIcon('hourglass', 'Open a Kairos view', (evt) => {
+			openViewMenu(this, evt);
 		});
 
 		this.addCommand({

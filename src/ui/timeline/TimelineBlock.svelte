@@ -9,6 +9,7 @@
   } from "../../types";
   import { isCheckable } from "../../types";
   import type { Resolver } from "../../index";
+  import { peek } from "../actions/peek";
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
@@ -420,7 +421,7 @@
       {#if editingTitle}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <input
-          class="tl-title-input"
+          class="tl-title-input kairos-inline-input"
           type="text"
           bind:value={titleDraft}
           bind:this={titleInputEl}
@@ -436,6 +437,7 @@
           tabindex="0"
           onpointerdown={(e) => e.stopPropagation()}
           onclick={beginTitleEdit}
+          use:peek={{ text: block.title }}
         >{block.title}</span>
       {/if}
     </div>
@@ -468,10 +470,10 @@
         </div>
       {:else}
         <!-- Time and the association share one line, separated by a dot. -->
-        <div class="tl-meta" bind:this={metaEl}>
+        <div class="kairos-meta-row" bind:this={metaEl}>
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <span
-            class="tl-time"
+            class="tl-time kairos-meta kairos-meta-label"
             role="button"
             tabindex="0"
             onpointerdown={(e) => e.stopPropagation()}
@@ -482,7 +484,7 @@
             <!-- An SVG dot separator: fixed-size so it can't affect line-height
                  or row height the way a text glyph would. -->
             <svg
-              class="tl-meta-dot"
+              class="kairos-meta-dot"
               width="3"
               height="3"
               viewBox="0 0 3 3"
@@ -491,9 +493,8 @@
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <span
-              class="tl-assoc"
-              class:domain={block.assoc.kind === "domain"}
-              class:linked={r.resolved}
+              class="kairos-meta"
+              class:is-linked={r.resolved}
               title={r.resolved ? "Ctrl+click to open" : undefined}
               onpointerdown={(e) => e.stopPropagation()}
               onclick={(e) => {
@@ -508,7 +509,7 @@
               {:else}
                 <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
               {/if}
-              <span class="tl-assoc-label">{r.displayName}</span>
+              <span class="kairos-meta-label">{r.displayName}</span>
             </span>
           {/if}
         </div>
@@ -793,55 +794,20 @@
     outline: none;
   }
 
-  /* Time + association on one row, dot-separated. */
-  .tl-meta {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-  }
+  /* The time + association line is the shared `.kairos-meta` family from
+     styles.css — same size, colour, icon treatment and hover cue as a task's
+     association line, which this used to copy by hand. It takes no indent: it
+     sits under the block title, not under a checkbox. Projects and domains
+     render identically here; the icon carries the distinction.
 
-  /* SVG dot: fixed box, so it never perturbs the row's height. */
-  .tl-meta-dot {
-    flex-shrink: 0;
-    color: var(--text-faint);
-  }
-
-  /* Same visual language as a task's association (icon + label, plain color —
-     projects and domains render identically; the icon carries the distinction). */
-  .tl-assoc {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 10px;
-    color: var(--text-muted);
-    min-width: 0;
-  }
-
-  .tl-assoc.linked {
-    cursor: pointer;
-  }
-
-  .tl-assoc.linked:hover .tl-assoc-label {
-    text-decoration: underline;
-  }
-
-  .tl-assoc svg {
-    flex-shrink: 0;
-  }
-
-  .tl-assoc-label {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
+     Local to the timeline: the time doubles as the click target for the inline
+     time editor, stays top-aligned in a short block, and never truncates —
+     it is short and fixed-width, so a narrow block should eat into the
+     association's name rather than turn "09:00–10:00" into "09:00–10:0…". */
   .tl-time {
-    font-size: 10px;
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
     cursor: text;
     align-self: flex-start;
+    flex-shrink: 0;
   }
 
   /* ── Time editor (native time inputs) ── */

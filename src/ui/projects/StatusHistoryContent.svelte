@@ -2,7 +2,10 @@
 	// The editable status-history log, mounted inside a native Obsidian modal
 	// (StatusHistoryModal). The modal owns the chrome (backdrop, title, close);
 	// this component owns the log itself: the list of records, inline edit of a
-	// prior record's date/status/note, delete, and add-at-date. Every mutation
+	// prior record's date/status/note/why, delete, and add-at-date. A record's
+	// `note` says what the state entails and its `why` says what moved the entity
+	// into it; both are freeform, and a record with no reason renders a muted
+	// placeholder so the gaps are visible rather than invisible. Every mutation
 	// routes through the pure edit functions via projectActions (they own the
 	// invariants) — the form is a guardrail, not a raw editor.
 	//
@@ -77,15 +80,18 @@
 	let addDate = $state<Date>(dateFromISO(todayISO()));
 	let addPickDate = $state(false);
 	let addNote = $state("");
+	let addWhy = $state("");
 
 	function addStatusRecord(status: LifecycleState) {
 		const e = row;
 		if (!e) return;
 		const date = isoFromDate(addDate);
 		const note = addNote.trim();
+		const why = addWhy.trim();
 		addNote = "";
-		if (isDomain) setDomainStatus(index, e as Domain, date, status, note);
-		else setProjectStatus(index, e as Project, date, status, note);
+		addWhy = "";
+		if (isDomain) setDomainStatus(index, e as Domain, date, status, note, why);
+		else setProjectStatus(index, e as Project, date, status, note, why);
 	}
 
 	// ── Inline edit of a prior record ──
@@ -93,6 +99,7 @@
 	let editDate = $state<Date>(dateFromISO(todayISO()));
 	let editStatus = $state<LifecycleState>("active");
 	let editNote = $state("");
+	let editWhy = $state("");
 	let editPickDate = $state(false);
 
 	function startEditRecord(rec: StatusRecord) {
@@ -100,12 +107,20 @@
 		editDate = dateFromISO(rec.date);
 		editStatus = rec.status;
 		editNote = rec.note ?? "";
+		editWhy = rec.why ?? "";
 		editPickDate = false;
 	}
 	function commitEditRecord() {
 		const e = row;
 		if (!e || !editingDate) return;
-		const next = { date: isoFromDate(editDate), status: editStatus, note: editNote.trim() };
+		// Both keys are always present: this form owns them, so an emptied field
+		// clears the stored value rather than leaving the old one behind.
+		const next = {
+			date: isoFromDate(editDate),
+			status: editStatus,
+			note: editNote.trim(),
+			why: editWhy.trim(),
+		};
 		const original = editingDate;
 		editingDate = null;
 		if (isDomain) editDomainStatusRecord(index, e as Domain, original, next);
@@ -152,14 +167,21 @@
 								{/each}
 							</select>
 						</div>
-						{#if editStatus === "active"}
-							<input
-								class="history-note-input"
-								placeholder="note (e.g. baseline / hard / taper)"
-								bind:value={editNote}
-								onkeydown={(e) => { if (e.key === "Enter") commitEditRecord(); }}
-							/>
-						{/if}
+						<!-- The note is no longer gated on `active`: it once fed intensity
+						     shading, which is gone (#29), and describing what an inactive
+						     or archived phase consists of is just as useful. -->
+						<input
+							class="history-note-input"
+							placeholder="what this phase consists of"
+							bind:value={editNote}
+							onkeydown={(e) => { if (e.key === "Enter") commitEditRecord(); }}
+						/>
+						<input
+							class="history-note-input"
+							placeholder="why it changed"
+							bind:value={editWhy}
+							onkeydown={(e) => { if (e.key === "Enter") commitEditRecord(); }}
+						/>
 						{#if editPickDate}
 							<div class="history-datepicker">
 								<Datepicker inline bind:value={editDate} onselect={() => (editPickDate = false)} />
@@ -177,13 +199,20 @@
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<li class="history-item" class:current={isCurrent} onclick={() => startEditRecord(rec)} title="Click to edit">
-						<span class="history-dot" class:active={rec.status === "active"}></span>
-						<span class="history-status">{STATUS_LABEL[rec.status]}</span>
-						{#if rec.note}<span class="history-note">{rec.note}</span>{/if}
-						<span class="history-spacer"></span>
-						<span class="history-date">{formatDate(rec.date)}</span>
-						{#if isCurrent}<span class="history-badge">current</span>
-						{:else if isFuture}<span class="history-badge">scheduled</span>{/if}
+						<div class="history-line">
+							<span class="history-dot" class:active={rec.status === "active"}></span>
+							<span class="history-status">{STATUS_LABEL[rec.status]}</span>
+							{#if rec.note}<span class="history-note">{rec.note}</span>{/if}
+							<span class="history-spacer"></span>
+							<span class="history-date">{formatDate(rec.date)}</span>
+							{#if isCurrent}<span class="history-badge">current</span>
+							{:else if isFuture}<span class="history-badge">scheduled</span>{/if}
+						</div>
+						{#if rec.why}
+							<div class="history-why">{rec.why}</div>
+						{:else}
+							<div class="history-why none">No reason recorded</div>
+						{/if}
 					</li>
 				{/if}
 			{/each}
@@ -201,7 +230,7 @@
 			</button>
 			<input
 				class="history-note-input"
-				placeholder="note (optional)"
+				placeholder="what this phase consists of (optional)"
 				bind:value={addNote}
 			/>
 			<span class="history-spacer"></span>
@@ -209,6 +238,11 @@
 				<button onclick={() => addStatusRecord(s)}>{STATUS_LABEL[s]}</button>
 			{/each}
 		</div>
+		<input
+			class="history-note-input why-input"
+			placeholder="why it changed (optional)"
+			bind:value={addWhy}
+		/>
 		{#if addPickDate}
 			<div class="history-datepicker">
 				<Datepicker inline bind:value={addDate} onselect={() => (addPickDate = false)} />
@@ -233,11 +267,26 @@
 		flex: 1;
 	}
 	.history-item {
+		display: block;
+		padding: 6px 4px;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+	.history-line {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 6px 4px;
-		border-bottom: 1px solid var(--background-modifier-border);
+	}
+	/* The reason line. Muted with an explicit color, never opacity: an inactive
+	   row can already be dimmed by its container, and two opacities multiply. */
+	.history-why {
+		font-size: 11px;
+		font-weight: 400; /* the current record's row is bold; the reason stays quiet */
+		color: var(--text-muted);
+		margin: 3px 0 0 15px;
+	}
+	.history-why.none {
+		color: var(--text-faint);
+		font-style: italic;
 	}
 	.history-item.current {
 		font-weight: 600;
@@ -280,6 +329,10 @@
 	}
 	.history-item.editing .history-note-input {
 		margin-top: 6px;
+		width: 100%;
+	}
+	.history-add .why-input {
+		margin-top: 5px;
 		width: 100%;
 	}
 	.history-edit-actions {
