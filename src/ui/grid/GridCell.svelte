@@ -23,14 +23,6 @@
 		 * a period the project/domain wasn't active in).
 		 */
 		inactive?: boolean;
-		/**
-		 * Hide the name on each task's association line, leaving just the icon.
-		 * Default true: in the grid the row already names the project/domain, so
-		 * the label only repeats it. It is a prop rather than a constant so a row
-		 * that holds more than its own association — a domain row collapsing its
-		 * child projects — can turn the names back on without touching `Task`.
-		 */
-		hideAssociationLabel?: boolean;
 		onSetStatus: (task: ResolvedTask, status: TaskStatus) => void;
 		onSetText: (task: ResolvedTask, text: string) => void;
 		onDelete: (task: ResolvedTask) => void;
@@ -64,7 +56,6 @@
 		color,
 		allowCreate,
 		inactive = false,
-		hideAssociationLabel = true,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -138,7 +129,7 @@
 				lines={2}
 				color={color ?? tr?.color}
 				association={task.owner}
-				{hideAssociationLabel}
+				showAssociation={false}
 				inherited={task.assoc === undefined && task.owner !== undefined}
 				resolved={tr}
 				onNavigate={() => task.owner && onNavigate(task.owner)}
