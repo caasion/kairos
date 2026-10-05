@@ -5,9 +5,10 @@
 // is open-ended, rendered as running to `today`). This module is pure and
 // vault-free so it runs under vitest, mirroring projectFile.ts.
 //
-// A span's `note` (the freeform open-label annotation, e.g. baseline/hard/taper)
-// drives *intensity* shading — never logic. `noteToIntensity` maps a note to a
-// 0..1 ramp with a sensible default, so an unknown note still renders.
+// A span's `note` is freeform prose describing what the phase consists of
+// ("getting groceries, meal planning, doing laundry") — an open label, never
+// logic and never a keyword. Rendering weight follows the status alone: an
+// active span renders at `ACTIVE_WEIGHT`, everything else at 0 (#29).
 
 import type { ISODate, LifecycleState, StatusRecord } from "../types";
 
@@ -17,30 +18,21 @@ export interface Span {
 	end: ISODate;
 	status: LifecycleState;
 	note?: string;
+	/** Why the entity moved into this state — copied from the record verbatim. */
+	why?: string;
 	/** True for the trailing, still-running span (no successor record). */
 	open: boolean;
-	/** 0..1 shading intensity derived from the note (active spans only). */
+	/** Shading weight: `ACTIVE_WEIGHT` on an active span, 0 otherwise. */
 	intensity: number;
 }
 
 /**
- * Map a freeform note to a 0..1 intensity for shading. Deliberately small and
- * replaceable — the open-label principle means notes are user text, so anything
- * unrecognised falls back to `DEFAULT_INTENSITY` rather than being treated as an
- * error. Matching is case-insensitive and trims.
+ * The single shading weight an active span renders at. It was once the fallback
+ * for a note that matched no keyword, which is what almost every note was, so
+ * keeping it here leaves the rendering unchanged from the keyword era. Inactive
+ * and archived spans render at 0.
  */
-const INTENSITY_RAMP: Record<string, number> = {
-	taper: 0.35,
-	baseline: 0.55,
-	hard: 1,
-};
-const DEFAULT_INTENSITY = 0.7;
-
-export function noteToIntensity(note: string | undefined): number {
-	if (!note) return DEFAULT_INTENSITY;
-	const key = note.trim().toLowerCase();
-	return INTENSITY_RAMP[key] ?? DEFAULT_INTENSITY;
-}
+export const ACTIVE_WEIGHT = 0.7;
 
 /**
  * Fold an ordered status history into renderable spans. Assumes `history` is
@@ -75,8 +67,9 @@ export function historyToSpans(
 			end,
 			status: rec.status,
 			...(rec.note ? { note: rec.note } : {}),
+			...(rec.why ? { why: rec.why } : {}),
 			open,
-			intensity: rec.status === "active" ? noteToIntensity(rec.note) : 0,
+			intensity: rec.status === "active" ? ACTIVE_WEIGHT : 0,
 		});
 	}
 	return spans;

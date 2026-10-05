@@ -3,7 +3,8 @@
 // This is the ONLY place the engine touches the real app. It:
 //   • builds `IndexDeps` from `app.vault` (read/write/now/settings),
 //   • does the cold-start `seed` by reading every markdown file once,
-//   • forwards vault events (create/modify/delete/rename) to the engine.
+//   • forwards vault events (create/modify/delete/rename) to the engine,
+//   • runs the one-shot status normalisation pass after the cold start.
 //
 // Everything app-specific lives here so `index.ts` stays unit-testable. Nothing
 // in here has its own logic worth unit-testing — it's wiring — so it has no
@@ -13,6 +14,8 @@ import { TFile } from "obsidian";
 import type { App, EventRef } from "obsidian";
 import { KairosIndex } from "./index";
 import type { IndexDeps, IndexPaths } from "./index";
+import { isFixable, needsNormalizing } from "./projectFile";
+import type { Domain, Project } from "./types";
 import type Kairos from "./main";
 
 export class IndexAdapter {
@@ -27,6 +30,7 @@ export class IndexAdapter {
 	async start(): Promise<void> {
 		await this.seed();
 		this.registerEvents();
+		this.normalizeStatusFiles();
 	}
 
 	/** Tear down: engine timers + our event refs. Vault refs are also owned by
@@ -133,6 +137,45 @@ export class IndexAdapter {
 			})),
 		);
 		this.index.seed(seeded);
+	}
+
+	// ── status normalisation (once per load) ──
+
+	/**
+	 * Rewrite the `status:` map of every project/domain file that holds a fixable
+	 * shape (a flat `date: state` scalar, a near-miss date key) into canonical
+	 * form. Runs once, right after the cold start, off the already-parsed index —
+	 * no extra vault scan — and only touches files that need it, so clean files
+	 * are never written. The parse already turned each fixable entry into a
+	 * proper record, so writing the entity back through the index's ordinary
+	 * edit path (the same serializer every status change uses) is the whole fix:
+	 * one write path, one YAML dialect, no second parser in the loop.
+	 *
+	 * No write loop: the `modify` each rewrite triggers only reparses (reparsing
+	 * never writes), and the reparsed entity has nothing fixable left, so a
+	 * later load skips it.
+	 *
+	 * Entries that can't be fixed (an unknown state, an unreadable key) are
+	 * re-emitted verbatim by that same serializer and stay out of derived state;
+	 * they get one console warning per file per load and nothing else.
+	 */
+	private normalizeStatusFiles(): void {
+		const { projects, domains } = this.index.snapshot();
+		const warn = (entity: Project | Domain) => {
+			const kept = (entity.anomalies ?? []).filter((a) => !isFixable(a));
+			if (kept.length === 0) return;
+			console.warn(
+				`Kairos: ${entity.source.path} has status entries it can't read; they are kept as written and ignored: ${kept.map((a) => a.key).join(", ")}`,
+			);
+		};
+		for (const project of projects.values()) {
+			warn(project);
+			if (needsNormalizing(project)) this.index.applyProjectEdit(project);
+		}
+		for (const domain of domains.values()) {
+			warn(domain);
+			if (needsNormalizing(domain)) this.index.applyDomainEdit(domain);
+		}
 	}
 
 	// ── vault events ──
