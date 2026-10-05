@@ -297,11 +297,16 @@
 	class:cancelled
 	bind:this={rowEl}
 	oncontextmenu={openContextMenu}
-	use:actionZone
+	use:actionZone={{ layout: "stack" }}
 >
-	<!-- Action bar, floating top-right over the row. Shown only while the
-	     pointer is in a triangle at the row's top-right corner (see
-	     actions/actionZone.ts), not on any hover. -->
+	<!-- Action bar. Shown only while the pointer is in a triangle at the row's
+	     top-right corner (see actions/actionZone.ts), not on any hover.
+	     EXPERIMENT (`layout: "stack"`): on a mouse wake it is a vertical stack
+	     one button wide. Delete stays in the row's top-right corner and the
+	     other actions rise above it, most used nearest: association, then nest.
+	     It hangs below instead when there's no room above. Touch keeps the
+	     horizontal bar. DOM (= tab) order is unchanged; CSS `order` sets the
+	     visual order. -->
 	<div class="k-task-actions kairos-action-bar">
 		<button
 			class="k-task-action"
@@ -431,6 +436,19 @@
 		background: var(--background-primary);
 		z-index: 2;
 		/* Shown/hidden by the shared .kairos-action-bar rules in styles.css. */
+	}
+
+	/* EXPERIMENT: the stack layout (actions/actionStack.ts sets position and
+	   flex-direction inline: column-reverse rising up, column hanging down).
+	   The first item by `order` sits in the corner: delete, then association
+	   and nest in DOM order. A checkable row has no delete, so association
+	   takes the corner. */
+	.k-task-actions:global(.kairos-action-stack) {
+		box-shadow: 0 0 0 1px var(--background-modifier-border);
+	}
+
+	.k-task-actions:global(.kairos-action-stack) .k-task-action-danger {
+		order: -1;
 	}
 
 	.k-task-action {

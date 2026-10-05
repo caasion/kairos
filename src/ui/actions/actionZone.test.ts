@@ -9,6 +9,7 @@ interface FakeHost {
 	removeEventListener(type: string, fn: (e: PointerEvent) => void): void;
 	getBoundingClientRect(): { top: number; right: number; width: number; height: number };
 	querySelector(selector: string): unknown;
+	ownerDocument: { activeElement: null; defaultView: unknown };
 }
 
 function makeRow(withBar = true) {
@@ -20,7 +21,31 @@ function makeRow(withBar = true) {
 		contains: (other: unknown) => other === bar || other === barChild,
 	};
 	const selectors: string[] = [];
+	// The row's window: a manual clock (advance it with `tick`), tracked listeners.
+	const winListeners = new Set<string>();
+	let now = 0;
+	let nextId = 1;
+	const timers = new Map<number, { at: number; fn: () => void }>();
+	const tick = (ms: number) => {
+		now += ms;
+		for (const [id, t] of [...timers]) {
+			if (t.at <= now) {
+				timers.delete(id);
+				t.fn();
+			}
+		}
+	};
+	const win = {
+		setTimeout: (fn: () => void, ms: number) => {
+			timers.set(nextId, { at: now + ms, fn });
+			return nextId++;
+		},
+		clearTimeout: (id: number | undefined) => void (id !== undefined && timers.delete(id)),
+		addEventListener: (type: string) => void winListeners.add(type),
+		removeEventListener: (type: string) => void winListeners.delete(type),
+	};
 	const fake: FakeHost = {
+		ownerDocument: { activeElement: null, defaultView: win },
 		classList: {
 			remove: (c) => void classes.delete(c),
 			toggle: (c, force) => {
@@ -47,7 +72,7 @@ function makeRow(withBar = true) {
 	const move = (clientX: number, clientY: number, init: Partial<PointerEvent> = {}) =>
 		fire("pointermove", { clientX, clientY, ...init });
 	const awake = () => classes.has(ACTIONS_AWAKE_CLASS);
-	return { host, bar, barChild, listeners, selectors, fire, move, awake };
+	return { host, bar, barChild, listeners, winListeners, tick, selectors, fire, move, awake };
 }
 
 describe("actionZone", () => {
@@ -128,5 +153,43 @@ describe("actionZone", () => {
 		action.destroy();
 		expect(row.awake()).toBe(false);
 		expect(row.listeners.size).toBe(0);
+	});
+
+	describe("stack layout (experiment)", () => {
+		// No bar rendered, so nothing needs a real DOM to lay out.
+		it("sleeps only after a short grace once the pointer leaves", () => {
+			const row = makeRow(false);
+			actionZone(row.host, { layout: "stack" });
+			row.move(690, 202);
+			row.fire("pointerleave");
+			expect(row.awake()).toBe(true);
+			row.tick(200);
+			expect(row.awake()).toBe(false);
+			// Scroll/resize are only listened to while the stack is up.
+			expect(row.winListeners.size).toBe(0);
+		});
+
+		it("coming back into the zone within the grace keeps it awake", () => {
+			const row = makeRow(false);
+			actionZone(row.host, { layout: "stack" });
+			row.move(690, 202);
+			row.fire("pointerleave");
+			row.move(690, 202);
+			row.tick(200);
+			expect(row.awake()).toBe(true);
+		});
+
+		it("destroy cancels a pending sleep and removes its listeners", () => {
+			const row = makeRow(false);
+			const action = actionZone(row.host, { layout: "stack" });
+			row.move(690, 202);
+			row.fire("pointerleave");
+			expect(row.winListeners).toEqual(new Set(["scroll", "resize"]));
+			action.destroy();
+			row.tick(200);
+			expect(row.awake()).toBe(false);
+			expect(row.listeners.size).toBe(0);
+			expect(row.winListeners.size).toBe(0);
+		});
 	});
 });

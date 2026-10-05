@@ -60,13 +60,16 @@ If your plugin does not need CSS, delete this file.
    the row carries `kairos-actions-awake`, i.e. the mouse is in the corner zone,
    not on any hover. Hidden means inert to the pointer too, so a click on the
    end of the row's text reaches the text, not an invisible button. A bar may
-   set `--kairos-action-bar-opacity` (default 0.96, so the row reads through). */
+   set `--kairos-action-bar-opacity` (default 0.96, so the row reads through).
+   `kairos-action-bar-awake` is the same signal on the bar itself, for the
+   (experimental) stack layout, whose bar may be portaled out of the row. */
 .kairos-action-bar {
 	opacity: 0;
 	pointer-events: none;
 	transition: opacity 0.1s;
 }
 .kairos-actions-awake > .kairos-action-bar,
+.kairos-action-bar.kairos-action-bar-awake,
 .kairos-action-bar:focus-within {
 	opacity: var(--kairos-action-bar-opacity, 0.96);
 	pointer-events: auto;
@@ -78,6 +81,29 @@ If your plugin does not need CSS, delete this file.
 		opacity: var(--kairos-action-bar-opacity, 0.96);
 		pointer-events: auto;
 	}
+}
+
+/* EXPERIMENT: the vertical stack layout of an action bar
+   (`actionZone` with `layout: "stack"`, src/ui/actions/actionStack.ts).
+   One button wide, `fixed` so the row's clipping ancestors can't cut it off;
+   its corner cell sits on the row's top-right corner and the rest rise above
+   it (column-reverse), or hang below it (`-down`) when there's no room above.
+   The action sets the left/top properties; `body` outranks a component's own
+   scoped bar rules (two classes), whatever order the styles load in. */
+body .kairos-action-bar.kairos-action-stack {
+	position: fixed;
+	left: var(--kairos-action-stack-left, 0);
+	top: var(--kairos-action-stack-top, 0);
+	right: auto;
+	bottom: auto;
+	flex-direction: column-reverse;
+}
+body .kairos-action-bar.kairos-action-stack-down {
+	flex-direction: column;
+}
+/* Portaled to the body while awake, when staying in place would be clipped. */
+body .kairos-action-bar.kairos-action-stack-portaled {
+	z-index: var(--layer-popover);
 }
 
 /* ── Prompt / Confirm modals (modals.ts) ── */
