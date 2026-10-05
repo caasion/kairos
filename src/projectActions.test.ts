@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { setDomainStatus, setProjectStatus } from "./projectActions";
+import { setDomainStatus, setProjectRollup, setProjectStatus } from "./projectActions";
 import {
 	parseDomain,
 	parseProject,
@@ -64,5 +64,33 @@ describe("setDomainStatus", () => {
 		const fm = serializeDomainFrontmatter(domains[0]!);
 		expect(fm).toContain("2026-08-04:\n    status: active");
 		expect(fm).toContain("why: paused");
+	});
+});
+
+describe("setProjectRollup", () => {
+	const projectFile = (extra = "") =>
+		`---\ntags:\n  - kairos/project\nid: groceries-1\ndomain_id: life-1\n${extra}status:\n  2026-08-04:\n    status: active\n---\n`;
+
+	it("writes `rollup: true` through the index", () => {
+		const { index, projects } = fakeIndex();
+		const p = parseProject(projectFile(), "Groceries.md")!;
+		setProjectRollup(index, p, true);
+		expect(projects).toHaveLength(1);
+		expect(projects[0]!.rollup).toBe(true);
+		expect(serializeProjectFrontmatter(projects[0]!)).toContain("rollup: true");
+	});
+
+	it("turning it off removes the key rather than writing false", () => {
+		const { index, projects } = fakeIndex();
+		const p = parseProject(projectFile("rollup: true\n"), "Groceries.md")!;
+		setProjectRollup(index, p, false);
+		expect(serializeProjectFrontmatter(projects[0]!)).not.toContain("rollup");
+	});
+
+	it("is a no-op when the flag already has that value", () => {
+		const { index, projects } = fakeIndex();
+		setProjectRollup(index, parseProject(projectFile(), "Groceries.md")!, false);
+		setProjectRollup(index, parseProject(projectFile("rollup: true\n"), "Groceries.md")!, true);
+		expect(projects).toHaveLength(0);
 	});
 });

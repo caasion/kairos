@@ -27,6 +27,7 @@ import {
 	setDescription,
 	setDomain,
 	setOrder,
+	setRollup,
 } from "./projectFile";
 import type { Domain, Project, StatusRecord } from "./types";
 
@@ -874,3 +875,55 @@ describe("writing a file Kairos didn't write (#27, #28)", () => {
 	});
 });
 
+
+// ─── rollup: render on the domain's row (#11) ──────────────────
+
+describe("rollup flag", () => {
+	const withRollup = PROJECT.replace("domain_id: track-8a062c99\n", "domain_id: track-8a062c99\nrollup: true\n");
+
+	it("reads as absent when the file doesn't carry it", () => {
+		expect(proj().rollup).toBeUndefined();
+	});
+
+	it("parses `rollup: true`", () => {
+		expect(parseProject(withRollup, "Projects/Alpha.md")!.rollup).toBe(true);
+	});
+
+	it("ignores anything but a literal true", () => {
+		for (const v of ["false", '"true"', "yes", "1"]) {
+			const file = PROJECT.replace("domain_id: track-8a062c99\n", `domain_id: track-8a062c99\nrollup: ${v}\n`);
+			expect(parseProject(file, "Projects/Alpha.md")!.rollup).toBeUndefined();
+		}
+	});
+
+	it("round-trips through serialize → parse", () => {
+		const original = parseProject(withRollup, "Projects/Alpha.md")!;
+		const fm = serializeProjectFrontmatter(original);
+		expect(fm).toContain("rollup: true");
+		const reparsed = parseProject(fm, "Projects/Alpha.md")!;
+		expect(reparsed.rollup).toBe(true);
+		expect(reparsed.domain).toBe(original.domain);
+		expect(reparsed.history).toEqual(original.history);
+	});
+
+	it("never writes `rollup: false` into a file that didn't have it", () => {
+		const fm = serializeProjectFrontmatter(proj());
+		expect(fm).not.toContain("rollup");
+	});
+
+	it("setRollup turns it on, and off deletes the key", () => {
+		const on = setRollup(proj(), true);
+		expect(on.rollup).toBe(true);
+		const off = setRollup(on, false);
+		expect("rollup" in off).toBe(false);
+		expect(serializeProjectFrontmatter(off)).not.toContain("rollup");
+		// Pure: the input is never mutated.
+		expect(on.rollup).toBe(true);
+	});
+
+	it("survives an unrelated edit", () => {
+		const p = parseProject(withRollup, "Projects/Alpha.md")!;
+		const edited = appendStatus(setDescription(p, "weekly shop"), "2026-09-01", "inactive");
+		expect(parseProject(serializeProjectFrontmatter(edited), "Projects/Alpha.md")!.rollup).toBe(true);
+	});
+});

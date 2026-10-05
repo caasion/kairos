@@ -5,13 +5,21 @@
 	// every mutation is an intent forwarded to the parent (GridView), which holds
 	// the day's blocks and persists through the index. That keeps all task
 	// read/write logic in one place and this component purely presentational.
+	//
+	// On a domain row, `tasks` are the domain's own tasks and render first with no
+	// header; `groups` are the rolled-up projects' tasks (#11), each under a small
+	// project header naming it. Ctrl/Cmd+click a header to open the project note.
 
 	import type { Association, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
+	import type { CellGroup } from "../../gridModel";
 	import Task_ from "../task/Task.svelte";
 
 	interface Props {
+		/** The row's own tasks (headerless, first). */
 		tasks: ResolvedTask[];
+		/** Rolled-up projects' tasks, one header each (domain rows only). */
+		groups?: CellGroup[];
 		resolve: Resolver;
 		/** Row tint, applied to task checkboxes for a domain-colored accent. */
 		color?: string;
@@ -52,6 +60,7 @@
 
 	let {
 		tasks,
+		groups = [],
 		resolve,
 		color,
 		allowCreate,
@@ -109,6 +118,24 @@
 	function blockGrabOf(task: Task, event: PointerEvent) {
 		if (onBlockGrab) onBlockGrab(task as ResolvedTask, event);
 	}
+
+	// Each group's offset into the cell's flat task order (own tasks first), so
+	// `data-task-index` stays a single running index across the whole cell.
+	const groupOffsets = $derived.by(() => {
+		let n = tasks.length;
+		return groups.map((g) => {
+			const at = n;
+			n += g.tasks.length;
+			return at;
+		});
+	});
+
+	function onHeaderClick(e: MouseEvent, name: string) {
+		if (!(e.ctrlKey || e.metaKey)) return;
+		e.preventDefault();
+		e.stopPropagation();
+		onNavigate({ kind: "project", id: name });
+	}
 </script>
 
 <div class="grid-cell" class:drop-target={isDropTarget} class:inactive>
@@ -117,7 +144,7 @@
 		     dim/hatch reads the column as past context, not a place to add work. -->
 		<div class="grid-cell-inactive-badge" title="Not active on this day"></div>
 	{/if}
-	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
+	{#snippet taskItem(task: ResolvedTask, i: number)}
 		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
@@ -186,6 +213,28 @@
 				</div>
 			{/snippet}
 		</div>
+	{/snippet}
+
+	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
+		{@render taskItem(task, i)}
+	{/each}
+
+	{#each groups as group, g (group.name)}
+		<!-- A rolled-up project's header: names the project once for its group,
+		     since Grid tasks carry no association line. Shown even for a lone
+		     group, so it never reads as the domain's own tasks. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="grid-cell-group-header"
+			title="Ctrl+click to open {group.name}"
+			onclick={(e) => onHeaderClick(e, group.name)}
+		>
+			{group.name}
+		</div>
+		{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
+			{@render taskItem(task, (groupOffsets[g] ?? 0) + j)}
+		{/each}
 	{/each}
 
 	{#if allowCreate && !inactive}
@@ -234,6 +283,30 @@
 			var(--background-modifier-border) 7px
 		);
 		opacity: 0.25;
+	}
+
+	.grid-cell.inactive .grid-cell-group-header {
+		opacity: 0.4;
+	}
+
+	/* A rolled-up project's group header (#11): small and muted, so it labels
+	   the tasks below it without competing with them. */
+	.grid-cell-group-header {
+		padding: 0 2px;
+		font-size: var(--font-ui-smaller);
+		color: var(--text-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-width: 0;
+		cursor: default;
+	}
+	/* A little air between one group's tasks and the next header. */
+	.grid-cell-item + .grid-cell-group-header {
+		margin-top: 4px;
+	}
+	.grid-cell-group-header:hover {
+		color: var(--text-normal);
 	}
 
 	/* Dim the row whose task is being dragged. */

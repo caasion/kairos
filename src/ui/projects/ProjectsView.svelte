@@ -35,6 +35,7 @@
 		setDomainStatus,
 		setProjectDescription,
 		setProjectDomain,
+		setProjectRollup,
 		setProjectStatus,
 	} from "../../projectActions";
 	import { todayISO } from "../../dayNote";
@@ -332,6 +333,16 @@
 			// @ts-expect-error setSubmenu is available on Obsidian's MenuItem.
 			addDomainPickerItems(item.setSubmenu(), project);
 		});
+		// Grid rollup (#11): render this project's tasks on its domain's row
+		// instead of its own. Only meaningful with a domain to roll up into.
+		if (project.domain) {
+			menu.addItem((item) =>
+				item
+					.setTitle(project.rollup ? "Give its own row" : "Show on domain's row")
+					.setIcon(project.rollup ? "unfold-vertical" : "fold-vertical")
+					.onClick(() => setProjectRollup(index, project, !project.rollup)),
+			);
+		}
 		menu.addSeparator();
 		// The toggle target mirrors toggleStatus: an active project drops to the
 		// last non-active state it held (inactive by default), else back to active.

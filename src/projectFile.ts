@@ -64,6 +64,7 @@ interface RawFrontmatter {
 	aliases?: unknown;
 	description?: unknown;
 	domain_id?: unknown;
+	rollup?: unknown;
 	order?: unknown;
 	color?: unknown;
 	status?: unknown;
@@ -362,6 +363,8 @@ export function parseProject(content: string, path: string): Project | null {
 		aliases: asStringList(fm.aliases),
 		description: asString(fm.description) ?? "",
 		...(domain ? { domain } : {}),
+		// Only a literal YAML `true` counts; anything else reads as absent.
+		...(fm.rollup === true ? { rollup: true } : {}),
 		history,
 		...(anomalies.length > 0 ? { anomalies } : {}),
 		archived: deriveArchived(history),
@@ -455,6 +458,9 @@ export function serializeProjectFrontmatter(project: Project): string {
 		aliases: project.aliases,
 		description: project.description,
 		domain_id: project.domain ?? null,
+		// Written only when on: clearing the flag deletes the key rather than
+		// leaving `rollup: false` in a file that never had it.
+		...(project.rollup ? { rollup: true } : {}),
 		status: statusMap(project.history, project.anomalies),
 	};
 	return fence(fm);
@@ -789,4 +795,15 @@ export function setDomain(project: Project, domainId: string | undefined): Proje
 		return rest;
 	}
 	return { ...project, domain: domainId };
+}
+
+/**
+ * Turn a project's "show on its domain's row" flag on or off (#11). Off removes
+ * the key entirely, so the file goes back to exactly what it was before the flag
+ * was set rather than carrying `rollup: false`.
+ */
+export function setRollup(project: Project, rollup: boolean): Project {
+	if (rollup) return { ...project, rollup: true };
+	const { rollup: _drop, ...rest } = project;
+	return rest;
 }

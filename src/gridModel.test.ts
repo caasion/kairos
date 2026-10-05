@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { resolveAssociation } from "./association";
-import { buildRows, cellTasks, dayStatus, rowAssociation } from "./gridModel";
+import {
+	buildRows,
+	cellGroups,
+	cellTasks,
+	dayStatus,
+	dropAssociation,
+	ownerRowKey,
+	rolledUpProjects,
+	rowAssociation,
+} from "./gridModel";
 import type { GridDay, GridSnapshot } from "./index";
 import type {
 	Association,
@@ -259,5 +268,178 @@ describe("rowAssociation", () => {
 		expect(byKind["project"]).toEqual({ kind: "project", id: "Alpha" });
 		expect(byKind["domain"]).toEqual({ kind: "domain", id: "Health" });
 		expect(byKind["unassigned"]).toBeUndefined();
+	});
+});
+
+// ─── rollup (#11) ──────────────────────────────────────────────
+
+describe("rollup: a project rendered on its domain's row", () => {
+	// Life holds three projects: two rolled up (Laundry, Groceries) and one that
+	// keeps its own row (Move house). Inactive history keeps visibility explicit.
+	const life = domain({ id: "d-life", name: "Life", order: 1 });
+	const groceries = project({ id: "p-g", name: "Groceries", domain: "d-life", rollup: true });
+	const laundry = project({ id: "p-l", name: "Laundry", domain: "d-life", rollup: true });
+	const moving = project({ id: "p-m", name: "Move house", domain: "d-life" });
+
+	it("rolled-up projects contribute no row; the others keep theirs", () => {
+		const s = snap([groceries, laundry, moving], [life], []);
+		expect(buildRows(s, AS_OF).map((r) => [r.kind, r.name])).toEqual([
+			["domain", "Life"],
+			["project", "Move house"],
+		]);
+	});
+
+	it("routes rolled-up tasks to the domain row, and the rest to their own rows", () => {
+		const g = task({ owner: proj("Groceries") });
+		const m = task({ owner: proj("Move house") });
+		const s = snap([groceries, laundry, moving], [life], [g, m]);
+		const rows = buildRows(s, AS_OF);
+		const lifeRow = rows.find((r) => r.kind === "domain")!;
+		const moveRow = rows.find((r) => r.name === "Move house")!;
+		expect(cellTasks(lifeRow, s.days[0]!.tasks, s)).toEqual([g]);
+		expect(cellTasks(moveRow, s.days[0]!.tasks, s)).toEqual([m]);
+		expect(ownerRowKey(proj("Groceries"), s)).toBe("domain:Life");
+		expect(ownerRowKey(proj("Move house"), s)).toBe("project:Move house");
+	});
+
+	it("a rolled-up project with no domain ignores the flag and keeps its row", () => {
+		const solo = project({ name: "Solo", rollup: true });
+		const t = task({ owner: proj("Solo") });
+		const s = snap([solo], [life], [t]);
+		const rows = buildRows(s, AS_OF);
+		const soloRow = rows.find((r) => r.name === "Solo")!;
+		expect(soloRow.kind).toBe("project");
+		expect(cellTasks(soloRow, s.days[0]!.tasks, s)).toEqual([t]);
+	});
+
+	it("shows a domain whose only activity in the window is a rolled-up project's task", () => {
+		// Life and Groceries were both inactive across the window; only a task
+		// tagged to Groceries keeps Life on screen.
+		const quiet = [{ date: "2026-07-01", status: "inactive" as const }];
+		const d = domain({ id: "d-life", name: "Life", history: quiet });
+		const p = project({ name: "Groceries", domain: "d-life", rollup: true, history: quiet });
+		const t = task({ owner: proj("Groceries") });
+
+		const without = snap([p], [d], []);
+		expect(buildRows(without, AS_OF)).toHaveLength(0);
+
+		const s = snap([p], [d], [t]);
+		const rows = buildRows(s, AS_OF);
+		expect(rows.map((r) => [r.kind, r.name])).toEqual([["domain", "Life"]]);
+		expect(cellTasks(rows[0]!, s.days[0]!.tasks, s)).toEqual([t]);
+	});
+
+	it("shows a domain whose rolled-up project is active in the window", () => {
+		const quiet = [{ date: "2026-07-01", status: "inactive" as const }];
+		const d = domain({ id: "d-life", name: "Life", history: quiet });
+		const p = project({ name: "Groceries", domain: "d-life", rollup: true });
+		expect(buildRows(snap([p], [d], []), AS_OF).map((r) => r.name)).toEqual(["Life"]);
+	});
+
+	it("puts the domain's own tasks first, then one group per project, by name", () => {
+		const own1 = task({ owner: dom("Life") });
+		const l1 = task({ owner: proj("Laundry") });
+		const g1 = task({ owner: proj("Groceries") });
+		const own2 = task({ owner: dom("Life") });
+		const g2 = task({ owner: proj("Groceries") });
+		const m = task({ owner: proj("Move house") });
+		const s = snap([groceries, laundry, moving], [life], [own1, l1, g1, own2, g2, m]);
+		const lifeRow = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
+
+		const { own, groups } = cellGroups(lifeRow, s.days[0]!.tasks, s);
+		expect(own).toEqual([own1, own2]);
+		expect(groups).toEqual([
+			{ name: "Groceries", tasks: [g1, g2] },
+			{ name: "Laundry", tasks: [l1] },
+		]);
+		// The flat list keeps the same display order.
+		expect(cellTasks(lifeRow, s.days[0]!.tasks, s)).toEqual([own1, own2, g1, g2, l1]);
+	});
+
+	it("still gives a single group its header (a group, not the domain's own tasks)", () => {
+		const g = task({ owner: proj("Groceries") });
+		const s = snap([groceries, moving], [life], [g]);
+		const lifeRow = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
+		expect(cellGroups(lifeRow, s.days[0]!.tasks, s)).toEqual({
+			own: [],
+			groups: [{ name: "Groceries", tasks: [g] }],
+		});
+	});
+
+	it("groups an alias-tagged task under the project's canonical name", () => {
+		const p = project({ name: "Groceries", aliases: ["Shopping"], domain: "d-life", rollup: true });
+		const t = task({ owner: proj("Shopping") });
+		const s = snap([p], [life], [t]);
+		const lifeRow = buildRows(s, AS_OF)[0]!;
+		expect(cellGroups(lifeRow, s.days[0]!.tasks, s).groups).toEqual([
+			{ name: "Groceries", tasks: [t] },
+		]);
+	});
+
+	it("non-domain rows never have groups", () => {
+		const t = task({ owner: proj("Move house") });
+		const s = snap([moving], [life], [t]);
+		const row = buildRows(s, AS_OF).find((r) => r.name === "Move house")!;
+		expect(cellGroups(row, s.days[0]!.tasks, s)).toEqual({ own: [t], groups: [] });
+	});
+
+	it("dims a domain row's cells by the domain's own status", () => {
+		const d = domain({
+			id: "d-life",
+			name: "Life",
+			history: [
+				{ date: "2026-07-01", status: "active" },
+				{ date: "2026-08-02", status: "inactive" },
+			],
+		});
+		const s = snap([groceries], [d], [], ["2026-08-01", "2026-08-02"]);
+		const row = buildRows(s, AS_OF)[0]!;
+		expect(dayStatus(row, "2026-08-01", s)).toBe("active");
+		expect(dayStatus(row, "2026-08-02", s)).toBe("inactive");
+	});
+
+	it("lists a domain's rolled-up projects by name", () => {
+		const s = snap([moving, laundry, groceries], [life], []);
+		expect(rolledUpProjects(life, s).map((p) => p.name)).toEqual(["Groceries", "Laundry"]);
+	});
+});
+
+describe("dropAssociation", () => {
+	const life = domain({ id: "d-life", name: "Life" });
+	const groceries = project({ name: "Groceries", domain: "d-life", rollup: true });
+	const moving = project({ name: "Move house", domain: "d-life" });
+	const s = snap([groceries, moving], [life], [task({})]);
+	const rows = buildRows(s, AS_OF);
+	const lifeRow = rows.find((r) => r.kind === "domain")!;
+	const moveRow = rows.find((r) => r.name === "Move house")!;
+	const unassigned = rows.find((r) => r.kind === "unassigned")!;
+
+	it("keeps a rolled-up task's project when it stays on its domain row", () => {
+		expect(dropAssociation(lifeRow, proj("Groceries"), s)).toEqual({
+			assoc: proj("Groceries"),
+			sameRow: true,
+		});
+	});
+
+	it("assigns the domain when a task from another row lands on a rolled-up domain row", () => {
+		expect(dropAssociation(lifeRow, proj("Move house"), s)).toEqual({
+			assoc: dom("Life"),
+			sameRow: false,
+		});
+	});
+
+	it("re-files a rolled-up task dragged out to another row", () => {
+		expect(dropAssociation(moveRow, proj("Groceries"), s)).toEqual({
+			assoc: proj("Move house"),
+			sameRow: false,
+		});
+		expect(dropAssociation(unassigned, proj("Groceries"), s)).toEqual({
+			assoc: null,
+			sameRow: false,
+		});
+	});
+
+	it("is undefined with no target row", () => {
+		expect(dropAssociation(undefined, proj("Groceries"), s)).toBeUndefined();
 	});
 });
