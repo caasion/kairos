@@ -11,6 +11,13 @@
 // chronologically-sorted `StatusRecord[]`. The state *in effect* is the most
 // recent record dated on-or-before today (future-dated records are scheduled,
 // not yet active); `archived` is derived from that effective state.
+//
+// Kairos never silently rewrites frontmatter it did not write (decision 55). A
+// `status:` entry in a shape or vocabulary we would not have produced is kept as
+// a `StatusAnomaly` on the entity and re-emitted verbatim on every write, so
+// neither reading nor editing a file can quietly convert or delete something the
+// user typed. `normalizeStatusShapes` is the only thing that changes such an
+// entry, and the Projects page only calls it on an explicit accept.
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {
@@ -19,6 +26,7 @@ import type {
 	LifecycleState,
 	Project,
 	SourceRef,
+	StatusAnomaly,
 	StatusRecord,
 } from "./types";
 
@@ -105,37 +113,218 @@ function asStringList(v: unknown): string[] {
 
 const LIFECYCLE = new Set<LifecycleState>(["active", "inactive", "archived"]);
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A status entry's fields, read out of either the bare or the object form. */
+function readEntry(value: unknown): {
+	state: unknown;
+	note: string;
+	why: string;
+	bare: boolean;
+} {
+	if (value && typeof value === "object") {
+		const o = value as { status?: unknown; note?: unknown; why?: unknown };
+		return {
+			state: o.status,
+			note: typeof o.note === "string" ? o.note.trim() : "",
+			why: typeof o.why === "string" ? o.why.trim() : "",
+			bare: false,
+		};
+	}
+	return { state: value, note: "", why: "", bare: true };
+}
+
+/** The record an entry would become, or null when its state isn't a lifecycle state. */
+function entryRecord(date: ISODate, value: unknown): StatusRecord | null {
+	const { state, note, why } = readEntry(value);
+	const status = String(state) as LifecycleState;
+	if (!LIFECYCLE.has(status)) return null;
+	return {
+		date,
+		status,
+		...(note ? { note } : {}),
+		...(why ? { why } : {}),
+	};
+}
+
+/** How an entry reads in the file, for a warning naming the date and the value. */
+function renderEntry(key: string, value: unknown): string {
+	const { state, bare } = readEntry(value);
+	const shown =
+		typeof state === "string" || typeof state === "number"
+			? String(state)
+			: "(no status)";
+	return bare ? `${key}: ${shown}` : `${key}: { status: ${shown} }`;
+}
+
+/** How a record reads once written in the canonical object form. */
+function renderCanonical(key: string, rec: StatusRecord): string {
+	const kept = [rec.note ? "note" : null, rec.why ? "why" : null].filter(Boolean);
+	const tail = kept.length > 0 ? `, ${kept.join(" + ")} kept` : "";
+	return `${key}: { status: ${rec.status}${tail} }`;
+}
+
 /**
- * Parse the `status` frontmatter map into records sorted oldest→newest by date.
+ * A near-miss date key padded to `YYYY-MM-DD` (`2026-8-4` → `2026-08-04`), or
+ * null when the key isn't a date at all. Anything else — a word, a range, a
+ * typo — is reported but never guessed at.
+ */
+function padDateKey(key: string): ISODate | null {
+	const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(key);
+	if (!m) return null;
+	const [, y, mo, d] = m as unknown as [string, string, string, string];
+	const month = Number(mo);
+	const day = Number(d);
+	if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+	return `${y}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * Parse the `status` frontmatter map into records sorted oldest→newest by date,
+ * alongside the entries that weren't in the shape or vocabulary Kairos writes.
  * Keys are `YYYY-MM-DD`. Each value is either a bare lifecycle state string or a
- * `{ status, note? }` object — the object form carries the freeform `note`
- * annotation (open-label, never logic). The bare-string form is still tolerated
- * on read for robustness; we always write the object form (see `statusMap`).
- * Unknown states and malformed dates are dropped rather than throwing; an empty
- * or non-string note is dropped so it never round-trips as a synthetic "".
+ * `{ status, note?, why? }` object — the object form carries the freeform `note`
+ * (what the state entails) and `why` (what moved the entity into it), both
+ * open-label and never logic. The bare-string form is still tolerated on read
+ * and, since #28, is written back out as the user left it (see `statusMap`).
+ * An empty or non-string note/why is dropped so it never round-trips as a
+ * synthetic "".
+ *
+ * Nothing throws and nothing is thrown away. An unknown state or a malformed
+ * date key still stays *out of the derived history* — a state Kairos doesn't
+ * know can't drive anything — but it comes back as an anomaly instead of
+ * vanishing, so the page can name the file, the date and the value (#27) and the
+ * next write can put the entry back verbatim.
+ */
+export function parseStatusWithAnomalies(v: unknown): {
+	records: StatusRecord[];
+	anomalies: StatusAnomaly[];
+} {
+	if (!v || typeof v !== "object") return { records: [], anomalies: [] };
+	const records: StatusRecord[] = [];
+	const anomalies: StatusAnomaly[] = [];
+
+	for (const [key, value] of Object.entries(v as Record<string, unknown>)) {
+		const found = renderEntry(key, value);
+
+		if (!ISO_DATE.test(key)) {
+			// Not a date we can file the record under. Normalising can only offer
+			// something when the key is a paddable near-miss AND its value is a
+			// state we know; otherwise we report it and leave it alone.
+			const padded = padDateKey(key);
+			const rec = padded ? entryRecord(padded, value) : null;
+			anomalies.push({
+				kind: "bad-date",
+				key,
+				raw: value,
+				found,
+				becomes: rec ? renderCanonical(rec.date, rec) : null,
+				...(rec ? { record: rec } : {}),
+			});
+			continue;
+		}
+
+		const rec = entryRecord(key, value);
+		if (!rec) {
+			anomalies.push({
+				kind: "unknown-state",
+				key,
+				raw: value,
+				found,
+				becomes: null,
+			});
+			continue;
+		}
+
+		records.push(rec);
+		if (readEntry(value).bare) {
+			anomalies.push({
+				kind: "bare-string",
+				key,
+				raw: value,
+				found,
+				becomes: renderCanonical(key, rec),
+			});
+		}
+	}
+
+	records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+	// A near-miss key whose padded form is already taken can't be normalised:
+	// two entries would land on one date and Kairos would be choosing which of
+	// them survives. Report it, offer nothing.
+	const taken = new Set(records.map((r) => r.date));
+	for (const a of anomalies) {
+		if (a.record && taken.has(a.record.date)) {
+			delete a.record;
+			a.becomes = null;
+		}
+	}
+
+	return { records, anomalies };
+}
+
+/**
+ * The parsed history alone. The anomalies are the other half of the same read
+ * (`parseStatusWithAnomalies`); this wrapper is for the callers — mostly tests
+ * and the Gantt — that only want records.
  */
 export function parseStatus(v: unknown): StatusRecord[] {
-	if (!v || typeof v !== "object") return [];
-	const records: StatusRecord[] = [];
-	for (const [date, value] of Object.entries(v as Record<string, unknown>)) {
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-		let state: unknown = value;
-		let rawNote: unknown;
-		if (value && typeof value === "object") {
-			state = (value as { status?: unknown }).status;
-			rawNote = (value as { note?: unknown }).note;
+	return parseStatusWithAnomalies(v).records;
+}
+
+/**
+ * Apply the anomalies that *can* be normalised, leaving the rest exactly as they
+ * are. A bare-string entry simply stops being preserved, so the next write emits
+ * the object form; a paddable bad date becomes a real record under its padded
+ * key. An unknown state is never touched — Kairos can't invent a state it
+ * doesn't know, so that one stays in the file and stays reported.
+ *
+ * Pure, and called only from an explicit accept on the Projects page: reading a
+ * file must never change it (decision 55).
+ */
+export function normalizeStatusShapes<T extends Project | Domain>(entity: T): T {
+	const anomalies = entity.anomalies ?? [];
+	if (!anomalies.some(isNormalizable)) return entity;
+
+	const dates = new Set(entity.history.map((r) => r.date));
+	const added: StatusRecord[] = [];
+	const left: StatusAnomaly[] = [];
+	for (const a of anomalies) {
+		// Re-check the collision here, not just at parse time: the history may have
+		// gained a record on that date since the file was read, and `normalizeHistory`
+		// lets a later entry win a date collision — which would overwrite it.
+		if (!isNormalizable(a) || (a.record && dates.has(a.record.date))) {
+			left.push(a);
+			continue;
 		}
-		const status = String(state) as LifecycleState;
-		if (!LIFECYCLE.has(status)) continue;
-		const note = typeof rawNote === "string" ? rawNote.trim() : "";
-		records.push({
-			date: date,
-			status,
-			...(note ? { note } : {}),
-		});
+		if (a.record) {
+			added.push(a.record);
+			dates.add(a.record.date);
+		}
 	}
-	records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-	return records;
+	if (added.length === 0 && left.length === anomalies.length) return entity;
+
+	const history = normalizeHistory([...entity.history, ...added]);
+	const next = withHistory(entity, history);
+	if (left.length > 0) return { ...next, anomalies: left };
+	const { anomalies: _cleared, ...rest } = next;
+	return rest as T;
+}
+
+/**
+ * Whether normalising has something to offer for this entry. A bad date whose
+ * padded key already carries a record is *not* normalisable: two entries would
+ * collide on one date and Kairos would have to choose which one survives.
+ */
+export function isNormalizable(a: StatusAnomaly): boolean {
+	if (a.kind === "bare-string") return true;
+	return a.kind === "bad-date" && a.record !== undefined;
+}
+
+/** The anomalies of `entity` that an accept would act on. */
+export function normalizableAnomalies(entity: Project | Domain): StatusAnomaly[] {
+	return (entity.anomalies ?? []).filter(isNormalizable);
 }
 
 /**
@@ -171,8 +360,9 @@ export function effectiveStatus(
  * The lifecycle record in effect as of `asOf`, plus the bounds of the current
  * span. Same "most recent record on-or-before asOf" rule as `effectiveStatus`,
  * but also surfaces:
- *   • `status` / `note` — the effective record's state and its freeform note
- *     (the "status description"; empty when none or when no record applies).
+ *   • `status` / `note` / `why` — the effective record's state, its freeform
+ *     note (the "status description") and the reason it was entered; note and
+ *     why are "" when unset or when no record applies.
  *   • `since` — the date the *current* span (the run of consecutive records
  *     sharing this status) began. Null when the default "active" applies with no
  *     record at all.
@@ -189,7 +379,13 @@ export function effectiveStatus(
 export function effectiveRecord(
 	history: StatusRecord[],
 	asOf: ISODate = localTodayISO(),
-): { status: LifecycleState; note: string; since: ISODate | null; until: ISODate | null } {
+): {
+	status: LifecycleState;
+	note: string;
+	why: string;
+	since: ISODate | null;
+	until: ISODate | null;
+} {
 	// Index of the record in effect (most recent dated on-or-before asOf).
 	let idx = -1;
 	for (let i = history.length - 1; i >= 0; i--) {
@@ -200,7 +396,7 @@ export function effectiveRecord(
 		}
 	}
 	if (idx < 0) {
-		return { status: "active", note: "", since: null, until: null };
+		return { status: "active", note: "", why: "", since: null, until: null };
 	}
 	const rec = history[idx]!;
 	// Walk back over any records sharing this status to find where the span began.
@@ -210,6 +406,7 @@ export function effectiveRecord(
 	return {
 		status: rec.status,
 		note: rec.note ?? "",
+		why: rec.why ?? "",
 		since: history[start]!.date,
 		until,
 	};
@@ -237,7 +434,7 @@ export function parseProject(content: string, path: string): Project | null {
 	const fm = parseFrontmatter(content);
 	if (fm === null || !hasTag(fm, PROJECT_TAG)) return null;
 
-	const history = parseStatus(fm.status);
+	const { records: history, anomalies } = parseStatusWithAnomalies(fm.status);
 	const source: SourceRef = { path, line: 0 };
 	const domain = asString(fm.domain_id);
 
@@ -248,6 +445,7 @@ export function parseProject(content: string, path: string): Project | null {
 		description: asString(fm.description) ?? "",
 		...(domain ? { domain } : {}),
 		history,
+		...(anomalies.length > 0 ? { anomalies } : {}),
 		archived: deriveArchived(history),
 		source,
 	};
@@ -260,7 +458,7 @@ export function parseDomain(content: string, path: string): Domain | null {
 	const fm = parseFrontmatter(content);
 	if (fm === null || !hasTag(fm, DOMAIN_TAG)) return null;
 
-	const history = parseStatus(fm.status);
+	const { records: history, anomalies } = parseStatusWithAnomalies(fm.status);
 	const source: SourceRef = { path, line: 0 };
 	const order = typeof fm.order === "number" ? fm.order : 0;
 
@@ -272,6 +470,7 @@ export function parseDomain(content: string, path: string): Domain | null {
 		order,
 		color: asString(fm.color) ?? "",
 		history,
+		...(anomalies.length > 0 ? { anomalies } : {}),
 		archived: deriveArchived(history),
 		source,
 	};
@@ -280,21 +479,64 @@ export function parseDomain(content: string, path: string): Domain | null {
 // ─── serialization ─────────────────────────────────────────────
 
 /**
- * Turn a `StatusRecord[]` back into a frontmatter status map. Each value is a
- * `{ status, note? }` object; the `note` key is emitted only when present, so a
- * record without a note stays `{ status }` rather than `{ status, note: "" }`.
+ * Turn a `StatusRecord[]` back into a frontmatter status map. Each value Kairos
+ * owns is a `{ status, note?, why? }` object; `note` and `why` are emitted only
+ * when present, so a record carrying neither stays `{ status }` rather than
+ * round-tripping synthetic empty strings.
+ *
+ * Entries Kairos did not write go back exactly as they came in (decision 55).
+ * That covers the flat scalar — `2026-08-04: active` stays a flat scalar until
+ * the user accepts normalising it, instead of being upgraded to the object form
+ * by the first unrelated edit — and it covers the entries that never became
+ * records at all (an unknown state, a malformed date key), which used to be
+ * deleted from the file by the next write (#27).
+ *
+ * A preserved flat scalar is only re-emitted while the record it produced still
+ * says exactly what it said: edit that record's status, add a note or a why, move
+ * its date or delete it, and the canonical form wins — the user's edit is the
+ * point, and re-emitting the old scalar would silently undo it. Likewise an
+ * entry that never parsed yields its key the moment a real record claims that
+ * date. Keys come out sorted, which for `YYYY-MM-DD` is chronological.
  */
 interface StatusValue {
 	status: LifecycleState;
 	note?: string;
+	why?: string;
 }
 
-function statusMap(history: StatusRecord[]): Record<string, StatusValue> {
-	const map: Record<string, StatusValue> = {};
+// The map's value type is plain `unknown`: a record Kairos owns serializes as a
+// `StatusValue`, but a preserved anomaly goes back out exactly as it came in and
+// that is whatever YAML the user typed, so the union would collapse to `unknown`
+// anyway. The `StatusValue` annotation below is what keeps the canonical half
+// type-checked.
+function statusMap(
+	history: StatusRecord[],
+	anomalies: StatusAnomaly[] = [],
+): Record<string, unknown> {
+	const map: Record<string, unknown> = {};
+	const byDate = new Map<ISODate, StatusRecord>();
 	for (const r of history) {
-		map[r.date] = r.note ? { status: r.status, note: r.note } : { status: r.status };
+		byDate.set(r.date, r);
+		const value: StatusValue = {
+			status: r.status,
+			...(r.note ? { note: r.note } : {}),
+			...(r.why ? { why: r.why } : {}),
+		};
+		map[r.date] = value;
 	}
-	return map;
+
+	for (const a of anomalies) {
+		if (a.kind === "bare-string") {
+			const rec = byDate.get(a.key);
+			if (rec && rec.status === a.raw && !rec.note && !rec.why) map[a.key] = a.raw;
+			continue;
+		}
+		if (!(a.key in map)) map[a.key] = a.raw;
+	}
+
+	const sorted: Record<string, unknown> = {};
+	for (const key of Object.keys(map).sort()) sorted[key] = map[key];
+	return sorted;
 }
 
 /**
@@ -308,7 +550,7 @@ export function serializeProjectFrontmatter(project: Project): string {
 		aliases: project.aliases,
 		description: project.description,
 		domain_id: project.domain ?? null,
-		status: statusMap(project.history),
+		status: statusMap(project.history, project.anomalies),
 	};
 	return fence(fm);
 }
@@ -322,7 +564,7 @@ export function serializeDomainFrontmatter(domain: Domain): string {
 		description: domain.description,
 		order: domain.order,
 		color: domain.color,
-		status: statusMap(domain.history),
+		status: statusMap(domain.history, domain.anomalies),
 	};
 	return fence(fm);
 }
@@ -407,7 +649,7 @@ export function serializeDomainFile(domain: Domain): string {
 //
 // Every history edit funnels through `normalizeHistory`, which is the single
 // place the invariants live: chronological order, one record per date, and no
-// two *consecutive* records carrying the same `{ status, note }` (a no-op
+// two *consecutive* records carrying the same `{ status, note, why }` (a no-op
 // transition holds no information, so the redundant later one is dropped). The
 // Gantt/strength view and the status-history overlay both call these functions,
 // so they are the guardrail — invariant-breaking states can't be written.
@@ -421,16 +663,27 @@ function isProject(entity: Project | Domain): entity is Project {
 	return "domain" in entity || !("order" in entity);
 }
 
-/** Two records represent the same transition iff status AND note match. */
+/**
+ * Two records represent the same transition iff status, note AND why all match.
+ * `why` counts: two consecutive records sharing a status and a note but holding
+ * different reasons hold different information, and collapsing the later one
+ * would silently discard a reason the user was just prompted for. Two
+ * consecutive same-status records can therefore exist; `effectiveRecord` already
+ * walks back over a run of them to find where the span began.
+ */
 function sameTransition(a: StatusRecord, b: StatusRecord): boolean {
-	return a.status === b.status && (a.note ?? "") === (b.note ?? "");
+	return (
+		a.status === b.status &&
+		(a.note ?? "") === (b.note ?? "") &&
+		(a.why ?? "") === (b.why ?? "")
+	);
 }
 
 /**
  * Enforce the history invariants and return a fresh, sorted array:
  *  1. chronological order (oldest → newest),
  *  2. one record per date (later write wins on a collision),
- *  3. no two consecutive records with identical `{ status, note }` — the
+ *  3. no two consecutive records with identical `{ status, note, why }` — the
  *     redundant later one is dropped, since a no-op transition carries nothing.
  * Pure: the input is never mutated.
  */
@@ -461,7 +714,8 @@ function withHistory<T extends Project | Domain>(
 }
 
 /**
- * Append a status record dated `date` with an optional `note`. A same-day record
+ * Append a status record dated `date` with an optional `note` (what the state
+ * entails) and `why` (what moved the entity into it). A same-day record
  * is replaced (one status per day); everything else is handled by
  * `normalizeHistory` (ordering, consecutive-duplicate collapse). `archived` is
  * re-derived from the resulting latest record.
@@ -475,14 +729,17 @@ export function appendStatus<T extends Project | Domain>(
 	date: ISODate,
 	status: LifecycleState,
 	note?: string,
+	why?: string,
 ): T {
 	if (!isProject(entity) && status === "archived") return entity;
 
 	const trimmed = note?.trim();
+	const trimmedWhy = why?.trim();
 	const record: StatusRecord = {
 		date,
 		status,
 		...(trimmed ? { note: trimmed } : {}),
+		...(trimmedWhy ? { why: trimmedWhy } : {}),
 	};
 	const history = normalizeHistory([...entity.history, record]);
 	return withHistory(entity, history);
@@ -490,24 +747,36 @@ export function appendStatus<T extends Project | Domain>(
 
 /**
  * Edit a prior record identified by `originalDate`, replacing its date, status,
- * and/or note. A no-op if no record carries `originalDate`. The result runs
+ * note and/or why. A no-op if no record carries `originalDate`. The result runs
  * through `normalizeHistory`, so moving a record's date past a neighbour re-sorts
  * it and any resulting consecutive duplicate is collapsed. The domain-archived
  * guard is preserved (an `archived` edit on a domain is refused, unchanged).
+ *
+ * `why` is *preserved* when `next` omits the key entirely, and replaced (or
+ * cleared with "") when it carries it. Callers that rebuild a record as an
+ * object literal to re-time it — the Gantt's drag and date-edit gestures do, in
+ * four places — are not editing the reason, and would otherwise silently delete
+ * a reason the user typed on the Projects page. A form that owns the field, like
+ * the status-history modal, always passes the key and so stays fully editable.
+ * `note` keeps its older replace-or-drop semantics; every caller that cares
+ * about a note already passes it explicitly.
  */
 export function editStatusRecord<T extends Project | Domain>(
 	entity: T,
 	originalDate: ISODate,
-	next: { date: ISODate; status: LifecycleState; note?: string },
+	next: { date: ISODate; status: LifecycleState; note?: string; why?: string },
 ): T {
 	if (!isProject(entity) && next.status === "archived") return entity;
-	if (!entity.history.some((r) => r.date === originalDate)) return entity;
+	const original = entity.history.find((r) => r.date === originalDate);
+	if (!original) return entity;
 
 	const trimmed = next.note?.trim();
+	const why = "why" in next ? next.why?.trim() : original.why;
 	const replacement: StatusRecord = {
 		date: next.date,
 		status: next.status,
 		...(trimmed ? { note: trimmed } : {}),
+		...(why ? { why } : {}),
 	};
 	const history = normalizeHistory([
 		...entity.history.filter((r) => r.date !== originalDate),

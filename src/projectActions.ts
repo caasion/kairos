@@ -15,6 +15,7 @@ import type { KairosIndex } from "./index";
 import {
 	appendStatus,
 	editStatusRecord,
+	normalizeStatusShapes,
 	removeStatusRecord,
 	renameWithAlias,
 	setColor,
@@ -25,10 +26,12 @@ import {
 
 // ── status history (a hands-off log; editable through the guarded views) ──
 //
-// `set*Status` appends a change; `edit*StatusRecord` / `remove*StatusRecord`
+// `set*Status` appends a change (optionally with the reason it was made);
+// `edit*StatusRecord` / `remove*StatusRecord`
 // revise the past. All route through the pure edit functions in projectFile.ts,
 // which own the invariants (order, one-per-date, no consecutive duplicates), so
-// these verbs stay thin. `note` is a freeform open-label annotation (never logic).
+// these verbs stay thin. `note` (what the state entails) and `why` (what moved
+// the entity into it) are both freeform open-label text, never logic.
 
 export function setProjectStatus(
 	index: KairosIndex,
@@ -36,8 +39,9 @@ export function setProjectStatus(
 	date: ISODate,
 	status: LifecycleState,
 	note?: string,
+	why?: string,
 ): void {
-	index.applyProjectEdit(appendStatus(project, date, status, note));
+	index.applyProjectEdit(appendStatus(project, date, status, note, why));
 }
 
 /** Domains are durable: `archived` is refused by `appendStatus`, so the UI
@@ -48,14 +52,18 @@ export function setDomainStatus(
 	date: ISODate,
 	status: LifecycleState,
 	note?: string,
+	why?: string,
 ): void {
-	index.applyDomainEdit(appendStatus(domain, date, status, note));
+	index.applyDomainEdit(appendStatus(domain, date, status, note, why));
 }
 
 /**
  * Author a *bounded* active period on the Gantt in one write: an `active` record
- * at `start` (carrying the intensity `note`) and an `inactive` record at `end`
- * that closes it. Composed as nested pure edits so the two records land in a
+ * at `start` (carrying the freeform `note`) and an `inactive` record at `end`
+ * that closes it. Neither record carries a `why`: a drag release is a gesture
+ * with no moment to ask for a reason, and prompting on one would be exactly the
+ * toll #26 rules out. A reason can still be added afterwards in the history log.
+ * Composed as nested pure edits so the two records land in a
  * single entity replacement — no interleaved async writes, and `normalizeHistory`
  * still owns the invariants (order, one-per-date, consecutive-duplicate collapse).
  * `end` must be after `start`; the caller (the drag gesture) guarantees that.
@@ -86,7 +94,7 @@ export function editProjectStatusRecord(
 	index: KairosIndex,
 	project: Project,
 	originalDate: ISODate,
-	next: { date: ISODate; status: LifecycleState; note?: string },
+	next: { date: ISODate; status: LifecycleState; note?: string; why?: string },
 ): void {
 	index.applyProjectEdit(editStatusRecord(project, originalDate, next));
 }
@@ -95,7 +103,7 @@ export function editDomainStatusRecord(
 	index: KairosIndex,
 	domain: Domain,
 	originalDate: ISODate,
-	next: { date: ISODate; status: LifecycleState; note?: string },
+	next: { date: ISODate; status: LifecycleState; note?: string; why?: string },
 ): void {
 	index.applyDomainEdit(editStatusRecord(domain, originalDate, next));
 }
@@ -114,6 +122,30 @@ export function removeDomainStatusRecord(
 	date: ISODate,
 ): void {
 	index.applyDomainEdit(removeStatusRecord(domain, date));
+}
+
+// ── status normalisation (only ever on an explicit accept) ──
+//
+// Rewrites the `status:` entries Kairos would not have written into the form it
+// does write — the flat `2026-08-04: active` scalar into the object form, a
+// near-miss date key into a real record. Nothing calls these on read: the whole
+// point of decision 55 is that the rewrite happens when the user says so and not
+// before. Entries Kairos can't make sense of (a state outside the vocabulary)
+// are left in the file untouched and keep being reported.
+
+export function normalizeProjectStatus(
+	index: KairosIndex,
+	project: Project,
+): void {
+	const next = normalizeStatusShapes(project);
+	if (next === project) return; // nothing to normalise — don't touch the file
+	index.applyProjectEdit(next);
+}
+
+export function normalizeDomainStatus(index: KairosIndex, domain: Domain): void {
+	const next = normalizeStatusShapes(domain);
+	if (next === domain) return;
+	index.applyDomainEdit(next);
 }
 
 // ── description (either kind) ──
