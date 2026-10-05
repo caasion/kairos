@@ -339,7 +339,7 @@
 
 		{#if editing}
 			<input
-				class="k-task-input"
+				class="k-task-input kairos-inline-input"
 				type="text"
 				bind:value={draft}
 				bind:this={inputEl}

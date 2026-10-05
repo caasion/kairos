@@ -846,7 +846,7 @@
 										     of its own, so editing reads as typing over the label text. -->
 										<!-- svelte-ignore a11y_autofocus -->
 										<input
-											class="gantt-bar-edit"
+											class="gantt-bar-edit kairos-inline-input"
 											placeholder="No description"
 											bind:value={editingText}
 											autofocus

@@ -525,7 +525,7 @@
 					{#if isEditing(row.domain)}
 						<!-- svelte-ignore a11y_autofocus -->
 						<input
-							class="name-input domain"
+							class="name-input domain kairos-inline-input"
 							value={row.domain.name}
 							autofocus
 							onclick={(e) => e.stopPropagation()}
@@ -633,7 +633,7 @@
 		{#if isEditing(project)}
 			<!-- svelte-ignore a11y_autofocus -->
 			<input
-				class="name-input"
+				class="name-input kairos-inline-input"
 				value={project.name}
 				autofocus
 				onclick={(e) => e.stopPropagation()}

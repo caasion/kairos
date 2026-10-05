@@ -7,6 +7,28 @@ If your plugin does not need CSS, delete this file.
 
 */
 
+/* ── Inline edit inputs ──
+   Inputs that replace a label in place (task text, block title, backlog item,
+   Gantt description, project/domain name) must look exactly like the label they
+   replace, so clicking to edit feels like the text was editable all along.
+   Each component matches its label's font and padding; this strips the chrome
+   Obsidian puts on every text input, which otherwise wins on specificity:
+   a fixed `--input-height` (30px desktop, 40px mobile — the jump on edit),
+   the hover fill, the press ring, and mobile's `width: 100%`. */
+input.kairos-inline-input {
+	height: auto;
+	min-height: 0;
+}
+input[type].kairos-inline-input,
+input[type].kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
+	width: auto;
+	background: transparent;
+	border: none;
+	border-radius: 0;
+	box-shadow: none;
+	outline: none;
+}
+
 /* ── Domain reorder modal (DomainReorderModal.ts) ── */
 .kairos-reorder-hint {
 	margin-top: 0;

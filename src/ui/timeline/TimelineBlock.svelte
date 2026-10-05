@@ -414,7 +414,7 @@
       {#if editingTitle}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <input
-          class="tl-title-input"
+          class="tl-title-input kairos-inline-input"
           type="text"
           bind:value={titleDraft}
           bind:this={titleInputEl}

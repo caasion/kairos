@@ -378,7 +378,7 @@
 										     (no box, no border) so editing feels like typing in
 										     place — same discipline as the task row. -->
 										<input
-											class="entry-input"
+											class="entry-input kairos-inline-input"
 											value={entry.text}
 											autofocus
 											onclick={(e) => e.stopPropagation()}
