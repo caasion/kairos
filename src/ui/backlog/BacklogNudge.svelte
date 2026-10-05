@@ -19,6 +19,7 @@
 	import type { Association, BacklogEntry } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 	import { actionZone } from "../actions/actionZone";
+	import { tooltip } from "../actions/tooltip";
 
 	interface Props {
 		entry: BacklogEntry;
@@ -87,16 +88,17 @@
 	class="nudge"
 	style={`--nudge-accent: ${accent};`}
 	title="Resurfaced backlog item — click the arrow to schedule it into this day"
-	use:actionZone
+	use:actionZone={{ layout: "stack" }}
 >
 	<!-- Action bar, floating top-right over the row — mirrors the task row's
 	     action bar (woken from the top-right corner zone, see
-	     actions/actionZone.ts). Holds the snooze action. -->
+	     actions/actionZone.ts). Holds the snooze action. Uses the stack layout
+	     like every bar; with one button that's just the corner cell. -->
 	<div class="nudge-actions kairos-action-bar">
 		<button
 			class="nudge-action"
-			title="Resurface later"
 			aria-label="Resurface later"
+			use:tooltip={"Resurface later"}
 			onclick={openSnoozeMenu}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>

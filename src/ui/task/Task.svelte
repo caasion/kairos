@@ -19,6 +19,7 @@
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 	import { actionZone } from "../actions/actionZone";
+	import { tooltip } from "../actions/tooltip";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
 	import { longpress } from "../actions/longpress";
 	import { movedPastSlop, peek, peekIfTruncated } from "../actions/peek";
@@ -113,6 +114,8 @@
 	// Label prefers the resolved canonical name (never an alias); falls back to
 	// the raw tag id when no resolution was supplied or it didn't resolve.
 	const assocLabel = $derived(resolved?.displayName ?? association?.id ?? "");
+	// The association button's tooltip and accessible name.
+	const assocAction = $derived(association ? "Edit association" : "Add association");
 
 	// With the label hidden the icon is the whole line, so the tooltip has to
 	// carry what the text used to: the name, and whether it was inherited from
@@ -367,16 +370,21 @@
 	class:cancelled
 	bind:this={rowEl}
 	oncontextmenu={openContextMenu}
-	use:actionZone
+	use:actionZone={{ layout: "stack" }}
 >
-	<!-- Action bar, floating top-right over the row. Shown only while the
-	     pointer is in a triangle at the row's top-right corner (see
-	     actions/actionZone.ts), not on any hover. -->
+	<!-- Action bar. Shown only while the pointer is in a triangle at the row's
+	     top-right corner (see actions/actionZone.ts), not on any hover. On a
+	     mouse wake it is a vertical stack one button wide (`layout: "stack"`):
+	     delete stays in the row's top-right corner and the other actions rise
+	     above it, most used nearest: association, then nest. It hangs below
+	     instead when there's no room above. Touch keeps the horizontal bar.
+	     DOM (= tab) order is unchanged; CSS `order` sets the visual order.
+	     Tooltips open to the left of the stack (actions/tooltip.ts). -->
 	<div class="k-task-actions kairos-action-bar">
 		<button
 			class="k-task-action"
-			title={association ? "Edit association" : "Add association"}
-			aria-label="Association"
+			aria-label={assocAction}
+			use:tooltip={assocAction}
 			onclick={requestAssociation}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
@@ -384,8 +392,8 @@
 		{#if onNest}
 			<button
 				class="k-task-action"
-				title={nestLabel}
 				aria-label={nestLabel}
+				use:tooltip={nestLabel}
 				onclick={requestNest}
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 12H9"/><path d="m9 12 3-3"/><path d="m9 12 3 3"/></svg>
@@ -394,8 +402,8 @@
 		{#if !checkable}
 			<button
 				class="k-task-action k-task-action-danger"
-				title="Delete"
 				aria-label="Delete task"
+				use:tooltip={"Delete task"}
 				onclick={del}
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -521,6 +529,13 @@
 		background: var(--background-primary);
 		z-index: 2;
 		/* Shown/hidden by the shared .kairos-action-bar rules in styles.css. */
+	}
+
+	/* Stack layout (styles.css): the first item by `order` sits in the corner:
+	   delete, then association and nest in DOM order. A checkable row has no
+	   delete, so association takes the corner. */
+	.k-task-actions:global(.kairos-action-stack) .k-task-action-danger {
+		order: -1;
 	}
 
 	.k-task-action {

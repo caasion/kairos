@@ -14,6 +14,7 @@
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
   import { actionZone } from "../actions/actionZone";
+  import { tooltip } from "../actions/tooltip";
 
   interface Props {
     block: Block;
@@ -351,7 +352,7 @@
   style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}
   oncontextmenu={openContextMenu}
-  use:actionZone
+  use:actionZone={{ layout: "stack" }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
   <div
@@ -363,13 +364,15 @@
   ></div>
 
 	<!-- Action bar: add-task + delete, top-right corner. Woken from the
-	     top-right corner zone (see actions/actionZone.ts), not on any hover. -->
+	     top-right corner zone (see actions/actionZone.ts), not on any hover.
+	     On a mouse wake it's a vertical stack: delete stays in the corner and
+	     add-task rises above it (above the block). Touch keeps the bar. -->
 	<div class="tl-actions kairos-action-bar">
 		<button
 			type="button"
 			class="tl-action-btn"
-			title="Add task"
 			aria-label="Add task"
+			use:tooltip={"Add task"}
 			onpointerdown={(e) => e.stopPropagation()}
 			onclick={(e) => {
 				e.stopPropagation();
@@ -381,8 +384,8 @@
 		<button
 			type="button"
 			class="tl-action-btn tl-action-danger"
-			title="Delete block"
 			aria-label="Delete block"
+			use:tooltip={"Delete block"}
 			onpointerdown={(e) => e.stopPropagation()}
 			onclick={(e) => {
 				e.stopPropagation();
@@ -720,6 +723,11 @@
 	.tl-action-btn:hover {
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+	}
+
+	/* Stack layout (styles.css): delete takes the corner cell. */
+	.tl-action-danger {
+		order: -1;
 	}
 
 	.tl-action-danger:hover {
