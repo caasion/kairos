@@ -55,6 +55,31 @@ If your plugin does not need CSS, delete this file.
 	line-height: 1.4;
 }
 
+/* ── Hover action bars (src/ui/actions/actionZone.ts) ──
+   A row's `.kairos-action-bar` (a direct child of the row) shows only while
+   the row carries `kairos-actions-awake`, i.e. the mouse is in the corner zone,
+   not on any hover. Hidden means inert to the pointer too, so a click on the
+   end of the row's text reaches the text, not an invisible button. A bar may
+   set `--kairos-action-bar-opacity` (default 0.96, so the row reads through). */
+.kairos-action-bar {
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.1s;
+}
+.kairos-actions-awake > .kairos-action-bar,
+.kairos-action-bar:focus-within {
+	opacity: var(--kairos-action-bar-opacity, 0.96);
+	pointer-events: auto;
+}
+/* Touch has no pointer to track: show the bar on the row's (sticky) hover
+   after a tap. */
+@media (hover: none) {
+	:hover > .kairos-action-bar {
+		opacity: var(--kairos-action-bar-opacity, 0.96);
+		pointer-events: auto;
+	}
+}
+
 /* ── Prompt / Confirm modals (modals.ts) ── */
 .kairos-modal-field {
 	border-top: none;
@@ -80,29 +105,4 @@ If your plugin does not need CSS, delete this file.
 	font-size: 12px;
 	font-weight: 400;
 	color: var(--text-faint);
-}
-
-/* ── Hover action bars (src/ui/actions/actionZone.ts) ──
-   A row's `.kairos-action-bar` (a direct child of the row) shows only while
-   the row carries `kairos-actions-awake`, i.e. the mouse is in the corner zone,
-   not on any hover. Hidden means inert to the pointer too, so a click on the
-   end of the row's text reaches the text, not an invisible button. A bar may
-   set `--kairos-action-bar-opacity` (default 0.96, so the row reads through). */
-.kairos-action-bar {
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 0.1s;
-}
-.kairos-actions-awake > .kairos-action-bar,
-.kairos-action-bar:focus-within {
-	opacity: var(--kairos-action-bar-opacity, 0.96);
-	pointer-events: auto;
-}
-/* Touch has no pointer to track: show the bar on the row's (sticky) hover
-   after a tap. */
-@media (hover: none) {
-	:hover > .kairos-action-bar {
-		opacity: var(--kairos-action-bar-opacity, 0.96);
-		pointer-events: auto;
-	}
 }
