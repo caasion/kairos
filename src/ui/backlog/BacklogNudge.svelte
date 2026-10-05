@@ -119,21 +119,24 @@
 
 	{#if entry.assoc}
 		<!-- Association line beneath the text — icon + canonical name, aligned
-		     under the text past the arrow, ctrl-click to open. Same as the task
-		     row's association line. -->
-		<div
-			class="nudge-assoc"
-			class:domain={entry.assoc.kind === "domain"}
-			class:linked={canNavigate}
-			title={canNavigate ? "Ctrl+click to open" : undefined}
-			onclick={clickAssoc}
-		>
-			{#if entry.assoc.kind === "domain"}
-				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-			{:else}
-				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-			{/if}
-			<span class="nudge-assoc-label">{assocLabel}</span>
+		     under the text past the arrow, ctrl-click to open. Literally the task
+		     row's association line now: same shared `.kairos-meta` classes, and the
+		     alignment comes from the row wrapper rather than this component owning
+		     its own copy of the indent. -->
+		<div class="kairos-meta-row is-indented">
+			<div
+				class="kairos-meta"
+				class:is-linked={canNavigate}
+				title={canNavigate ? "Ctrl+click to open" : undefined}
+				onclick={clickAssoc}
+			>
+				{#if entry.assoc.kind === "domain"}
+					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+				{:else}
+					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+				{/if}
+				<span class="kairos-meta-label">{assocLabel}</span>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -232,32 +235,6 @@
 		box-shadow: none;
 	}
 
-	/* ── Association line (small text + icon under the text) ── */
-	.nudge-assoc {
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		padding-left: 24px; /* align under the text, past the 18px arrow + gap */
-		font-size: 10px;
-		color: var(--text-muted);
-		min-width: 0;
-	}
-
-	.nudge-assoc.linked {
-		cursor: pointer;
-	}
-
-	.nudge-assoc.linked:hover .nudge-assoc-label {
-		text-decoration: underline;
-	}
-
-	.nudge-assoc svg {
-		flex-shrink: 0;
-	}
-
-	.nudge-assoc-label {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
+	/* The association line is the shared `.kairos-meta` family in styles.css,
+	   including the indent that aligns it under the text past the 18px arrow. */
 </style>

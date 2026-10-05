@@ -417,7 +417,7 @@
 											aria-label="Clear resurface date"
 											onclick={(e) => clearResurface(entry, e)}
 										>
-											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m14 14-4 4"/><path d="m10 14 4 4"/></svg>
 										</button>
 									{/if}
 
@@ -458,21 +458,25 @@
 									</div>
 								</div>
 
-								<!-- Resurface date shown as a metadata line under the item,
-								     mirroring the task row's association line. A due date
-								     stands out (orange); a future one reads muted. -->
+								<!-- Resurface date shown as a metadata line under the item, on
+								     the same shared `.kairos-meta` classes as the task row's
+								     association line. It is always clickable, so `is-linked` is
+								     unconditional. A due date stands out (orange); a future one
+								     reads muted. -->
 								{#if entry.resurface}
-									<button
-										class="entry-meta"
-										class:due={isDue(entry.resurface)}
-										title="Resurface date — click to change"
-										onclick={(e) => openResurface(entry, e)}
-									>
-										<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-										<span class="entry-meta-label">
-											{isDue(entry.resurface) ? "Resurfacing" : "Resurfaces"} {formatResurface(entry.resurface)}
-										</span>
-									</button>
+									<div class="kairos-meta-row is-indented">
+										<button
+											class="entry-meta kairos-meta is-linked"
+											class:is-due={isDue(entry.resurface)}
+											title="Resurface date — click to change"
+											onclick={(e) => openResurface(entry, e)}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+											<span class="kairos-meta-label">
+												{isDue(entry.resurface) ? "Resurfacing" : "Resurfaces"} {formatResurface(entry.resurface)}
+											</span>
+										</button>
+									</div>
 								{/if}
 
 								<!-- Popups anchored to this row -->
@@ -653,6 +657,10 @@
 		padding: 5px 8px;
 		border-radius: 7px;
 		position: relative;
+		/* This row's leading control is an 11px bullet, not an 18px checkbox, so
+		   the metadata line indents less than the family default to stay under
+		   this row's own text. Same constant, set where the width is known. */
+		--kairos-meta-indent: 16px;
 	}
 	.entry-row:hover {
 		background: var(--background-modifier-hover);
@@ -715,39 +723,18 @@
 		outline: none;
 	}
 	/* ── Resurface metadata line (under the item text) ── */
-	/* Modeled on the task row's association line: a small, muted line indented to
-	   sit under the text (past the bullet). A due date stands out in orange. It's
-	   a button so clicking it reopens the datepicker. No default button chrome. */
+	/* Size, colour, hover and the orange due state come from the shared
+	   `.kairos-meta` family in styles.css. All that is local is stripping the
+	   default button chrome — this is the only metadata line in the plugin that
+	   is a <button>, because clicking it reopens the datepicker. */
 	.entry-meta {
-		display: flex;
-		align-items: center;
-		gap: 3px;
 		align-self: flex-start;
-		padding: 0 0 0 16px;
+		padding: 0;
 		margin: 0;
 		border: none;
 		box-shadow: none;
 		background: transparent;
-		font-size: 10px;
-		color: var(--text-muted);
-		cursor: pointer;
-		min-width: 0;
-		max-width: 100%;
 		height: min-content;
-	}
-	.entry-meta:hover .entry-meta-label {
-		text-decoration: underline;
-	}
-	.entry-meta.due {
-		color: var(--color-orange, var(--interactive-accent));
-	}
-	.entry-meta svg {
-		flex-shrink: 0;
-	}
-	.entry-meta-label {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 
 	/* ── Hover action bar (resurface, associate, delete) ── */
