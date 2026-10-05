@@ -3,9 +3,9 @@ import { parse as parseYaml } from "yaml";
 import {
 	appendStatus,
 	editStatusRecord,
-	isNormalizable,
-	normalizableAnomalies,
-	normalizeStatusShapes,
+	isFixable,
+	needsNormalizing,
+	normalizeStatusMap,
 	parseStatusWithAnomalies,
 	effectiveRecord,
 	effectiveStatus,
@@ -717,7 +717,7 @@ status:
 /**
  * A file in exactly the shape Kairos writes. Note that the `PROJECT` fixture
  * above is NOT this: it uses the flat `date: state` scalar, which is one of the
- * shapes #28 is about, so anything asserting "no anomalies" has to start here.
+ * shapes Kairos normalises, so anything asserting "no anomalies" has to start here.
  */
 const CANONICAL = `---
 tags:
@@ -751,91 +751,81 @@ describe("parseStatusWithAnomalies (#27)", () => {
 		expect(anomalies).toEqual([]);
 	});
 
-	it("reports an unknown state, naming the date and the value, and offers nothing", () => {
+	it("keeps an unknown state out of the history and notes it as unfixable", () => {
 		const { records, anomalies } = parseStatusWithAnomalies({
-			"2026-07-18": "active",
+			"2026-07-18": { status: "active" },
 			"2026-07-23": "draft",
 		});
 		expect(records).toEqual([{ date: "2026-07-18", status: "active" }]);
-		const unknown = anomalies.find((a) => a.kind === "unknown-state");
-		expect(unknown).toMatchObject({
-			key: "2026-07-23",
-			raw: "draft",
-			found: "2026-07-23: draft",
-			becomes: null,
-		});
-		expect(isNormalizable(unknown!)).toBe(false);
+		expect(anomalies).toEqual([{ kind: "unknown-state", key: "2026-07-23", raw: "draft" }]);
+		expect(isFixable(anomalies[0]!)).toBe(false);
 	});
 
-	it("reports an unknown state in the object form too", () => {
-		const { anomalies } = parseStatusWithAnomalies({
-			"2026-07-23": { status: "draft", note: "sketching" },
-		});
-		expect(anomalies).toHaveLength(1);
-		expect(anomalies[0]?.found).toBe("2026-07-23: { status: draft }");
-		expect(anomalies[0]?.becomes).toBeNull();
+	it("treats an unknown state in the object form the same way", () => {
+		const raw = { status: "draft", note: "sketching" };
+		const { anomalies } = parseStatusWithAnomalies({ "2026-07-23": raw });
+		expect(anomalies).toEqual([{ kind: "unknown-state", key: "2026-07-23", raw }]);
 	});
 
-	it("parses the bare-string form and still reports it, with what it would become", () => {
+	it("parses the bare-string form and marks it fixable", () => {
 		const { records, anomalies } = parseStatusWithAnomalies({ "2026-08-04": "active" });
 		expect(records).toEqual([{ date: "2026-08-04", status: "active" }]);
-		expect(anomalies).toHaveLength(1);
-		expect(anomalies[0]).toMatchObject({
-			kind: "bare-string",
-			key: "2026-08-04",
-			raw: "active",
-			found: "2026-08-04: active",
-			becomes: "2026-08-04: { status: active }",
-		});
-		expect(isNormalizable(anomalies[0]!)).toBe(true);
+		expect(anomalies).toEqual([{ kind: "bare-string", key: "2026-08-04", raw: "active" }]);
+		expect(isFixable(anomalies[0]!)).toBe(true);
 	});
 
-	it("offers a padded record for a near-miss date key", () => {
+	it("files a near-miss date key under its padded date", () => {
 		const { records, anomalies } = parseStatusWithAnomalies({ "2026-8-4": "inactive" });
-		expect(records).toEqual([]); // not in the history under a key we can't read
-		expect(anomalies[0]).toMatchObject({
-			kind: "bad-date",
-			key: "2026-8-4",
-			becomes: "2026-08-04: { status: inactive }",
-			record: { date: "2026-08-04", status: "inactive" },
-		});
+		expect(records).toEqual([{ date: "2026-08-04", status: "inactive" }]);
+		expect(anomalies).toEqual([{ kind: "padded-date", key: "2026-8-4", raw: "inactive" }]);
+		expect(isFixable(anomalies[0]!)).toBe(true);
 	});
 
-	it("offers nothing for a date key it can't make sense of at all", () => {
-		const { anomalies } = parseStatusWithAnomalies({ whenever: "active" });
-		expect(anomalies[0]).toMatchObject({ kind: "bad-date", key: "whenever", becomes: null });
-		expect(anomalies[0]?.record).toBeUndefined();
-		expect(isNormalizable(anomalies[0]!)).toBe(false);
+	it("keeps a date key it can't make sense of at all out of the history", () => {
+		const { records, anomalies } = parseStatusWithAnomalies({ whenever: "active" });
+		expect(records).toEqual([]);
+		expect(anomalies).toEqual([{ kind: "bad-date", key: "whenever", raw: "active" }]);
 	});
 
-	it("offers nothing for a near-miss whose padded date is already taken", () => {
-		// Normalising would put two entries on one date and Kairos would be picking
-		// which of them survives — report it, change nothing.
+	it("does not pad a near-miss whose padded date is already taken", () => {
+		// Two entries on one date would leave Kairos picking which one survives.
 		const { records, anomalies } = parseStatusWithAnomalies({
-			"2026-08-04": "active",
 			"2026-8-4": "inactive",
+			"2026-08-04": "active",
 		});
 		expect(records).toEqual([{ date: "2026-08-04", status: "active" }]);
-		const bad = anomalies.find((a) => a.kind === "bad-date");
-		expect(bad?.becomes).toBeNull();
-		expect(bad?.record).toBeUndefined();
+		expect(anomalies.find((a) => a.key === "2026-8-4")?.kind).toBe("bad-date");
 	});
 
 	it("rejects a near-miss with an impossible month or day rather than guessing", () => {
 		const { anomalies } = parseStatusWithAnomalies({ "2026-13-4": "active" });
-		expect(anomalies[0]?.record).toBeUndefined();
+		expect(anomalies[0]?.kind).toBe("bad-date");
 	});
 
 	it("attaches the anomalies to a parsed project, and omits the key when the file is clean", () => {
 		const bravo = parseProject(ANOMALOUS, "Projects/Bravo.md")!;
-		expect(bravo.history).toEqual([{ date: "2026-07-18", status: "active" }]);
+		expect(bravo.history).toEqual([
+			{ date: "2026-07-18", status: "active" },
+			{ date: "2026-08-04", status: "inactive" },
+		]);
 		expect(bravo.anomalies?.map((a) => a.kind).sort()).toEqual([
 			"bad-date",
-			"bad-date",
 			"bare-string",
+			"padded-date",
 			"unknown-state",
 		]);
-		expect(parseProject(CANONICAL, "Projects/Echo.md")?.anomalies).toBeUndefined();
+		expect(needsNormalizing(bravo)).toBe(true);
+		const echo = parseProject(CANONICAL, "Projects/Echo.md")!;
+		expect(echo.anomalies).toBeUndefined();
+		expect(needsNormalizing(echo)).toBe(false);
+	});
+
+	it("derives archived from a padded record", () => {
+		const p = parseProject(
+			"---\ntags:\n  - kairos/project\nid: c\nstatus:\n  2026-1-2: archived\n---\n",
+			"Projects/Charlie.md",
+		)!;
+		expect(p.archived).toBe(true);
 	});
 
 	it("attaches them to a domain the same way", () => {
@@ -845,56 +835,38 @@ describe("parseStatusWithAnomalies (#27)", () => {
 		)!;
 		expect(d.anomalies).toHaveLength(1);
 		expect(d.history).toEqual([]);
+		expect(needsNormalizing(d)).toBe(false); // nothing fixable: no write
 	});
 });
 
-describe("writing back an entry Kairos didn't write (#27, #28)", () => {
-	it("re-emits every non-canonical entry verbatim, so a write deletes nothing", () => {
+describe("writing a file Kairos didn't write (#27, #28)", () => {
+	it("canonicalises fixable entries and keeps unknown ones verbatim", () => {
 		const bravo = parseProject(ANOMALOUS, "Projects/Bravo.md")!;
-		const status = writtenStatus(serializeProjectFrontmatter(bravo));
-		expect(status).toEqual({
-			"2026-07-18": "active", // still flat — not upgraded behind the user's back
-			"2026-07-23": "draft", // still there — the unknown state used to vanish here
-			"2026-8-4": "inactive",
-			whenever: "active",
+		expect(writtenStatus(serializeProjectFrontmatter(bravo))).toEqual({
+			"2026-07-18": { status: "active" }, // flat scalar → object form
+			"2026-07-23": "draft", // kept: Kairos can't invent a state it doesn't know
+			"2026-08-04": { status: "inactive" }, // near-miss → padded
+			whenever: "active", // kept: not a date it can read
 		});
 	});
 
-	it("survives a full parse → write → parse cycle unchanged", () => {
+	it("is stable after one write: the re-parsed file has nothing left to fix", () => {
 		const once = parseProject(ANOMALOUS, "Projects/Bravo.md")!;
-		const twice = parseProject(
-			serializeProjectFrontmatter(once),
-			"Projects/Bravo.md",
-		)!;
+		const twice = parseProject(serializeProjectFrontmatter(once), "Projects/Bravo.md")!;
 		expect(twice.history).toEqual(once.history);
-		expect(twice.anomalies).toEqual(once.anomalies);
+		expect(needsNormalizing(twice)).toBe(false);
+		expect(twice.anomalies?.map((a) => a.kind).sort()).toEqual(["bad-date", "unknown-state"]);
 	});
 
-	it("keeps preserving a flat scalar through an edit that doesn't touch it", () => {
+	it("keeps an unknown state through an unrelated edit", () => {
 		const bravo = parseProject(ANOMALOUS, "Projects/Bravo.md")!;
 		const edited = appendStatus(bravo, "2026-09-01", "inactive", "", "wrapped up");
 		const status = writtenStatus(serializeProjectFrontmatter(edited));
-		expect(status["2026-07-18"]).toBe("active");
+		expect(status["2026-07-23"]).toBe("draft");
 		expect(status["2026-09-01"]).toEqual({ status: "inactive", why: "wrapped up" });
 	});
 
-	it("lets the canonical form win once the user edits that very record", () => {
-		// Re-emitting the old scalar here would silently undo the edit.
-		const bravo = parseProject(ANOMALOUS, "Projects/Bravo.md")!;
-		const edited = editStatusRecord(bravo, "2026-07-18", {
-			date: "2026-07-18",
-			status: "inactive",
-		});
-		expect(writtenStatus(serializeProjectFrontmatter(edited))["2026-07-18"]).toEqual({
-			status: "inactive",
-		});
-	});
-
 	it("yields an unparsed key the moment a real record claims that date", () => {
-		// `draft` sits on 2026-07-23 and is preserved until the user puts a status
-		// Kairos knows on that same day, which is an answer to the question the
-		// card was asking. (An `active` record here would collapse into the
-		// 2026-07-18 one instead — same status, same note.)
 		const bravo = parseProject(ANOMALOUS, "Projects/Bravo.md")!;
 		const edited = appendStatus(bravo, "2026-07-23", "inactive");
 		expect(writtenStatus(serializeProjectFrontmatter(edited))["2026-07-23"]).toEqual({
@@ -903,65 +875,49 @@ describe("writing back an entry Kairos didn't write (#27, #28)", () => {
 	});
 });
 
-describe("normalizeStatusShapes (#28)", () => {
-	const bravo = () => parseProject(ANOMALOUS, "Projects/Bravo.md")!;
-
-	it("turns the flat scalar into the object form and pads the near-miss date", () => {
-		const next = normalizeStatusShapes(bravo());
-		expect(writtenStatus(serializeProjectFrontmatter(next))).toEqual({
-			"2026-07-18": { status: "active" },
-			"2026-07-23": "draft", // untouched: Kairos can't invent a state it doesn't know
-			"2026-08-04": { status: "inactive" },
-			whenever: "active", // untouched: not a date it can read
+describe("normalizeStatusMap (load-time pass)", () => {
+	it("rewrites a bare-string entry into the object form", () => {
+		expect(normalizeStatusMap({ "2026-08-04": "active" })).toEqual({
+			"2026-08-04": { status: "active" },
 		});
-		expect(next.history).toEqual([
-			{ date: "2026-07-18", status: "active" },
-			{ date: "2026-08-04", status: "inactive" },
-		]);
 	});
 
-	it("keeps reporting what it could not normalise, and nothing else", () => {
-		const next = normalizeStatusShapes(bravo());
-		expect(next.anomalies?.map((a) => a.kind)).toEqual(["unknown-state", "bad-date"]);
-		expect(normalizableAnomalies(next)).toEqual([]);
+	it("pads a near-miss date key", () => {
+		expect(
+			normalizeStatusMap({ "2026-8-4": { status: "inactive", why: "travel" } }),
+		).toEqual({ "2026-08-04": { status: "inactive", why: "travel" } });
 	});
 
-	it("re-derives archived from the records normalising added", () => {
-		const p = parseProject(
-			"---\ntags:\n  - kairos/project\nid: c\nstatus:\n  2026-1-2: archived\n---\n",
-			"Projects/Charlie.md",
-		)!;
-		expect(p.archived).toBe(false); // the record isn't in the history yet
-		expect(normalizeStatusShapes(p).archived).toBe(true);
+	it("preserves unknown states and unreadable keys verbatim alongside the fix", () => {
+		const raw = { status: "draft", note: "sketching" };
+		expect(
+			normalizeStatusMap({ "2026-08-04": "active", "2026-08-10": raw, whenever: "x" }),
+		).toEqual({
+			"2026-08-04": { status: "active" },
+			"2026-08-10": raw,
+			whenever: "x",
+		});
 	});
 
-	it("returns the entity untouched when there is nothing it can normalise", () => {
-		const onlyUnknown = parseProject(
-			"---\ntags:\n  - kairos/project\nid: d\nstatus:\n  2026-07-23: draft\n---\n",
-			"Projects/Delta.md",
-		)!;
-		expect(normalizeStatusShapes(onlyUnknown)).toBe(onlyUnknown);
+	it("returns null for a clean map, so the file is never written", () => {
+		expect(
+			normalizeStatusMap({
+				"2026-07-18": { status: "active", note: "three sessions a week" },
+			}),
+		).toBeNull();
 	});
 
-	it("is a no-op on a file already in the shape Kairos writes", () => {
-		const clean = parseProject(CANONICAL, "Projects/Echo.md")!;
-		expect(normalizeStatusShapes(clean)).toBe(clean);
+	it("returns null when the only oddities are unfixable", () => {
+		expect(normalizeStatusMap({ "2026-07-23": "draft", whenever: "active" })).toBeNull();
 	});
 
-	it("leaves a near-miss alone when the history gained that date after the parse", () => {
-		const collided = appendStatus(bravo(), "2026-08-04", "archived");
-		const next = normalizeStatusShapes(collided);
-		const status = writtenStatus(serializeProjectFrontmatter(next));
-		expect(status["2026-08-04"]).toEqual({ status: "archived" });
-		expect(status["2026-8-4"]).toBe("inactive"); // still in the file, still reported
-		expect(next.anomalies?.map((a) => a.key)).toContain("2026-8-4");
+	it("returns null for a missing status map", () => {
+		expect(normalizeStatusMap(undefined)).toBeNull();
 	});
 
-	it("does not mutate the entity it was given", () => {
-		const before = bravo();
-		const after = normalizeStatusShapes(before);
-		expect(after).not.toBe(before);
-		expect(before.anomalies).toHaveLength(4);
-		expect(before.history).toEqual([{ date: "2026-07-18", status: "active" }]);
+	it("is idempotent", () => {
+		const once = normalizeStatusMap({ "2026-8-4": "active", "2026-08-10": "draft" });
+		expect(once).not.toBeNull();
+		expect(normalizeStatusMap(once)).toBeNull();
 	});
 });

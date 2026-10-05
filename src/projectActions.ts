@@ -15,7 +15,6 @@ import type { KairosIndex } from "./index";
 import {
 	appendStatus,
 	editStatusRecord,
-	normalizeStatusShapes,
 	removeStatusRecord,
 	renameWithAlias,
 	setColor,
@@ -122,30 +121,6 @@ export function removeDomainStatusRecord(
 	date: ISODate,
 ): void {
 	index.applyDomainEdit(removeStatusRecord(domain, date));
-}
-
-// ── status normalisation (only ever on an explicit accept) ──
-//
-// Rewrites the `status:` entries Kairos would not have written into the form it
-// does write — the flat `2026-08-04: active` scalar into the object form, a
-// near-miss date key into a real record. Nothing calls these on read: the whole
-// point of decision 55 is that the rewrite happens when the user says so and not
-// before. Entries Kairos can't make sense of (a state outside the vocabulary)
-// are left in the file untouched and keep being reported.
-
-export function normalizeProjectStatus(
-	index: KairosIndex,
-	project: Project,
-): void {
-	const next = normalizeStatusShapes(project);
-	if (next === project) return; // nothing to normalise — don't touch the file
-	index.applyProjectEdit(next);
-}
-
-export function normalizeDomainStatus(index: KairosIndex, domain: Domain): void {
-	const next = normalizeStatusShapes(domain);
-	if (next === domain) return;
-	index.applyDomainEdit(next);
 }
 
 // ── description (either kind) ──

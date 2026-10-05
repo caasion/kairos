@@ -12,12 +12,12 @@
 // recent record dated on-or-before today (future-dated records are scheduled,
 // not yet active); `archived` is derived from that effective state.
 //
-// Kairos never silently rewrites frontmatter it did not write (decision 55). A
-// `status:` entry in a shape or vocabulary we would not have produced is kept as
-// a `StatusAnomaly` on the entity and re-emitted verbatim on every write, so
-// neither reading nor editing a file can quietly convert or delete something the
-// user typed. `normalizeStatusShapes` is the only thing that changes such an
-// entry, and the Projects page only calls it on an explicit accept.
+// `status:` entries Kairos would not have written are normalised automatically
+// where the intent is unambiguous (a flat scalar, a paddable near-miss date) and
+// kept verbatim where it isn't (an unknown state, an unreadable key) — see
+// `parseStatusWithAnomalies`. Unknown entries never drive derived state and are
+// never deleted. The load-time pass that rewrites fixable files lives in the
+// vault adapter and calls `normalizeStatusMap`.
 
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {
@@ -147,27 +147,10 @@ function entryRecord(date: ISODate, value: unknown): StatusRecord | null {
 	};
 }
 
-/** How an entry reads in the file, for a warning naming the date and the value. */
-function renderEntry(key: string, value: unknown): string {
-	const { state, bare } = readEntry(value);
-	const shown =
-		typeof state === "string" || typeof state === "number"
-			? String(state)
-			: "(no status)";
-	return bare ? `${key}: ${shown}` : `${key}: { status: ${shown} }`;
-}
-
-/** How a record reads once written in the canonical object form. */
-function renderCanonical(key: string, rec: StatusRecord): string {
-	const kept = [rec.note ? "note" : null, rec.why ? "why" : null].filter(Boolean);
-	const tail = kept.length > 0 ? `, ${kept.join(" + ")} kept` : "";
-	return `${key}: { status: ${rec.status}${tail} }`;
-}
-
 /**
  * A near-miss date key padded to `YYYY-MM-DD` (`2026-8-4` → `2026-08-04`), or
  * null when the key isn't a date at all. Anything else — a word, a range, a
- * typo — is reported but never guessed at.
+ * typo — is never guessed at.
  */
 function padDateKey(key: string): ISODate | null {
 	const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(key);
@@ -185,16 +168,16 @@ function padDateKey(key: string): ISODate | null {
  * Keys are `YYYY-MM-DD`. Each value is either a bare lifecycle state string or a
  * `{ status, note?, why? }` object — the object form carries the freeform `note`
  * (what the state entails) and `why` (what moved the entity into it), both
- * open-label and never logic. The bare-string form is still tolerated on read
- * and, since #28, is written back out as the user left it (see `statusMap`).
- * An empty or non-string note/why is dropped so it never round-trips as a
- * synthetic "".
+ * open-label and never logic. An empty or non-string note/why is dropped so it
+ * never round-trips as a synthetic "".
  *
- * Nothing throws and nothing is thrown away. An unknown state or a malformed
- * date key still stays *out of the derived history* — a state Kairos doesn't
- * know can't drive anything — but it comes back as an anomaly instead of
- * vanishing, so the page can name the file, the date and the value (#27) and the
- * next write can put the entry back verbatim.
+ * Nothing throws and nothing is thrown away. Two kinds of entry are *fixable*
+ * and already count as records here: the flat `2026-08-04: active` scalar, and a
+ * near-miss key that pads cleanly to a free date (`2026-8-4`). The next write of
+ * the file emits both in canonical form. The rest — an unknown state, a key that
+ * isn't a date, a near-miss whose padded date is already taken — stay out of the
+ * derived history but are carried as anomalies so every write puts them back
+ * verbatim (#27).
  */
 export function parseStatusWithAnomalies(v: unknown): {
 	records: StatusRecord[];
@@ -203,64 +186,39 @@ export function parseStatusWithAnomalies(v: unknown): {
 	if (!v || typeof v !== "object") return { records: [], anomalies: [] };
 	const records: StatusRecord[] = [];
 	const anomalies: StatusAnomaly[] = [];
+	const nearMisses: [string, unknown][] = [];
 
 	for (const [key, value] of Object.entries(v as Record<string, unknown>)) {
-		const found = renderEntry(key, value);
-
 		if (!ISO_DATE.test(key)) {
-			// Not a date we can file the record under. Normalising can only offer
-			// something when the key is a paddable near-miss AND its value is a
-			// state we know; otherwise we report it and leave it alone.
-			const padded = padDateKey(key);
-			const rec = padded ? entryRecord(padded, value) : null;
-			anomalies.push({
-				kind: "bad-date",
-				key,
-				raw: value,
-				found,
-				becomes: rec ? renderCanonical(rec.date, rec) : null,
-				...(rec ? { record: rec } : {}),
-			});
+			nearMisses.push([key, value]); // after every real date is known
 			continue;
 		}
-
 		const rec = entryRecord(key, value);
 		if (!rec) {
-			anomalies.push({
-				kind: "unknown-state",
-				key,
-				raw: value,
-				found,
-				becomes: null,
-			});
+			anomalies.push({ kind: "unknown-state", key, raw: value });
 			continue;
 		}
-
 		records.push(rec);
-		if (readEntry(value).bare) {
-			anomalies.push({
-				kind: "bare-string",
-				key,
-				raw: value,
-				found,
-				becomes: renderCanonical(key, rec),
-			});
+		if (readEntry(value).bare) anomalies.push({ kind: "bare-string", key, raw: value });
+	}
+
+	// A near-miss key is fixed only when its value is a state we know AND its
+	// padded date is free: two entries landing on one date would leave Kairos
+	// choosing which one survives, so a collision stays as written.
+	const taken = new Set(records.map((r) => r.date));
+	for (const [key, value] of nearMisses) {
+		const padded = padDateKey(key);
+		const rec = padded && !taken.has(padded) ? entryRecord(padded, value) : null;
+		if (!rec) {
+			anomalies.push({ kind: "bad-date", key, raw: value });
+			continue;
 		}
+		records.push(rec);
+		taken.add(rec.date);
+		anomalies.push({ kind: "padded-date", key, raw: value });
 	}
 
 	records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-
-	// A near-miss key whose padded form is already taken can't be normalised:
-	// two entries would land on one date and Kairos would be choosing which of
-	// them survives. Report it, offer nothing.
-	const taken = new Set(records.map((r) => r.date));
-	for (const a of anomalies) {
-		if (a.record && taken.has(a.record.date)) {
-			delete a.record;
-			a.becomes = null;
-		}
-	}
-
 	return { records, anomalies };
 }
 
@@ -274,57 +232,32 @@ export function parseStatus(v: unknown): StatusRecord[] {
 }
 
 /**
- * Apply the anomalies that *can* be normalised, leaving the rest exactly as they
- * are. A bare-string entry simply stops being preserved, so the next write emits
- * the object form; a paddable bad date becomes a real record under its padded
- * key. An unknown state is never touched — Kairos can't invent a state it
- * doesn't know, so that one stays in the file and stays reported.
- *
- * Pure, and called only from an explicit accept on the Projects page: reading a
- * file must never change it (decision 55).
+ * Whether an anomaly is one Kairos rewrites into canonical form. The other
+ * kinds are kept verbatim forever: Kairos can't invent a state it doesn't know
+ * or a date it can't read.
  */
-export function normalizeStatusShapes<T extends Project | Domain>(entity: T): T {
-	const anomalies = entity.anomalies ?? [];
-	if (!anomalies.some(isNormalizable)) return entity;
+export function isFixable(a: StatusAnomaly): boolean {
+	return a.kind === "bare-string" || a.kind === "padded-date";
+}
 
-	const dates = new Set(entity.history.map((r) => r.date));
-	const added: StatusRecord[] = [];
-	const left: StatusAnomaly[] = [];
-	for (const a of anomalies) {
-		// Re-check the collision here, not just at parse time: the history may have
-		// gained a record on that date since the file was read, and `normalizeHistory`
-		// lets a later entry win a date collision — which would overwrite it.
-		if (!isNormalizable(a) || (a.record && dates.has(a.record.date))) {
-			left.push(a);
-			continue;
-		}
-		if (a.record) {
-			added.push(a.record);
-			dates.add(a.record.date);
-		}
-	}
-	if (added.length === 0 && left.length === anomalies.length) return entity;
-
-	const history = normalizeHistory([...entity.history, ...added]);
-	const next = withHistory(entity, history);
-	if (left.length > 0) return { ...next, anomalies: left };
-	const { anomalies: _cleared, ...rest } = next;
-	return rest as T;
+/** Whether `entity`'s file holds status entries a write would canonicalise. */
+export function needsNormalizing(entity: Project | Domain): boolean {
+	return (entity.anomalies ?? []).some(isFixable);
 }
 
 /**
- * Whether normalising has something to offer for this entry. A bad date whose
- * padded key already carries a record is *not* normalisable: two entries would
- * collide on one date and Kairos would have to choose which one survives.
+ * Rewrite a raw `status:` map into canonical form: fixable entries become
+ * object-form records under real dates, unfixable ones are carried over
+ * untouched. Returns null when the map holds nothing fixable, so a clean file is
+ * never written. Idempotent: the output parses with no fixable anomalies.
+ *
+ * Feeds the load-time pass (`app.fileManager.processFrontMatter`), which only
+ * swaps the `status` key and leaves the rest of the frontmatter alone.
  */
-export function isNormalizable(a: StatusAnomaly): boolean {
-	if (a.kind === "bare-string") return true;
-	return a.kind === "bad-date" && a.record !== undefined;
-}
-
-/** The anomalies of `entity` that an accept would act on. */
-export function normalizableAnomalies(entity: Project | Domain): StatusAnomaly[] {
-	return (entity.anomalies ?? []).filter(isNormalizable);
+export function normalizeStatusMap(v: unknown): Record<string, unknown> | null {
+	const { records, anomalies } = parseStatusWithAnomalies(v);
+	if (!anomalies.some(isFixable)) return null;
+	return statusMap(records, anomalies);
 }
 
 /**
@@ -484,19 +417,13 @@ export function parseDomain(content: string, path: string): Domain | null {
  * when present, so a record carrying neither stays `{ status }` rather than
  * round-tripping synthetic empty strings.
  *
- * Entries Kairos did not write go back exactly as they came in (decision 55).
- * That covers the flat scalar — `2026-08-04: active` stays a flat scalar until
- * the user accepts normalising it, instead of being upgraded to the object form
- * by the first unrelated edit — and it covers the entries that never became
- * records at all (an unknown state, a malformed date key), which used to be
- * deleted from the file by the next write (#27).
- *
- * A preserved flat scalar is only re-emitted while the record it produced still
- * says exactly what it said: edit that record's status, add a note or a why, move
- * its date or delete it, and the canonical form wins — the user's edit is the
- * point, and re-emitting the old scalar would silently undo it. Likewise an
- * entry that never parsed yields its key the moment a real record claims that
- * date. Keys come out sorted, which for `YYYY-MM-DD` is chronological.
+ * Fixable shapes (the flat scalar, a paddable near-miss date) are not
+ * preserved: their records are already in `history`, so any write emits them
+ * canonically and the file is normalised as a side effect. Entries that never
+ * became records (an unknown state, an unreadable date key) go back exactly as
+ * they came in, so no write deletes something the user typed (#27) — unless a
+ * real record has since claimed that key, in which case the user's edit wins.
+ * Keys come out sorted, which for `YYYY-MM-DD` is chronological.
  */
 interface StatusValue {
 	status: LifecycleState;
@@ -514,9 +441,7 @@ function statusMap(
 	anomalies: StatusAnomaly[] = [],
 ): Record<string, unknown> {
 	const map: Record<string, unknown> = {};
-	const byDate = new Map<ISODate, StatusRecord>();
 	for (const r of history) {
-		byDate.set(r.date, r);
 		const value: StatusValue = {
 			status: r.status,
 			...(r.note ? { note: r.note } : {}),
@@ -526,12 +451,7 @@ function statusMap(
 	}
 
 	for (const a of anomalies) {
-		if (a.kind === "bare-string") {
-			const rec = byDate.get(a.key);
-			if (rec && rec.status === a.raw && !rec.note && !rec.why) map[a.key] = a.raw;
-			continue;
-		}
-		if (!(a.key in map)) map[a.key] = a.raw;
+		if (!isFixable(a) && !(a.key in map)) map[a.key] = a.raw;
 	}
 
 	const sorted: Record<string, unknown> = {};

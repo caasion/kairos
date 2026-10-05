@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { normalizeDomainStatus, normalizeProjectStatus } from "./projectActions";
-import { parseDomain, parseProject } from "./projectFile";
+import { setDomainStatus, setProjectStatus } from "./projectActions";
+import {
+	parseDomain,
+	parseProject,
+	serializeDomainFrontmatter,
+	serializeProjectFrontmatter,
+} from "./projectFile";
 import type { KairosIndex } from "./index";
 import type { Domain, Project } from "./types";
 
-// The write half of decision 55: nothing in Kairos rewrites a `status:` entry it
-// didn't write except an explicit accept, and an accept on a file it can make no
-// sense of still writes nothing. `KairosIndex` is faked down to the two verbs
-// these call — the index itself owns a vault and can't run here.
+// A status change records its reason, and — since any write emits the status map
+// canonically — normalises the file's fixable entries as a side effect while
+// keeping the unknown ones verbatim. `KairosIndex` is faked down to the two
+// verbs these call; the index itself owns a vault and can't run here.
 
 function fakeIndex() {
 	const projects: Project[] = [];
@@ -22,48 +27,42 @@ function fakeIndex() {
 const file = (status: string) =>
 	`---\ntags:\n  - kairos/project\nid: foxtrot-1\nstatus:\n${status}---\n`;
 
-describe("normalizeProjectStatus (#28)", () => {
-	it("writes the normalised entity on an accept", () => {
+describe("setProjectStatus", () => {
+	it("records the why on the new record", () => {
 		const { index, projects } = fakeIndex();
-		normalizeProjectStatus(index, parseProject(file("  2026-08-04: active\n"), "P.md")!);
-		expect(projects).toHaveLength(1);
-		expect(projects[0]?.anomalies).toBeUndefined();
-		expect(projects[0]?.history).toEqual([{ date: "2026-08-04", status: "active" }]);
+		const p = parseProject(file("  2026-08-04:\n    status: active\n"), "P.md")!;
+		setProjectStatus(index, p, "2026-09-01", "inactive", undefined, "handed off");
+		expect(projects[0]?.history.at(-1)).toEqual({
+			date: "2026-09-01",
+			status: "inactive",
+			why: "handed off",
+		});
 	});
 
-	it("writes nothing at all when there is nothing it can normalise", () => {
-		// The `Dismiss` case: a file whose only oddity is a state Kairos doesn't
-		// know. Accepting can't be offered, and no write may happen — a write here
-		// would be the silent deletion #27 is about.
+	it("canonicalises fixable entries and keeps unknown ones on the same write", () => {
 		const { index, projects } = fakeIndex();
-		normalizeProjectStatus(index, parseProject(file("  2026-08-04: draft\n"), "P.md")!);
-		expect(projects).toEqual([]);
-	});
-
-	it("writes nothing for a file that was already canonical", () => {
-		const { index, projects } = fakeIndex();
-		normalizeProjectStatus(
-			index,
-			parseProject(file("  2026-08-04:\n    status: active\n"), "P.md")!,
-		);
-		expect(projects).toEqual([]);
+		const p = parseProject(
+			file("  2026-8-4: active\n  2026-08-10: draft\n"),
+			"P.md",
+		)!;
+		setProjectStatus(index, p, "2026-09-01", "archived");
+		const fm = serializeProjectFrontmatter(projects[0]!);
+		expect(fm).toContain("2026-08-04:\n    status: active");
+		expect(fm).not.toContain("2026-8-4");
+		expect(fm).toContain("2026-08-10: draft");
 	});
 });
 
-describe("normalizeDomainStatus (#28)", () => {
+describe("setDomainStatus", () => {
 	const domainFile = (status: string) =>
 		`---\ntags:\n  - kairos/domain\nid: track-1\norder: 0\nstatus:\n${status}---\n`;
 
-	it("writes the normalised domain on an accept", () => {
+	it("writes a bare-string entry back in object form", () => {
 		const { index, domains } = fakeIndex();
-		normalizeDomainStatus(index, parseDomain(domainFile("  2026-8-4: inactive\n"), "D.md")!);
-		expect(domains).toHaveLength(1);
-		expect(domains[0]?.history).toEqual([{ date: "2026-08-04", status: "inactive" }]);
-	});
-
-	it("writes nothing when there is nothing it can normalise", () => {
-		const { index, domains } = fakeIndex();
-		normalizeDomainStatus(index, parseDomain(domainFile("  whenever: active\n"), "D.md")!);
-		expect(domains).toEqual([]);
+		const d = parseDomain(domainFile("  2026-08-04: active\n"), "D.md")!;
+		setDomainStatus(index, d, "2026-09-01", "inactive", undefined, "paused");
+		const fm = serializeDomainFrontmatter(domains[0]!);
+		expect(fm).toContain("2026-08-04:\n    status: active");
+		expect(fm).toContain("why: paused");
 	});
 });

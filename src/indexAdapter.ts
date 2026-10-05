@@ -3,7 +3,8 @@
 // This is the ONLY place the engine touches the real app. It:
 //   • builds `IndexDeps` from `app.vault` (read/write/now/settings),
 //   • does the cold-start `seed` by reading every markdown file once,
-//   • forwards vault events (create/modify/delete/rename) to the engine.
+//   • forwards vault events (create/modify/delete/rename) to the engine,
+//   • runs the one-shot status normalisation pass after the cold start.
 //
 // Everything app-specific lives here so `index.ts` stays unit-testable. Nothing
 // in here has its own logic worth unit-testing — it's wiring — so it has no
@@ -13,6 +14,7 @@ import { TFile } from "obsidian";
 import type { App, EventRef } from "obsidian";
 import { KairosIndex } from "./index";
 import type { IndexDeps, IndexPaths } from "./index";
+import { isFixable, needsNormalizing, normalizeStatusMap } from "./projectFile";
 import type Kairos from "./main";
 
 export class IndexAdapter {
@@ -27,6 +29,7 @@ export class IndexAdapter {
 	async start(): Promise<void> {
 		await this.seed();
 		this.registerEvents();
+		void this.normalizeStatusFiles();
 	}
 
 	/** Tear down: engine timers + our event refs. Vault refs are also owned by
@@ -133,6 +136,52 @@ export class IndexAdapter {
 			})),
 		);
 		this.index.seed(seeded);
+	}
+
+	// ── status normalisation (once per load) ──
+
+	/**
+	 * Rewrite the `status:` map of every project/domain file that holds a fixable
+	 * shape (a flat `date: state` scalar, a near-miss date key) into canonical
+	 * form. Runs once, right after the cold start, off the already-parsed index —
+	 * no extra vault scan — and only touches files that need it, so clean files
+	 * are never written. `processFrontMatter` swaps the `status` key alone and
+	 * leaves the rest of the frontmatter and the body as they were.
+	 *
+	 * No write loop: the `modify` each rewrite triggers only reparses (reparsing
+	 * never writes), and `normalizeStatusMap` is idempotent — the rewritten map
+	 * has nothing fixable left, so it returns null on any second look.
+	 *
+	 * Entries that can't be fixed (an unknown state, an unreadable key) stay in
+	 * the file untouched and out of derived state; they get one console warning
+	 * per file per load and nothing else.
+	 */
+	private async normalizeStatusFiles(): Promise<void> {
+		const app = this.plugin.app;
+		const { projects, domains } = this.index.snapshot();
+		for (const entity of [...projects.values(), ...domains.values()]) {
+			const path = entity.source.path;
+			const kept = (entity.anomalies ?? []).filter((a) => !isFixable(a));
+			if (kept.length > 0) {
+				console.warn(
+					`Kairos: ${path} has status entries it can't read; they are kept as written and ignored: ${kept.map((a) => a.key).join(", ")}`,
+				);
+			}
+			if (!needsNormalizing(entity)) continue;
+			const file = app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) continue;
+			try {
+				await app.fileManager.processFrontMatter(
+					file,
+					(fm: Record<string, unknown>) => {
+						const next = normalizeStatusMap(fm.status);
+						if (next) fm.status = next;
+					},
+				);
+			} catch (e) {
+				console.warn(`Kairos: could not normalise status in ${path}`, e);
+			}
+		}
 	}
 
 	// ── vault events ──

@@ -94,30 +94,24 @@ interface StatusRecord {
   why?: string;
 }
 
-// A `status:` entry Kairos would not itself have written, kept rather than
-// thrown away. Two shapes turn up in files people hand-wrote: the flat scalar
-// (`2026-08-04: active`), which parses fine but isn't the object form we emit,
-// and a state outside the lifecycle vocabulary (`draft`), which can't become a
-// record at all. Both used to disappear — the unknown state from the parsed
-// history, the flat scalar from the file the first time anything wrote it — and
-// the user was told neither. An anomaly carries the entry verbatim so a write
-// re-emits exactly what was there, plus enough description to say, on the
-// Projects page, what was found and what normalising would change it to.
+// A `status:` entry Kairos would not itself have written, noted on parse. Two
+// kinds are fixable and already became records — the flat scalar
+// (`2026-08-04: active`) and a near-miss key that pads to a free date
+// (`2026-8-4`) — so the next write emits them canonically. The other two can't
+// become records at all: a state outside the lifecycle vocabulary (`draft`) and
+// a key that isn't a usable date. Those are kept verbatim (`raw`) and re-emitted
+// on every write, so no edit deletes what the user typed, but they never drive
+// derived state.
 type StatusAnomalyKind =
-  | "bare-string" // `2026-08-04: active` — valid, but not the object form
-  | "unknown-state" // a status outside active/inactive/archived
-  | "bad-date"; // a key that isn't YYYY-MM-DD
+  | "bare-string" // fixable: `2026-08-04: active`, not the object form
+  | "padded-date" // fixable: `2026-8-4`, pads to a free YYYY-MM-DD
+  | "unknown-state" // kept: a status outside active/inactive/archived
+  | "bad-date"; // kept: a key that isn't (or can't safely become) YYYY-MM-DD
 
 interface StatusAnomaly {
   kind: StatusAnomalyKind;
   key: string; // the frontmatter key exactly as written
-  raw: unknown; // the value exactly as written — re-emitted verbatim on write
-  found: string; // how the entry reads in the file, for the warning line
-  becomes: string | null; // what normalising makes of it; null when we can't say
-  // The record normalising would add to the history. Only a `bad-date` whose key
-  // is a paddable near-miss carries one — a `bare-string` already produced its
-  // record, and an unknown state can't produce one at all.
-  record?: StatusRecord;
+  raw: unknown; // the value exactly as written — re-emitted verbatim when kept
 }
 
 interface Project {
@@ -129,7 +123,7 @@ interface Project {
   history: StatusRecord[];
   // Non-canonical `status:` entries found on parse. Absent when the file is
   // clean, so a parsed entity only carries the key when there is something to
-  // say about it.
+  // fix or preserve.
   anomalies?: StatusAnomaly[];
   archived: boolean;
   source: SourceRef; // project file / folder note

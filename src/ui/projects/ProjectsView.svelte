@@ -14,7 +14,7 @@
 	// active/inactive for them and the Archived filter shows projects only.
 
 	import type { App } from "obsidian";
-	import { Menu, Notice, TFile } from "obsidian";
+	import { Menu, TFile } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Unsubscriber } from "svelte/store";
 	import type {
@@ -22,14 +22,11 @@
 		ISODate,
 		LifecycleState,
 		Project,
-		StatusAnomaly,
 	} from "../../types";
 	import type { KairosIndex, ProjectsDomains } from "../../index";
 	import {
 		editDomainStatusRecord,
 		editProjectStatusRecord,
-		normalizeDomainStatus,
-		normalizeProjectStatus,
 		renameDomain,
 		renameProject,
 		setDomainColor,
@@ -41,15 +38,10 @@
 		setProjectStatus,
 	} from "../../projectActions";
 	import { todayISO } from "../../dayNote";
-	import { effectiveStatus, normalizableAnomalies } from "../../projectFile";
-	import {
-		NormalizationDeclines,
-		declineKey,
-		vaultDeclineStore,
-	} from "../../statusNormalization";
+	import { effectiveStatus } from "../../projectFile";
 	import { DomainReorderModal } from "./DomainReorderModal";
 	import { StatusHistoryModal } from "./StatusHistoryModal";
-	import { ConfirmModal, PromptModal } from "./modals";
+	import { ConfirmModal, PromptModal, WhyModal } from "./modals";
 
 	interface Props {
 		app: App;
@@ -86,10 +78,6 @@
 	}
 
 	function passesFilter(e: Project | Domain): boolean {
-		// A row being asked for a reason stays visible whatever the filter says:
-		// archiving with the Archived filter off would otherwise delete the row —
-		// and the prompt with it — the instant the transition landed.
-		if (isPromptingWhy(e)) return true;
 		return filter.has(statusOf(e) as Filter);
 	}
 
@@ -97,15 +85,10 @@
 	// the bottom), preserving the source order within each band. A stable partition
 	// keeps domain order (the global reorder) and file order (projects) intact
 	// among peers of the same activity.
-	// A row being asked for a reason keeps the band it was in: re-sorting it moves
-	// its DOM node, and a focused input that moves loses focus, which would close
-	// the prompt the moment it opened.
 	function activeFirst<T extends Project | Domain>(items: T[]): T[] {
 		const active: T[] = [];
 		const rest: T[] = [];
-		for (const e of items) {
-			(statusOf(e) === "active" || isPromptingWhy(e) ? active : rest).push(e);
-		}
+		for (const e of items) (statusOf(e) === "active" ? active : rest).push(e);
 		return [...active, ...rest];
 	}
 
@@ -136,146 +119,6 @@
 
 	// ── Editing state ──
 	let editingName = $state<string | null>(null); // source.path of the row being renamed
-
-	// ── "Why did this change?" prompt (#26) ──
-	// A transition into inactive or archived is applied immediately and the reason
-	// is asked for afterwards, inline on the row it belongs to. The transition is
-	// never held hostage to the prompt: Esc (or clicking away with nothing typed)
-	// costs nothing and the row never lies about its state. A typed reason is
-	// attached with a second edit against the *re-read* entity, since the one this
-	// component rendered goes stale the instant the first edit writes.
-	let whyPrompt = $state<{ path: string; isDomain: boolean; date: ISODate } | null>(null);
-	let whyText = $state("");
-
-	/** Re-resolve a row from the live feed by its source path (see above). */
-	function liveEntity(path: string, isDomain: boolean): Project | Domain | null {
-		if (isDomain) return feed.domains.find((d) => d.source.path === path) ?? null;
-		for (const list of feed.projectsByDomain.values()) {
-			const hit = list.find((p) => p.source.path === path);
-			if (hit) return hit;
-		}
-		return feed.orphans.find((p) => p.source.path === path) ?? null;
-	}
-
-	function isPromptingWhy(e: Project | Domain): boolean {
-		return whyPrompt?.path === e.source.path;
-	}
-
-	// Only transitions *into* a non-active state prompt: going active is usually
-	// self-evident, and prompting on every change trains dismissal.
-	function promptWhy(e: Project | Domain, isDomain: boolean, status: LifecycleState) {
-		if (status === "active") return;
-		editingName = null;
-		whyText = "";
-		whyPrompt = { path: e.source.path, isDomain, date: todayISO() };
-	}
-
-	function cancelWhy() {
-		whyPrompt = null;
-		whyText = "";
-	}
-
-	function commitWhy() {
-		const p = whyPrompt;
-		const why = whyText.trim();
-		cancelWhy();
-		if (!p || why === "") return;
-		const live = liveEntity(p.path, p.isDomain);
-		if (!live) return;
-		// The record the transition wrote. Absent if it collapsed as a no-op or was
-		// already undone — then there is nothing to attach a reason to.
-		const rec = live.history.find((r) => r.date === p.date);
-		if (!rec) return;
-		const next = { date: rec.date, status: rec.status, note: rec.note ?? "", why };
-		if (p.isDomain) editDomainStatusRecord(index, live as Domain, rec.date, next);
-		else editProjectStatusRecord(index, live as Project, rec.date, next);
-	}
-
-	// ── Non-canonical status frontmatter (#27, #28) ──
-	// Kairos never silently rewrites frontmatter it did not write (decision 55).
-	// A file whose `status:` map holds a shape or a word Kairos wouldn't have
-	// produced — the flat `2026-08-04: active` scalar, or a state like `draft`
-	// that isn't in the vocabulary — is reported here rather than quietly
-	// converted (the scalar) or quietly dropped (the unknown state, which used to
-	// disappear from the history and then from the file on the next write).
-	//
-	// It surfaces as a card above the list rather than as a line on the row: the
-	// row is filtered (an archived project with a bad record wouldn't show at all)
-	// and already carries a name, a description, a status tag and five controls,
-	// while this needs two lines and two buttons. It is not a Notice either — a
-	// toast that fires on load is gone before it can be read, and repeating it on
-	// every reindex is the nagging #28 rules out.
-	//
-	// Declining is durable and lives on disk (`statusNormalization.ts`), so the
-	// offer never returns for that file.
-	let declines = $state<NormalizationDeclines | null>(null);
-	// Bumped on a decline: the decline set is a plain class, not reactive state,
-	// so the derived list needs something to watch.
-	let declineVersion = $state(0);
-
-	interface AnomalyCard {
-		entity: Project | Domain;
-		isDomain: boolean;
-		anomalies: StatusAnomaly[];
-		fixable: number;
-	}
-
-	const anomalyCards = $derived.by<AnomalyCard[]>(() => {
-		void declineVersion;
-		const known = declines;
-		if (!known) return []; // nothing is shown until we know what was declined
-		const out: AnomalyCard[] = [];
-		const consider = (e: Project | Domain, isDomain: boolean) => {
-			const anomalies = e.anomalies ?? [];
-			if (anomalies.length === 0 || known.has(declineKey(e))) return;
-			out.push({
-				entity: e,
-				isDomain,
-				anomalies,
-				fixable: normalizableAnomalies(e).length,
-			});
-		};
-		for (const d of feed.domains) consider(d, true);
-		for (const list of feed.projectsByDomain.values()) {
-			for (const p of list) consider(p, false);
-		}
-		for (const p of feed.orphans) consider(p, false);
-		return out;
-	});
-
-	/** Why an entry can't be normalised, said in the terms the file uses. */
-	function anomalyNote(a: StatusAnomaly): string {
-		if (a.kind === "unknown-state") {
-			return "not a status Kairos knows — kept in the file, left out of the history";
-		}
-		return "not a date Kairos can read — kept in the file, left out of the history";
-	}
-
-	function acceptNormalize(card: AnomalyCard) {
-		if (card.isDomain) normalizeDomainStatus(index, card.entity as Domain);
-		else normalizeProjectStatus(index, card.entity as Project);
-	}
-
-	/**
-	 * "Leave it alone", remembered. The file is not touched, now or later. The
-	 * memory is a disk write, so it can fail; when it does the card stays and the
-	 * user is told, rather than the choice quietly not sticking and the offer
-	 * reappearing next session with no explanation.
-	 */
-	function declineNormalize(card: AnomalyCard) {
-		const known = declines;
-		if (!known) return;
-		void known.decline(declineKey(card.entity)).then(
-			() => {
-				declineVersion += 1;
-			},
-			() => {
-				new Notice(
-					"Kairos couldn't remember that choice, so it will ask again. Your file was not changed.",
-				);
-			},
-		);
-	}
 
 	// ── Rename ──
 	function startRename(e: Project | Domain) {
@@ -317,7 +160,7 @@
 			statusOf(e) === "active" ? (isDomain ? "inactive" : lastNonActive(e)) : "active";
 		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
 		else setProjectStatus(index, e as Project, todayISO(), next);
-		promptWhy(e, isDomain, next);
+		askWhy(e, isDomain, next);
 	}
 
 	// Archive (projects only — domains are durable and can't archive). A one-click
@@ -327,7 +170,39 @@
 		const next: LifecycleState =
 			statusOf(project) === "archived" ? "active" : "archived";
 		setProjectStatus(index, project, todayISO(), next);
-		promptWhy(project, false, next);
+		askWhy(project, false, next);
+	}
+
+	// ── "Why did this change?" (#26) ──
+	// A transition into inactive or archived is applied first and the reason is
+	// asked for afterwards in a modal, so the change never waits on the answer
+	// and skipping it is free. Going active doesn't ask: it is usually
+	// self-evident, and asking on every change trains dismissal. A typed reason is
+	// attached with a second edit against the *re-read* entity — the one this row
+	// rendered went stale the moment the status write landed.
+	function askWhy(e: Project | Domain, isDomain: boolean, status: LifecycleState) {
+		if (status === "active") return;
+		const path = e.source.path;
+		const date: ISODate = todayISO();
+		new WhyModal(app, {
+			title: `${e.name} is now ${STATUS_LABEL[status].toLowerCase()}`,
+			onSave: (why) => attachWhy(path, isDomain, date, why),
+		}).open();
+	}
+
+	function attachWhy(path: string, isDomain: boolean, date: ISODate, why: string) {
+		const { projects, domains } = index.snapshot();
+		const pool: (Project | Domain)[] = isDomain
+			? [...domains.values()]
+			: [...projects.values()];
+		const live = pool.find((x) => x.source.path === path);
+		// The record the transition wrote. Absent if it collapsed as a no-op or was
+		// undone in the meantime — then there is nothing to attach a reason to.
+		const rec = live?.history.find((r) => r.date === date);
+		if (!live || !rec) return;
+		const next = { date, status: rec.status, note: rec.note ?? "", why };
+		if (isDomain) editDomainStatusRecord(index, live as Domain, date, next);
+		else editProjectStatusRecord(index, live as Project, date, next);
 	}
 
 	// ── Status history (native modal) ──
@@ -598,20 +473,11 @@
 
 	function handleClickOutside() {
 		editingName = null;
-		// Clicking away is a skip, not a save — the input's own blur handler has
-		// already committed anything typed before this fires.
-		cancelWhy();
 	}
 
 	onMount(() => {
 		const unsub: Unsubscriber = index.projectsDomains().subscribe((f) => {
 			feed = f;
-		});
-		// Read the declined-normalisation list once. Until it resolves the offer
-		// cards render nothing, so a file the user already said no to never flashes
-		// up on open.
-		void NormalizationDeclines.load(vaultDeclineStore(app)).then((d) => {
-			declines = d;
 		});
 		return () => unsub();
 	});
@@ -668,59 +534,6 @@
 	</div>
 
 	<div class="pv-scroll">
-		<!-- Files carrying `status:` entries Kairos didn't write. One card per file,
-		     shown until the user either normalises it or says to leave it alone;
-		     saying leave it alone is remembered on disk, so it never comes back. -->
-		{#if anomalyCards.length > 0}
-			<section class="anomaly-list">
-				<p class="anomaly-lead">
-					These files carry status entries Kairos didn't write. It won't change
-					them unless you say so.
-				</p>
-				{#each anomalyCards as card (card.entity.source.path)}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="anomaly-card" onclick={(e) => e.stopPropagation()}>
-						<div class="anomaly-head">
-							<span class="anomaly-icon" title="Unrecognised status entry">
-								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-							</span>
-							<span class="anomaly-name">{card.entity.name}</span>
-							<span class="anomaly-path">{card.entity.source.path}</span>
-						</div>
-
-						<ul class="anomaly-lines">
-							{#each card.anomalies as a (a.key)}
-								<li>
-									<code>{a.found}</code>
-									{#if a.becomes}
-										<span class="anomaly-arrow">becomes</span>
-										<code>{a.becomes}</code>
-									{:else}
-										<span class="anomaly-why">{anomalyNote(a)}</span>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-
-						<div class="anomaly-actions">
-							{#if card.fixable > 0}
-								<button
-									class="anomaly-btn accept"
-									onclick={(e) => { e.stopPropagation(); acceptNormalize(card); }}
-									>Normalise</button
-								>
-							{/if}
-							<button
-								class="anomaly-btn"
-								onclick={(e) => { e.stopPropagation(); declineNormalize(card); }}
-								>{card.fixable > 0 ? "Keep as is" : "Dismiss"}</button
-							>
-						</div>
-					</div>
-				{/each}
-			</section>
-		{/if}
-
 		{#each domainRows as row (row.domain.id)}
 			{@const domainInactive = statusOf(row.domain) !== "active"}
 			<section
@@ -734,12 +547,9 @@
 				     and runs as a continuous left line down the project list below (like
 				     the grid/week views), so a domain and its projects read as one block. -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<!-- While the reason prompt is open the header keeps full contrast:
-				     `.dim` is an opacity, and fading the row would fade the input the
-				     user is typing into with it. -->
 				<header
 					class="domain-header"
-					class:dim={domainInactive && !isPromptingWhy(row.domain)}
+					class:dim={domainInactive}
 					oncontextmenu={(e) => openDomainMenu(row.domain, e)}
 				>
 					<!-- Kind icon: this page's top-level rows are always domains. Same
@@ -770,9 +580,7 @@
 						>{row.domain.name}</button>
 					{/if}
 
-					{#if isPromptingWhy(row.domain)}
-						{@render whyInput()}
-					{:else if row.domain.description}
+					{#if row.domain.description}
 						<span class="row-desc" title={row.domain.description}>{row.domain.description}</span>
 					{/if}
 
@@ -848,26 +656,6 @@
 	</div>
 </div>
 
-<!-- The reason prompt, rendered in place of the row's description blurb. Enter
-     saves, Esc skips, blur saves whatever was typed — skipping must stay free or
-     the prompt becomes a toll on changing status. -->
-{#snippet whyInput()}
-	<!-- svelte-ignore a11y_autofocus -->
-	<input
-		class="why-input"
-		placeholder="Why? (Enter to save, Esc to skip)"
-		autofocus
-		bind:value={whyText}
-		onclick={(e) => e.stopPropagation()}
-		onblur={commitWhy}
-		onkeydown={(e) => {
-			e.stopPropagation();
-			if (e.key === "Enter") commitWhy();
-			if (e.key === "Escape") cancelWhy();
-		}}
-	/>
-{/snippet}
-
 {#snippet projectRow(project: Project, disabled: boolean)}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- When the parent domain is inactive its projects are read-only history:
@@ -904,9 +692,7 @@
 			>{project.name}</button>
 		{/if}
 
-		{#if isPromptingWhy(project)}
-			{@render whyInput()}
-		{:else if project.description}
+		{#if project.description}
 			<span class="row-desc" title={project.description}>{project.description}</span>
 		{/if}
 
@@ -1019,122 +805,6 @@
 		padding: 30px 8px;
 		text-align: center;
 		pointer-events: none;
-	}
-
-	/* ── Non-canonical status frontmatter (#27, #28) ── */
-	/* Sits above the list because it is about a file, not about a row, and the
-	   rows are filtered — an archived project with a bad record would otherwise
-	   never be seen. Muting here is done with color tokens, never opacity: this
-	   card is the one thing on the page that has to stay readable. */
-	.anomaly-list {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 12px 0 6px;
-	}
-	.anomaly-lead {
-		margin: 0;
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-	.anomaly-card {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 9px 11px;
-		border: 1px solid var(--background-modifier-border);
-		border-left: 3px solid var(--text-warning, var(--text-muted));
-		border-radius: 8px;
-		background: var(--background-primary-alt);
-	}
-	.anomaly-head {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		min-width: 0;
-	}
-	.anomaly-icon {
-		display: inline-flex;
-		align-items: center;
-		color: var(--text-warning, var(--text-muted));
-		flex-shrink: 0;
-		/* Obsidian's base styling can collapse an inline SVG to 0 width; pin it. */
-		min-width: min-content;
-	}
-	.anomaly-name {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--text-normal);
-		flex-shrink: 0;
-	}
-	.anomaly-path {
-		font-size: 11px;
-		color: var(--text-faint);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		min-width: 0;
-	}
-	.anomaly-lines {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.anomaly-lines li {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-	.anomaly-lines code {
-		font-family: var(--font-monospace);
-		font-size: 11px;
-		color: var(--text-normal);
-		background: var(--background-modifier-form-field);
-		border-radius: 4px;
-		padding: 1px 5px;
-	}
-	.anomaly-arrow {
-		font-size: 11px;
-		color: var(--text-faint);
-	}
-	.anomaly-why {
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-	.anomaly-actions {
-		display: flex;
-		gap: 6px;
-		padding-top: 1px;
-	}
-	.anomaly-btn {
-		font-size: 11px;
-		font-weight: 600;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary);
-		color: var(--text-muted);
-		padding: 3px 10px;
-		cursor: pointer;
-		box-shadow: none;
-	}
-	.anomaly-btn:hover {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-	}
-	.anomaly-btn.accept {
-		background: var(--interactive-accent);
-		border-color: var(--interactive-accent);
-		color: var(--text-on-accent);
-	}
-	.anomaly-btn.accept:hover {
-		background: var(--interactive-accent-hover);
-		color: var(--text-on-accent);
 	}
 
 	/* ── Domain group ── */
@@ -1298,25 +968,6 @@
 	   static name — no box, no border, no box-shadow — so renaming feels like
 	   putting the cursor on the name, matching the backlog/task rows. The domain
 	   variant keeps the heading's uppercase weight so it doesn't jump on edit. */
-	/* The reason prompt. Sits where the description blurb does, and reads as an
-	   input rather than as text: it is asking for something. Muting here uses a
-	   color, never an opacity — a faded prompt on an already-faded row is how the
-	   contrast disappears. */
-	.why-input {
-		font-size: 12px;
-		font-family: inherit;
-		color: var(--text-normal);
-		background: var(--background-modifier-form-field);
-		border: 1px solid var(--interactive-accent);
-		border-radius: 5px;
-		padding: 1px 7px;
-		height: 22px;
-		min-width: 0;
-		flex: 1 1 220px;
-		text-transform: none;
-		letter-spacing: 0;
-		font-weight: 400;
-	}
 	.name-input {
 		font-size: 13px;
 		font-family: inherit;
