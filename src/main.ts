@@ -17,7 +17,7 @@ import {
 } from './KairosProjectsView';
 import { KAIROS_GANTT_VIEW_TYPE, KairosGanttView } from './KairosGanttView';
 import { IndexAdapter } from './indexAdapter';
-import { openViewPicker } from './ui/views/ViewPickerModal';
+import { openViewMenu } from './ui/views/viewMenu';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -134,14 +134,14 @@ export default class Kairos extends Plugin {
 			(leaf) => new KairosGanttView(leaf, this),
 		);
 
-		// One ribbon icon for the whole plugin (issue #17). It opens a picker
-		// listing all six views; the six commands below stay in the palette, so
-		// the picker is a convenience and not the only route. The icon is
-		// deliberately not `clock` — that one already means the Day view, on its
-		// tab and in the picker — and not any of the other five for the same
+		// One ribbon icon for the whole plugin (issue #17). It opens a menu at the
+		// pointer listing all six views; the six commands below stay in the
+		// palette, so the menu is a convenience and not the only route. The icon
+		// is deliberately not `clock` — that one already means the Day view, on
+		// its tab and in the menu — and not any of the other five for the same
 		// reason; `hourglass` stands for Kairos itself.
-		this.addRibbonIcon('hourglass', 'Open a Kairos view', () => {
-			openViewPicker(this);
+		this.addRibbonIcon('hourglass', 'Open a Kairos view', (evt) => {
+			openViewMenu(this, evt);
 		});
 
 		this.addCommand({
