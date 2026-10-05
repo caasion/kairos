@@ -73,15 +73,6 @@ If your plugin does not need CSS, delete this file.
 	margin-bottom: 0;
 }
 
-/* ── Status history modal (StatusHistoryModal.ts) ── */
-/* A "Status history" caption trailing the entity name in the modal title. */
-.kairos-history-sub {
-	margin-left: 8px;
-	font-size: 12px;
-	font-weight: 400;
-	color: var(--text-faint);
-}
-
 /* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
 .kairos-peek {
 	position: fixed;
@@ -108,4 +99,13 @@ If your plugin does not need CSS, delete this file.
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 	font-variant-numeric: tabular-nums;
+}
+
+/* ── Status history modal (StatusHistoryModal.ts) ── */
+/* A "Status history" caption trailing the entity name in the modal title. */
+.kairos-history-sub {
+	margin-left: 8px;
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--text-faint);
 }
