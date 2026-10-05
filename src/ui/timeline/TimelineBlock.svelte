@@ -9,6 +9,7 @@
   } from "../../types";
   import { isCheckable } from "../../types";
   import type { Resolver } from "../../index";
+  import { peek } from "../actions/peek";
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
@@ -430,6 +431,7 @@
           tabindex="0"
           onpointerdown={(e) => e.stopPropagation()}
           onclick={beginTitleEdit}
+          use:peek={{ text: block.title }}
         >{block.title}</span>
       {/if}
     </div>

@@ -55,6 +55,7 @@
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
+	import { peek } from "../actions/peek";
 	import { rowLabelInfo, type RowLabelInfo } from "../components/rowLabel";
 
 	interface Props {
@@ -826,7 +827,11 @@
 									style:height={`${BAR_HEIGHT}px`}
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
-									title={`${span.note ? span.note : "No description"} — ${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`}
+									use:peek={{
+										text: span.note || "No description",
+										detail: `${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`,
+										always: true,
+									}}
 									onclick={() => selectSpan(row, span)}
 									ondblclick={() => beginEditDesc(row, span)}
 									oncontextmenu={(e) => openMenu(e, row, span)}

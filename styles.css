@@ -73,6 +73,34 @@ If your plugin does not need CSS, delete this file.
 	margin-bottom: 0;
 }
 
+/* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
+.kairos-peek {
+	position: fixed;
+	z-index: var(--layer-popover);
+	max-width: min(320px, calc(100vw - 16px));
+	padding: var(--size-4-2) var(--size-4-3);
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	pointer-events: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+}
+.kairos-peek-text {
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-tight);
+	color: var(--text-normal);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.kairos-peek-detail {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	font-variant-numeric: tabular-nums;
+}
+
 /* ── Status history modal (StatusHistoryModal.ts) ── */
 /* A "Status history" caption trailing the entity name in the modal title. */
 .kairos-history-sub {

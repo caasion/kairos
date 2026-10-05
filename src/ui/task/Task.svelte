@@ -19,6 +19,7 @@
 	import type { ResolvedAssociation } from "../../association";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
 	import { longpress } from "../actions/longpress";
+	import { movedPastSlop, peek, peekIfTruncated } from "../actions/peek";
 
 	interface Props {
 		task: Task;
@@ -217,6 +218,9 @@
 	// click on the body still edits.
 	let pressEvent: PointerEvent | undefined;
 	let textEl = $state<HTMLSpanElement>();
+	// True between the press maturing and the pointer either moving (→ drag) or
+	// lifting (→ peek at the full text).
+	let held = $state(false);
 
 	function armGrab(event: PointerEvent) {
 		if (event.button !== 0) return; // primary button only
@@ -226,15 +230,54 @@
 	// The longpress action dispatches a bare `longpress` CustomEvent; listen for
 	// it directly (as TaskCheckbox does) rather than via an `on<name>` attribute,
 	// which Svelte's typed DOM attributes don't cover for custom events.
+	//
+	// A matured hold doesn't lift the task straight away: it waits to see what
+	// the pointer does next. Moving past the slop hands the drag to the parent;
+	// lifting in place opens the full-text peek instead (the touch equivalent of
+	// hovering a truncated task). Releasing in place therefore never drops the
+	// task back onto its own block, which used to rewrite the note.
 	$effect(() => {
 		const el = textEl;
-		if (!el || !onGrab) return;
-		const handler = () => {
-			if (pressEvent) onGrab(pressEvent);
+		if (!el) return;
+		let cleanup: (() => void) | undefined;
+
+		const finish = () => {
+			held = false;
 			pressEvent = undefined;
+			cleanup?.();
+			cleanup = undefined;
 		};
-		el.addEventListener("longpress", handler);
-		return () => el.removeEventListener("longpress", handler);
+
+		const onLongpress = () => {
+			const start = pressEvent;
+			if (!start) return;
+			held = true;
+			const move = (e: PointerEvent) => {
+				if (e.pointerId !== start.pointerId || !movedPastSlop(start, e)) return;
+				finish();
+				onGrab?.(e);
+			};
+			const up = (e: PointerEvent) => {
+				if (e.pointerId !== start.pointerId) return;
+				finish();
+				peekIfTruncated(el, { text: task.text });
+			};
+			const cancel = () => finish();
+			window.addEventListener("pointermove", move);
+			window.addEventListener("pointerup", up);
+			window.addEventListener("pointercancel", cancel);
+			cleanup = () => {
+				window.removeEventListener("pointermove", move);
+				window.removeEventListener("pointerup", up);
+				window.removeEventListener("pointercancel", cancel);
+			};
+		};
+
+		el.addEventListener("longpress", onLongpress);
+		return () => {
+			el.removeEventListener("longpress", onLongpress);
+			finish();
+		};
 	});
 
 	function openContextMenu(event: MouseEvent) {
@@ -364,18 +407,21 @@
 			/>
 		{:else}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- Long-press here grabs the task to drag it between blocks; a plain
-			     click still edits. The checkbox is a separate element, so its own
+			<!-- Hover (mouse) or hold-and-release (touch) shows the full text when it's
+			     truncated; hold-and-move grabs the task to drag it between blocks; a
+			     plain click still edits. The checkbox is a separate element, so its own
 			     press/long-press (status cycle / cancel) is untouched. -->
 			<span
 				class="k-task-text"
 				class:grabbable={onGrab !== undefined}
+				class:held
 				role="textbox"
 				tabindex="0"
 				bind:this={textEl}
 				onclick={beginEdit}
-				onpointerdown={onGrab ? armGrab : undefined}
+				onpointerdown={armGrab}
 				use:longpress={400}
+				use:peek={{ text: task.text, touch: false }}
 			>
 				{task.text}
 			</span>
@@ -507,6 +553,13 @@
 
 	.k-task-text.grabbable {
 		cursor: grab;
+	}
+
+	/* A matured hold: tint the text so the press reads as registered before the
+	   pointer decides between drag (move) and peek (lift). */
+	.k-task-text.held {
+		border-radius: var(--radius-s);
+		background: var(--background-modifier-hover);
 	}
 
 	.k-task.done .k-task-text,
