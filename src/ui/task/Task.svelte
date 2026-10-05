@@ -62,6 +62,10 @@
 		// The parent takes over from here. Omitted where dragging isn't supported
 		// (e.g. a colocated task, or the grid) — then the body is just static.
 		onGrab?: (event: PointerEvent) => void;
+		// How many lines the text may wrap to before it's clamped with an
+		// ellipsis. 1 (the default) keeps the compact single-line row; roomier
+		// views like the grid pass 2.
+		lines?: number;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -85,6 +89,7 @@
 		onMoveToBacklog,
 		meta,
 		onGrab,
+		lines = 1,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -329,7 +334,7 @@
 		{/if}
 	</div>
 
-	<div class="k-task-row">
+	<div class="k-task-row" class:wrapped={lines > 1}>
 		<TaskCheckbox status={task.status} {color} onToggle={cycleStatus} onCancel={cancelStatus} />
 
 		{#if editing}
@@ -349,6 +354,8 @@
 			<span
 				class="k-task-text"
 				class:grabbable={onGrab !== undefined}
+				class:wrapped={lines > 1}
+				style:--k-task-lines={lines > 1 ? lines : undefined}
 				role="textbox"
 				tabindex="0"
 				bind:this={textEl}
@@ -480,6 +487,21 @@
 		/* No text selection so a long-press-to-drag doesn't paint a selection. */
 		user-select: none;
 		touch-action: none;
+	}
+
+	/* Multi-line: wrap, then clamp at `lines` with a trailing ellipsis. */
+	.k-task-text.wrapped {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: var(--k-task-lines);
+		line-clamp: var(--k-task-lines);
+		white-space: normal;
+		overflow-wrap: anywhere;
+	}
+
+	/* Keep the checkbox on the first line when the text wraps. */
+	.k-task-row.wrapped {
+		align-items: flex-start;
 	}
 
 	.k-task-text.grabbable {
