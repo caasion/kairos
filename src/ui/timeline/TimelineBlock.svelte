@@ -12,6 +12,7 @@
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
+  import { peek } from "../actions/peek";
 
   interface Props {
     block: Block;
@@ -430,6 +431,7 @@
           tabindex="0"
           onpointerdown={(e) => e.stopPropagation()}
           onclick={beginTitleEdit}
+          use:peek={{ text: block.title }}
         >{block.title}</span>
       {/if}
     </div>
