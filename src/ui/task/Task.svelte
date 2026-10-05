@@ -33,19 +33,16 @@
 		// styles a touch heavier and never shows its own delete (deleting is a
 		// block concern). When false it's an ordinary nested task.
 		checkable?: boolean;
-		// The association to show under the text. `inherited` signals it came from
-		// the block, not the task itself (spec §2.2 display-only rule) — as italics
-		// normally, and as a fainter colour when `hideAssociationLabel` leaves no
-		// text to italicise.
+		// The task's association. Drives the add/edit association action, and is
+		// shown under the text unless `showAssociation` is false. `inherited`
+		// italicises it to signal it came from the block, not the task itself
+		// (spec §2.2 display-only rule).
 		association?: Association;
 		inherited?: boolean;
-		// Hide the association's *name*, keeping the element itself: its icon, its
-		// inherited treatment, its ctrl+click navigation and its tooltip. For the
-		// grid, where the row already names the association and the label only
-		// repeats it. The icon stays because it is the sole carrier of the
-		// inherited/explicit signal once the text is gone — and the only path from
-		// a grid cell to the project note.
-		hideAssociationLabel?: boolean;
+		// Draw the association line under the text. The grid turns it off: its
+		// rows exist to state the association, so repeating it on every task in
+		// the row is noise. The association action stays available either way.
+		showAssociation?: boolean;
 		// Resolved form of `association` (display name, domain color, target). When
 		// present and resolved, the pill shows the canonical name, tints by the
 		// domain color, and becomes ctrl-clickable via `onNavigate`.
@@ -96,7 +93,7 @@
 		checkable = false,
 		association,
 		inherited = false,
-		hideAssociationLabel = false,
+		showAssociation = true,
 		resolved,
 		onNavigate,
 		onEditAssoc,
@@ -116,15 +113,6 @@
 	const assocLabel = $derived(resolved?.displayName ?? association?.id ?? "");
 	// The association button's tooltip and accessible name.
 	const assocAction = $derived(association ? "Edit association" : "Add association");
-
-	// With the label hidden the icon is the whole line, so the tooltip has to
-	// carry what the text used to: the name, and whether it was inherited from
-	// the parent block or set on this task.
-	const assocTitle = $derived.by(() => {
-		if (!hideAssociationLabel) return resolved?.resolved ? "Ctrl+click to open" : undefined;
-		const origin = inherited ? `${assocLabel} — inherited from this block` : assocLabel;
-		return resolved?.resolved ? `${origin} — ctrl+click to open` : origin;
-	});
 
 	// ── Status / checkbox ───────────────────────────────────────────
 	// Behaviour matches Holos (see TaskCheckbox): click cycles
@@ -461,20 +449,19 @@
 		{/if}
 	</div>
 
-	{#if association || meta}
+	{#if (association && showAssociation) || meta}
 		<!-- Association and any extra metadata (e.g. the grid's block-nesting badge)
 		     share one inline row: association first, then the metadata. Both align
 		     under the task text, past the checkbox. -->
 		<div class="kairos-meta-row is-indented">
-			{#if association}
+			{#if association && showAssociation}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="kairos-meta"
-					class:is-icon-only={hideAssociationLabel}
 					class:is-inherited={inherited}
 					class:is-linked={resolved?.resolved}
-					title={assocTitle}
+					title={resolved?.resolved ? "Ctrl+click to open" : undefined}
 					onclick={(e) => {
 						if ((e.ctrlKey || e.metaKey) && onNavigate) {
 							e.stopPropagation();
@@ -487,9 +474,7 @@
 					{:else}
 						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
 					{/if}
-					{#if !hideAssociationLabel}
-						<span class="kairos-meta-label">{assocLabel}</span>
-					{/if}
+					<span class="kairos-meta-label">{assocLabel}</span>
 				</div>
 			{/if}
 

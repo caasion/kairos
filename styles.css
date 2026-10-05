@@ -330,29 +330,3 @@ body {
 .kairos-meta.is-due {
 	color: var(--color-orange, var(--interactive-accent));
 }
-
-/* Icon-only: the Grid drops the association's name (the row already states it)
-   and keeps the icon as the marker and the navigation target. Italic means
-   nothing without text, so the inherited signal is re-expressed as a colour,
-   and the hover cue moves off the (absent) label onto the item. */
-.kairos-meta.is-icon-only {
-	gap: 0;
-	/* The shared rule lets items shrink so they truncate proportionally, which
-	   needs something truncatable. This one is a single fixed-width SVG that
-	   refuses to shrink, so an unshrinkable box is the honest shape — without
-	   it the box collapses under its own icon and the glyph overflows the cell. */
-	flex-shrink: 0;
-}
-
-/* Colour, not opacity. Opacity multiplies with the container's, and the Grid
-   is exactly where `.grid-cell.inactive .grid-cell-item` sets 0.4 — the same
-   stacking the comment above `.is-inherited` says to avoid. At 0.55 the only
-   remaining marker of an association rendered at 0.22 of a muted colour. */
-.kairos-meta.is-icon-only.is-inherited {
-	color: var(--text-faint);
-	font-style: normal;
-}
-
-.kairos-meta.is-icon-only.is-linked:hover {
-	color: var(--text-normal);
-}
