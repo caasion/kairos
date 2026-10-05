@@ -9,10 +9,10 @@
   } from "../../types";
   import { isCheckable } from "../../types";
   import type { Resolver } from "../../index";
+  import { peek } from "../actions/peek";
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
-  import { peek } from "../actions/peek";
 
   interface Props {
     block: Block;
