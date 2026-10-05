@@ -195,7 +195,9 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 32px;
-		padding: 4px;
+		/* A slightly deeper bottom edge leaves a strip below the last task where
+		   the corner "+" can be reached without hovering that task. */
+		padding: 4px 4px 8px;
 		gap: 1px;
 		min-width: 0;
 	}
@@ -232,21 +234,22 @@
 		opacity: 0.35;
 	}
 
-	/* The add affordance floats in the cell's top-right corner, so it takes no
-	   room in the layout: a cell is only as tall as its tasks. It stays hidden
-	   until the cell is hovered, so a dense grid doesn't read as a wall of
-	   buttons. It sits under a hovered task's own action bar (z-index 2), so
-	   that bar wins where the two overlap. */
+	/* The add affordance floats in the cell's bottom-right corner, so it takes
+	   no room in the layout: a cell is only as tall as its tasks. It stays
+	   hidden until the cell is hovered, so a dense grid doesn't read as a wall
+	   of buttons. Tasks carry their own hover action bar at their top-right, so
+	   the "+" stands down (hidden and click-through) while any task in the cell
+	   is hovered — the two never compete for the same spot. */
 	.grid-cell-add {
 		position: absolute;
-		top: 4px;
+		bottom: 2px;
 		right: 4px;
-		z-index: 1;
+		z-index: 3;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 20px;
-		height: 20px;
+		width: 18px;
+		height: 18px;
 		padding: 0;
 		border: none;
 		border-radius: var(--radius-s);
@@ -266,6 +269,11 @@
 		opacity: 1;
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+	}
+
+	.grid-cell:has(:global(.k-task:hover)) .grid-cell-add {
+		opacity: 0;
+		pointer-events: none;
 	}
 
 	/* Touch screens have no hover, so keep it faintly visible there. */
