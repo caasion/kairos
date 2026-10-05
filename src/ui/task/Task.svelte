@@ -15,6 +15,7 @@
 
 	import { Menu, Notice } from "obsidian";
 	import type { Snippet } from "svelte";
+	import { autogrow, singleLine } from "../actions/autogrow";
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
@@ -153,7 +154,7 @@
 
 	let editing = $state(false);
 	let draft = $state("");
-	let inputEl = $state<HTMLInputElement>();
+	let inputEl = $state<HTMLInputElement | HTMLTextAreaElement>();
 
 	function beginEdit() {
 		if (editing) return;
@@ -166,7 +167,7 @@
 	function commitEdit() {
 		if (!editing) return;
 		editing = false;
-		const next = draft.trim();
+		const next = singleLine(draft).trim();
 		if (next.length > 0 && next !== task.text) onSetText(task, next);
 	}
 
@@ -401,9 +402,22 @@
 	<div class="k-task-row" class:wrapped={lines > 1}>
 		<TaskCheckbox status={task.status} {color} onToggle={cycleStatus} onCancel={cancelStatus} />
 
-		{#if editing}
+		{#if editing && lines > 1}
+			<!-- Wrapped text edits in a growing textarea so it wraps exactly as the
+			     label did; Enter still commits (onInputKeydown), so it stays one line
+			     of markdown. -->
+			<textarea
+				class="k-task-input kairos-inline-input"
+				rows="1"
+				bind:value={draft}
+				bind:this={inputEl}
+				onkeydown={onInputKeydown}
+				onblur={commitEdit}
+				use:autogrow
+			></textarea>
+		{:else if editing}
 			<input
-				class="k-task-input"
+				class="k-task-input kairos-inline-input"
 				type="text"
 				bind:value={draft}
 				bind:this={inputEl}
