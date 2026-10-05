@@ -15,11 +15,11 @@
 
 	import { Menu, Notice } from "obsidian";
 	import type { Snippet } from "svelte";
+	import { autogrow, singleLine } from "../actions/autogrow";
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
 	import { longpress } from "../actions/longpress";
-	import { autogrow, singleLine } from "../actions/autogrow";
 
 	interface Props {
 		task: Task;
