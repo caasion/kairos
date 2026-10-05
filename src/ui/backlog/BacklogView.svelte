@@ -393,7 +393,7 @@
 										/>
 									{:else}
 										<button class="entry-text" onclick={(e) => { e.stopPropagation(); startEdit(entry); }}>
-											{entry.text}
+											<span class="entry-text-clamp">{entry.text}</span>
 										</button>
 									{/if}
 
@@ -667,7 +667,8 @@
 	}
 	.entry-main {
 		display: flex;
-		align-items: center;
+		/* Items wrap to two lines; keep the bullet beside the first. */
+		align-items: flex-start;
 		gap: 6px;
 		min-width: 0;
 	}
@@ -677,7 +678,8 @@
 		border-radius: 50%;
 		background: var(--text-faint);
 		flex-shrink: 0;
-		margin: 0 3px;
+		/* Centred on the first line of text (13px × 1.4 line height). */
+		margin: 7px 3px 0;
 	}
 	/* The text button and the edit input are styled identically so clicking to
 	   edit feels like putting the cursor on the item name — no box, no border,
@@ -697,9 +699,19 @@
 		margin: 0;
 		cursor: text;
 		text-align: left;
-		white-space: nowrap;
+		white-space: normal;
 		overflow: hidden;
-		text-overflow: ellipsis;
+	}
+	/* Wrap to two lines, then clamp with an ellipsis. Clamped on an inner span
+	   rather than the button itself, since buttons don't reliably honour
+	   -webkit-box layout. */
+	.entry-text-clamp {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
+		overflow-wrap: anywhere;
 	}
 	.entry-input {
 		flex: 1;

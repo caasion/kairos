@@ -135,6 +135,7 @@
 		>
 			<Task_
 				{task}
+				lines={2}
 				color={color ?? tr?.color}
 				association={task.owner}
 				{hideAssociationLabel}
