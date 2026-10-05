@@ -443,3 +443,51 @@ describe("dropAssociation", () => {
 		expect(dropAssociation(undefined, proj("Groceries"), s)).toBeUndefined();
 	});
 });
+
+describe("dayStatus: a domain bounds its projects", () => {
+	it("an active project row is inactive on the days its domain is inactive", () => {
+		const d = domain({
+			history: [
+				{ date: "2026-07-01", status: "active" },
+				{ date: "2026-08-02", status: "inactive" },
+			],
+		});
+		const p = project({ name: "Alpha", domain: "d-health" });
+		const s = snap([p], [d], [], ["2026-08-01", "2026-08-02"]);
+		const row = buildRows(s, AS_OF).find((r) => r.name === "Alpha")!;
+		expect(dayStatus(row, "2026-08-01", s)).toBe("active");
+		expect(dayStatus(row, "2026-08-02", s)).toBe("inactive");
+	});
+
+	it("leaves a domain-less project on its own status", () => {
+		const d = domain({ history: [{ date: "2026-07-01", status: "inactive" }] });
+		const p = project({ name: "Solo" });
+		const s = snap([p], [d], []);
+		const row = buildRows(s, AS_OF).find((r) => r.name === "Solo")!;
+		expect(dayStatus(row, "2026-08-01", s)).toBe("active");
+	});
+});
+
+describe("domain row label names its rolled-up projects", () => {
+	it("lists live rolled-up projects by name, leaving out archived ones", () => {
+		const life = domain({ id: "d-life", name: "Life" });
+		const s = snap(
+			[
+				project({ name: "Laundry", domain: "d-life", rollup: true }),
+				project({ name: "Groceries", domain: "d-life", rollup: true }),
+				project({ name: "Old", domain: "d-life", rollup: true, archived: true }),
+				project({ name: "Move house", domain: "d-life" }),
+			],
+			[life],
+			[],
+		);
+		const row = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
+		expect(row.kind === "domain" && row.info.rolledUp).toEqual(["Groceries", "Laundry"]);
+	});
+
+	it("omits the list when nothing is rolled up", () => {
+		const s = snap([project({ name: "Alpha", domain: "d-health" })], [domain()], []);
+		const row = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
+		expect(row.kind === "domain" && row.info.rolledUp).toBeUndefined();
+	});
+});

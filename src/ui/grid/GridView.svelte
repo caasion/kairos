@@ -55,7 +55,7 @@
 		type CellGroup,
 		type GridRow,
 	} from "../../gridModel";
-	import { setProjectRollup } from "../../projectActions";
+	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
@@ -313,34 +313,33 @@
 		);
 	}
 
-	// ── Row label context menu: the project rollup toggle (#11) ──
-	// A project row (under a domain) offers to move onto its domain's row; a
-	// domain row offers to give each of its rolled-up projects its own row back.
-	// Writes go through projectActions → the index like any project edit, and the
-	// index republishes, so the rows rebuild on their own.
+	// ── Row label context menu (#11) ──
+	// A project row offers the same project items as the Projects page (shared
+	// via projectMenu.ts): "Change domain", and — under a domain — "Show on
+	// domain's row". A rolled-up project has no row of its own, so the domain
+	// row's menu carries one submenu per rolled-up project with "Give its own
+	// row" and "Change domain". Writes go through projectActions → the index,
+	// which republishes, so the rows rebuild on their own.
 	function openRowMenu(row: GridRow, e: MouseEvent) {
 		if (!snapshot || row.kind === "unassigned") return;
+		const snap = snapshot;
 		const menu = new Menu();
 		if (row.kind === "project") {
-			const project = snapshot.projects.get(row.name);
-			if (!project?.domain) return;
-			menu.addItem((item) =>
-				item
-					.setTitle("Show on domain's row")
-					.setIcon("fold-vertical")
-					.onClick(() => setProjectRollup(index, project, true)),
-			);
+			const project = snap.projects.get(row.name);
+			if (!project) return;
+			addChangeDomainItem(menu, index, project, snap.domains.values());
+			addRollupItem(menu, index, project);
 		} else {
-			const domain = snapshot.domains.get(row.name);
-			const rolled = domain ? rolledUpProjects(domain, snapshot) : [];
+			const domain = snap.domains.get(row.name);
+			const rolled = domain ? rolledUpProjects(domain, snap) : [];
 			if (rolled.length === 0) return;
 			for (const project of rolled) {
-				menu.addItem((item) =>
-					item
-						.setTitle(`Give ${project.name} its own row`)
-						.setIcon("unfold-vertical")
-						.onClick(() => setProjectRollup(index, project, false)),
-				);
+				menu.addItem((item) => {
+					item.setTitle(project.name).setIcon("folder");
+					const sub = submenuOf(item);
+					addRollupItem(sub, index, project);
+					addChangeDomainItem(sub, index, project, snap.domains.values());
+				});
 			}
 		}
 		e.preventDefault();

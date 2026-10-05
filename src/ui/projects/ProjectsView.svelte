@@ -34,13 +34,12 @@
 		setDomainOrder,
 		setDomainStatus,
 		setProjectDescription,
-		setProjectDomain,
-		setProjectRollup,
 		setProjectStatus,
 	} from "../../projectActions";
 	import { todayISO } from "../../dayNote";
 	import { effectiveStatus } from "../../projectFile";
 	import { DomainReorderModal } from "./DomainReorderModal";
+	import { addChangeDomainItem, addRollupItem } from "./projectMenu";
 	import { StatusHistoryModal } from "./StatusHistoryModal";
 	import { ConfirmModal, PromptModal, WhyModal } from "./modals";
 
@@ -235,29 +234,11 @@
 		}).open();
 	}
 
-	// ── Domain link (project → domain) ──
-	// A submenu listing every domain (durable, so none are archived) plus "None"
-	// to clear. The project stores the domain's stable id; the current selection
-	// is shown checked.
-	function addDomainPickerItems(submenu: Menu, project: Project) {
-		submenu.addItem((item) =>
-			item
-				.setTitle("None")
-				.setChecked(!project.domain)
-				.onClick(() => pickDomain(project, undefined)),
-		);
-		for (const d of feed.domains) {
-			submenu.addItem((item) =>
-				item
-					.setTitle(d.name)
-					.setChecked(project.domain === d.id)
-					.onClick(() => pickDomain(project, d.id)),
-			);
-		}
-	}
-	function pickDomain(project: Project, domainId: string | undefined) {
-		if (project.domain === domainId) return;
-		setProjectDomain(index, project, domainId);
+	// The domain a project is rolled up onto in the Grid (#11), by name — or
+	// undefined when it keeps its own row (flag off, or no domain to roll into).
+	function rollupDomainName(project: Project): string | undefined {
+		if (!project.rollup || !project.domain) return undefined;
+		return feed.domains.find((d) => d.id === project.domain)?.name;
 	}
 
 	// ── Context menus (spec §5): the destructive / less-frequent actions live here
@@ -327,22 +308,10 @@
 				.setIcon("text")
 				.onClick(() => editDescription(project, false)),
 		);
-		// Change domain — a nested submenu of every domain (+ None).
-		menu.addItem((item) => {
-			item.setTitle("Change domain").setIcon("panel-top");
-			// @ts-expect-error setSubmenu is available on Obsidian's MenuItem.
-			addDomainPickerItems(item.setSubmenu(), project);
-		});
-		// Grid rollup (#11): render this project's tasks on its domain's row
-		// instead of its own. Only meaningful with a domain to roll up into.
-		if (project.domain) {
-			menu.addItem((item) =>
-				item
-					.setTitle(project.rollup ? "Give its own row" : "Show on domain's row")
-					.setIcon(project.rollup ? "unfold-vertical" : "fold-vertical")
-					.onClick(() => setProjectRollup(index, project, !project.rollup)),
-			);
-		}
+		// Change domain (a submenu of every domain + None) and the Grid rollup
+		// toggle (#11) — shared with the Grid's row-label menu so both match.
+		addChangeDomainItem(menu, index, project, feed.domains);
+		addRollupItem(menu, index, project);
 		menu.addSeparator();
 		// The toggle target mirrors toggleStatus: an active project drops to the
 		// last non-active state it held (inactive by default), else back to active.
@@ -703,6 +672,17 @@
 			>{project.name}</button>
 		{/if}
 
+		{#if rollupDomainName(project)}
+			<!-- Shown on its domain's Grid row instead of its own (#11). -->
+			<span
+				class="kairos-meta rollup-marker"
+				title="Shown on {rollupDomainName(project)}'s row in the Grid"
+				aria-label="Shown on {rollupDomainName(project)}'s row in the Grid"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-6"/><path d="M12 8V2"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/><path d="m15 19-3-3-3 3"/><path d="m15 5-3 3-3-3"/></svg>
+			</span>
+		{/if}
+
 		{#if project.description}
 			<span class="row-desc" title={project.description}>{project.description}</span>
 		{/if}
@@ -891,6 +871,11 @@
 		min-width: 0;
 		flex: 0 1 auto;
 	}
+	.rollup-marker {
+		flex-shrink: 0;
+		color: var(--text-faint);
+	}
+
 	.status-tag {
 		font-size: 10px;
 		font-weight: 600;

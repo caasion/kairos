@@ -23,6 +23,12 @@ export interface RowLabelInfo {
 	since: ISODate | null;
 	/** End of the current span; null → still open ("ongoing"). */
 	until: ISODate | null;
+	/**
+	 * Grid domain rows only: the projects rolled up onto this row (#11), by
+	 * name. Absent/empty when none — they have no row of their own, so the
+	 * domain's label is where they stay visible.
+	 */
+	rolledUp?: string[];
 }
 
 /**

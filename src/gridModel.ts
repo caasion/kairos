@@ -41,7 +41,7 @@ import type {
 	ResolvedTask,
 } from "./types";
 import type { GridSnapshot } from "./index";
-import { effectiveStatus } from "./projectFile";
+import { effectiveStatus, projectStatusOn } from "./projectFile";
 import { rowLabelInfo, type RowLabelInfo } from "./ui/components/rowLabel";
 
 // ─── row types ─────────────────────────────────────────────────
@@ -236,6 +236,13 @@ export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 		}
 
 		const domainColor = d.color || undefined;
+		// Name the rolled-up projects on the domain's label so they stay visible
+		// without a row. Archived ones are left out: they've ended, and like a
+		// picker the label only lists live work.
+		const rolledUp = rolledUpProjects(d, snap)
+			.filter((p) => !p.archived)
+			.map((p) => p.name);
+		const info = rowLabelInfo(d, true, domainColor, asOf);
 		rows.push({
 			kind: "domain",
 			key: `domain:${d.name}`,
@@ -243,7 +250,7 @@ export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 			domainId: d.id,
 			...(domainColor ? { color: domainColor } : {}),
 			depth: 0,
-			info: rowLabelInfo(d, true, domainColor, asOf),
+			info: rolledUp.length > 0 ? { ...info, rolledUp } : info,
 		});
 
 		for (const p of children) {
@@ -348,12 +355,16 @@ export function dayStatus(
 	snap: GridSnapshot,
 ): LifecycleState {
 	if (row.kind === "unassigned") return "active";
-	const entity =
-		row.kind === "domain"
-			? snap.domains.get(row.name)
-			: snap.projects.get(row.name);
-	if (!entity) return "active";
-	return effectiveStatus(entity.history, date);
+	if (row.kind === "domain") {
+		const domain = snap.domains.get(row.name);
+		return domain ? effectiveStatus(domain.history, date) : "active";
+	}
+	// A project row is also bounded by its domain: an inactive domain makes its
+	// whole subtree read-only for that day (`projectStatusOn`).
+	const project = snap.projects.get(row.name);
+	if (!project) return "active";
+	const domain = project.domain ? domainById(snap, project.domain) : undefined;
+	return projectStatusOn(project, domain, date);
 }
 
 /** The association a create-in-cell applies for this row. */
