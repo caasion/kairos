@@ -21,6 +21,7 @@
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
 	import { actionZone } from "../actions/actionZone";
+	import { tooltip } from "../actions/tooltip";
 	import {
 		filterBySchedule,
 		groupBacklog,
@@ -369,7 +370,7 @@
 				{:else}
 					<ul class="entry-list">
 						{#each group.entries as entry (entry.source.line)}
-							<li class="entry-row" use:actionZone={{ anchor: "right" }}>
+							<li class="entry-row" use:actionZone={{ anchor: "right", layout: "stack" }}>
 								<div class="entry-main">
 									<span class="entry-bullet"></span>
 
@@ -403,14 +404,18 @@
 								     centred on the row's right edge. Woken from a triangle
 								     against that edge (see actions/actionZone.ts), mirroring
 								     the task row's action bar. A direct child of the row so
-								     the shared zone styles apply. -->
+								     the shared zone styles apply. On a mouse wake it's a
+								     vertical stack whose corner cell (delete) stays where the
+								     bar's right end was, centred on the right edge, so the
+								     "right" zone still fits; resurface, clear and associate
+								     rise above it. Touch keeps the bar. -->
 								<div class="entry-actions kairos-action-bar">
 									<!-- Resurface date -->
 									<button
 										class="entry-action"
 										class:active={entry.resurface}
-										title={entry.resurface ? "Resurface date — click to change" : "Set a resurface date"}
-										aria-label="Resurface date"
+										aria-label={entry.resurface ? "Change resurface date" : "Set a resurface date"}
+										use:tooltip={entry.resurface ? "Change resurface date" : "Set a resurface date"}
 										onclick={(e) => openResurface(entry, e)}
 									>
 										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -418,8 +423,8 @@
 									{#if entry.resurface}
 										<button
 											class="entry-action"
-											title="Clear resurface date"
 											aria-label="Clear resurface date"
+											use:tooltip={"Clear resurface date"}
 											onclick={(e) => clearResurface(entry, e)}
 										>
 											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -434,8 +439,8 @@
 									{#if !entry.assoc}
 										<button
 											class="entry-action"
-											title="Associate with a project or domain"
-											aria-label="Associate"
+											aria-label="Associate with a project or domain"
+											use:tooltip={"Associate with a project or domain"}
 											onclick={(e) => openAssoc(entry, e)}
 										>
 											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
@@ -443,8 +448,8 @@
 									{:else}
 										<button
 											class="entry-action"
-											title="Change association"
 											aria-label="Change association"
+											use:tooltip={"Change association"}
 											onclick={(e) => openAssoc(entry, e)}
 										>
 											<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
@@ -454,8 +459,8 @@
 									<!-- Delete -->
 									<button
 										class="entry-action entry-action-danger"
-										title="Delete item"
-										aria-label="Delete"
+										aria-label="Delete item"
+										use:tooltip={"Delete item"}
 										onclick={(e) => { e.stopPropagation(); onDelete(entry); }}
 									>
 										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -795,6 +800,10 @@
 	}
 	.entry-action svg {
 		flex-shrink: 0;
+	}
+	/* Stack layout (styles.css): delete takes the corner cell. */
+	.entry-action-danger {
+		order: -1;
 	}
 	.entry-action-danger:hover {
 		color: var(--text-error, #e05555);

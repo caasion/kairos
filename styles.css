@@ -83,20 +83,24 @@ If your plugin does not need CSS, delete this file.
 	}
 }
 
-/* EXPERIMENT: the vertical stack layout of an action bar
-   (`actionZone` with `layout: "stack"`, src/ui/actions/actionStack.ts).
-   One button wide, `fixed` so the row's clipping ancestors can't cut it off;
-   its corner cell sits on the row's top-right corner and the rest rise above
-   it (column-reverse), or hang below it (`-down`) when there's no room above.
-   The action sets the left/top properties; `body` outranks a component's own
-   scoped bar rules (two classes), whatever order the styles load in. */
+/* ── Vertical action stack (`actionZone` with `layout: "stack"`,
+   src/ui/actions/actionStack.ts) ──
+   A mouse-woken bar becomes a stack one button wide, `fixed` so the row's
+   clipping ancestors can't cut it off. Its corner cell (delete, by CSS
+   `order` in each component) sits where the horizontal bar's right end sat;
+   the rest rise above it (column-reverse), or hang below it (`-down`) when
+   there's no room above. The action sets the left/top properties. `body`
+   outranks a component's own scoped bar rules (two classes), whatever order
+   the styles load in. Touch never gets this layout. */
 body .kairos-action-bar.kairos-action-stack {
 	position: fixed;
 	left: var(--kairos-action-stack-left, 0);
 	top: var(--kairos-action-stack-top, 0);
 	right: auto;
 	bottom: auto;
+	transform: none;
 	flex-direction: column-reverse;
+	box-shadow: 0 0 0 1px var(--background-modifier-border);
 }
 body .kairos-action-bar.kairos-action-stack-down {
 	flex-direction: column;
@@ -104,6 +108,35 @@ body .kairos-action-bar.kairos-action-stack-down {
 /* Portaled to the body while awake, when staying in place would be clipped. */
 body .kairos-action-bar.kairos-action-stack-portaled {
 	z-index: var(--layer-popover);
+}
+/* Staggered reveal: the corner cell first, then each button outward in stack
+   order (`--kairos-action-stack-step`, set by the action), sliding in from
+   the corner's side. Visual only: the bar's own pointer-events rule decides
+   what's clickable, so a button still mid-reveal takes clicks, and a hidden
+   bar's buttons never do. Hiding is immediate (no delay). */
+body .kairos-action-stack > * {
+	opacity: 0;
+	transform: translateY(4px);
+	transition:
+		opacity 60ms ease-out,
+		transform 60ms ease-out;
+}
+body .kairos-action-stack.kairos-action-stack-down > * {
+	transform: translateY(-4px);
+}
+body .kairos-actions-awake > .kairos-action-stack > *,
+body .kairos-action-stack.kairos-action-bar-awake > *,
+body .kairos-action-stack:focus-within > * {
+	opacity: 1;
+	transform: none;
+	transition-delay: calc(var(--kairos-action-stack-step, 0) * 20ms);
+}
+@media (prefers-reduced-motion: reduce) {
+	body .kairos-action-stack > *,
+	body .kairos-action-stack.kairos-action-stack-down > * {
+		transform: none;
+		transition: none;
+	}
 }
 
 /* ── Prompt / Confirm modals (modals.ts) ── */

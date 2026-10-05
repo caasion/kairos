@@ -6,6 +6,9 @@ import {
 	intersectBoxes,
 	placeActionStack,
 	scrolls,
+	stackCorner,
+	stackSteps,
+	tooltipSide,
 	type StyleLike,
 } from "./actionStackGeometry";
 
@@ -114,5 +117,39 @@ describe("clipsDescendants / scrolls", () => {
 		expect(scrolls(style({ overflowX: "scroll" }))).toBe(true);
 		expect(scrolls(style({ overflowX: "hidden", overflowY: "hidden" }))).toBe(false);
 		expect(scrolls(style({ overflowX: "clip", overflowY: "clip" }))).toBe(false);
+	});
+});
+
+describe("stackCorner", () => {
+	const r = { top: 100, right: 500, bottom: 130 };
+	it("puts the corner cell where the bar's right end sat (top-right)", () => {
+		expect(stackCorner(r, { top: 0, right: 0 }, 24)).toEqual({ top: 100, right: 500 });
+		// A timeline block's bar sits 4px in from its corner.
+		expect(stackCorner(r, { top: 4, right: 4 }, 20)).toEqual({ top: 104, right: 496 });
+	});
+	it("centres the cell on the row for a bar centred on the right edge", () => {
+		// 30px row, 26px cell: 2px above and below, whatever the measured inset.
+		expect(stackCorner(r, { top: 7, right: 8 }, 26, "right")).toEqual({ top: 102, right: 492 });
+		// A taller row (a meta line appeared) keeps it centred.
+		expect(stackCorner({ ...r, bottom: 150 }, { top: 7, right: 8 }, 26, "right").top).toBe(112);
+	});
+});
+
+describe("stackSteps", () => {
+	it("counts outward from the lowest order, DOM order among equals", () => {
+		// Task row: association, nest, delete (order -1) → delete, association, nest.
+		expect(stackSteps([0, 0, -1])).toEqual([1, 2, 0]);
+		// No delete: DOM order.
+		expect(stackSteps([0, 0])).toEqual([0, 1]);
+		expect(stackSteps([])).toEqual([]);
+	});
+});
+
+describe("tooltipSide", () => {
+	it("opens left unless the stack is too near the window's left edge", () => {
+		expect(tooltipSide(600)).toBe("left");
+		expect(tooltipSide(180)).toBe("left");
+		expect(tooltipSide(120)).toBe("right");
+		expect(tooltipSide(300, 200)).toBe("right");
 	});
 });

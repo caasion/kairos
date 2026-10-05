@@ -10,6 +10,8 @@ interface FakeHost {
 	getBoundingClientRect(): { top: number; right: number; width: number; height: number };
 	querySelector(selector: string): unknown;
 	ownerDocument: { activeElement: null; defaultView: unknown };
+	setAttribute(name: string, value: string): void;
+	removeAttribute(name: string): void;
 }
 
 function makeRow(withBar = true) {
@@ -46,6 +48,8 @@ function makeRow(withBar = true) {
 	};
 	const fake: FakeHost = {
 		ownerDocument: { activeElement: null, defaultView: win },
+		setAttribute: () => {},
+		removeAttribute: () => {},
 		classList: {
 			remove: (c) => void classes.delete(c),
 			toggle: (c, force) => {
@@ -155,7 +159,21 @@ describe("actionZone", () => {
 		expect(row.listeners.size).toBe(0);
 	});
 
-	describe("stack layout (experiment)", () => {
+	it("stays asleep over a nested row that has its own zone", () => {
+		const row = makeRow();
+		const nested = {};
+		(row.host as unknown as { contains: (n: unknown) => boolean }).contains = (n) => n === nested;
+		actionZone(row.host);
+		const target = { closest: () => nested } as unknown as EventTarget;
+		row.move(690, 202, { target });
+		expect(row.awake()).toBe(false);
+		// Its own row (closest is the host itself) still wakes.
+		const own = { closest: () => row.host } as unknown as EventTarget;
+		row.move(690, 202, { target: own });
+		expect(row.awake()).toBe(true);
+	});
+
+	describe("stack layout", () => {
 		// No bar rendered, so nothing needs a real DOM to lay out.
 		it("sleeps only after a short grace once the pointer leaves", () => {
 			const row = makeRow(false);

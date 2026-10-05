@@ -1,6 +1,9 @@
-// DOM side of the vertical action stack (EXPERIMENT). `actionZone` uses this
-// when given `layout: "stack"`; the pure placement math is in
-// actionStackGeometry.ts.
+// DOM side of the vertical action stack. `actionZone` uses this when given
+// `layout: "stack"`; the pure placement math is in actionStackGeometry.ts.
+//
+// Every hover action bar uses it on a mouse wake (task rows, timeline blocks,
+// backlog nudges and entries). Touch never wakes it, so there the bar keeps
+// its own horizontal CSS.
 //
 // The stack rises above the row, so the row's clipping ancestors (a timeline
 // block's `overflow: hidden` content box, the grid table, a cell) would cut it
@@ -33,9 +36,14 @@ import {
 	intersectBoxes,
 	placeActionStack,
 	scrolls,
+	stackCorner,
+	stackSteps,
+	tooltipSide,
 	type Box,
+	type StackInset,
 	type StackPlacement,
 } from "./actionStackGeometry";
+import type { ActionZoneAnchor } from "./actionZoneGeometry";
 
 /** On the bar once the stack has been placed (styling hook for button order). */
 export const ACTION_STACK_CLASS = "kairos-action-stack";
@@ -126,6 +134,7 @@ function applyPlacement(bar: HTMLElement, p: StackPlacement, cb: HTMLElement | n
  */
 export class ActionStack {
 	private placeholder: Comment | null = null;
+	private inset: StackInset | null = null;
 
 	/**
 	 * `onEnter`/`onLeave` are the bar's `pointerenter`/`pointerleave`, listened
@@ -143,19 +152,46 @@ export class ActionStack {
 	}
 
 	/**
-	 * Lay the bar out as a stack at the row's top-right corner. With
-	 * `allowPortal` (a mouse wake) it moves to the body if staying in place
-	 * would clip it or put it in the wrong spot; without (keyboard focus) it
-	 * stays in place whatever happens.
+	 * Switch the bar to the stack layout, still hidden, before the caller wakes
+	 * it, so the staggered reveal (styles.css) starts from the hidden state.
+	 * The first time, measure where the horizontal bar's right end sits on the
+	 * row: the stack's corner cell goes exactly there.
 	 */
-	place(allowPortal: boolean) {
+	prepare() {
 		const bar = this.bar;
+		if (!this.inset && !this.portaled && !bar.classList.contains(ACTION_STACK_CLASS)) {
+			const b = bar.getBoundingClientRect();
+			const r = this.host.getBoundingClientRect();
+			this.inset = { top: b.top - r.top, right: r.right - b.right };
+		}
 		bar.classList.add(ACTION_STACK_CLASS);
+		// Reveal steps, outward from the corner cell (lowest CSS `order`).
+		const buttons = Array.from(bar.children).filter((c): c is HTMLElement => c.instanceOf(HTMLElement));
+		const win = bar.ownerDocument.defaultView;
+		const steps = stackSteps(buttons.map((b) => Number(win?.getComputedStyle(b).order) || 0));
+		buttons.forEach((b, i) => b.setCssProps({ "--kairos-action-stack-step": String(steps[i]) }));
+		// Flush styles now, so the buttons' hidden state is what the reveal
+		// transitions from.
+		void bar.offsetWidth;
+	}
+
+	/**
+	 * Lay the bar out as a stack at its corner on the row (`anchor`: the zone's,
+	 * which says whether the bar sat at the top-right or centred on the right
+	 * edge). With `allowPortal` (a mouse wake) it moves to the body if staying
+	 * in place would clip it, put it in the wrong spot or leave it covered;
+	 * without (keyboard focus) it stays in place whatever happens.
+	 */
+	place(allowPortal: boolean, anchor: ActionZoneAnchor = "top-right") {
+		const bar = this.bar;
+		this.prepare();
 		// One button wide: measure the stack itself, now that it's a column.
 		const width = bar.offsetWidth;
 		const height = bar.offsetHeight;
-		const p = placeActionStack(this.host.getBoundingClientRect(), width, height, stackBounds(this.host));
+		const corner = stackCorner(this.host.getBoundingClientRect(), this.inset ?? { top: 0, right: 0 }, width, anchor);
+		const p = placeActionStack(corner, width, height, stackBounds(this.host));
 		const intended: Box = { top: p.top, left: p.left, bottom: p.top + height, right: p.left + width };
+		this.setTooltipSide(p.left);
 
 		if (this.portaled) {
 			applyPlacement(bar, p, null);
@@ -179,6 +215,15 @@ export class ActionStack {
 		) {
 			this.portal();
 			applyPlacement(bar, p, null);
+		}
+	}
+
+	// Tooltips open beside the stack (left; right near the window's left edge),
+	// so they never cover its other buttons. See tooltip.ts.
+	private setTooltipSide(stackLeft: number) {
+		const side = tooltipSide(stackLeft);
+		for (const el of Array.from(this.bar.querySelectorAll<HTMLElement>("[aria-label]"))) {
+			el.setAttribute("data-tooltip-position", side);
 		}
 	}
 
@@ -243,6 +288,9 @@ export class ActionStack {
 	/** Restore and drop every trace of the stack layout. */
 	destroy() {
 		this.restore();
+		for (const el of Array.from(this.bar.children)) {
+			if (el.instanceOf(HTMLElement)) el.setCssProps({ "--kairos-action-stack-step": "" });
+		}
 		this.bar.classList.remove(ACTION_STACK_CLASS, ACTION_STACK_DOWN_CLASS);
 		this.bar.setCssProps({ "--kairos-action-stack-left": "", "--kairos-action-stack-top": "" });
 	}

@@ -45,6 +45,9 @@ export const ACTION_BAR_CLASS = "kairos-action-bar";
  */
 export const ACTION_BAR_AWAKE_CLASS = "kairos-action-bar-awake";
 
+/** Marks a row that has this action, so an outer row can tell it's nested. */
+const ZONE_ATTR = "data-kairos-action-zone";
+
 /**
  * Stack layout: how long the stack stays up after the pointer leaves both the
  * row and the stack, so crossing a sub-pixel gap between them doesn't drop it.
@@ -104,12 +107,15 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 	function setAwake(next: boolean) {
 		if (next === awake) return;
 		awake = next;
+		const bar = isStack() ? findBar() : null;
+		// Stack: switch to the (hidden) stack layout first, so the staggered
+		// reveal plays from the hidden state when the awake class lands.
+		if (next && bar) stackFor(bar).prepare();
 		host.classList.toggle(ACTIONS_AWAKE_CLASS, next);
 		if (!isStack()) return;
-		const bar = findBar();
 		if (next) {
 			clearTimers();
-			if (bar) stackFor(bar).place(true);
+			if (bar) stackFor(bar).place(true, opts.anchor);
 		} else if (stack?.portaled) {
 			const s = stack;
 			restoreTimer = win.setTimeout(() => {
@@ -134,6 +140,14 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		if (awake && bar && event.target && bar.contains(event.target as Node)) return;
 		// The zone's widest line covers at least the bar: its full width as a
 		// horizontal bar, one button cell (its short side) as a stack.
+		// Over a nested row with its own zone (a task inside a timeline block):
+		// that row's bar is the one to wake, never both. Without this the
+		// block's bar could rise over the task's, as the block's triangle runs
+		// down its right edge across its tasks' corners.
+		if (nestedZoneAt(event.target)) {
+			setAwake(false);
+			return;
+		}
 		const barWidth = !bar ? 0 : isStack() ? Math.min(bar.offsetWidth, bar.offsetHeight) : bar.offsetWidth;
 		setAwake(
 			inActionZone(
@@ -178,7 +192,7 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		if (!isStack()) return;
 		const bar = findBar();
 		if (!bar || !bar.contains(event.target as Node)) return;
-		if (!stack?.portaled) stackFor(bar).place(false);
+		if (!stack?.portaled) stackFor(bar).place(false, opts.anchor);
 		syncViewportListeners();
 	}
 	function onFocusOut() {
@@ -192,7 +206,7 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		const bar = findBar();
 		const focused = !!bar && bar.contains(host.ownerDocument.activeElement);
 		if (awake) setAwake(false);
-		if (focused && bar && !stack?.portaled) stackFor(bar).place(false);
+		if (focused && bar && !stack?.portaled) stackFor(bar).place(false, opts.anchor);
 		syncViewportListeners();
 	}
 
@@ -213,6 +227,16 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		}
 	}
 
+	// Whether `target` is inside another action-zone row nested in this one.
+	function nestedZoneAt(target: EventTarget | null): boolean {
+		// Duck-typed: `instanceof Element` fails across pop-out windows.
+		const el = target as Partial<Element> | null;
+		if (typeof el?.closest !== "function") return false;
+		const owner = el.closest(`[${ZONE_ATTR}]`);
+		return owner !== null && owner !== host && host.contains(owner);
+	}
+
+	host.setAttribute(ZONE_ATTR, "");
 	host.addEventListener("pointermove", onMove);
 	host.addEventListener("pointerleave", onLeave);
 	host.addEventListener("focusin", onFocusIn);
@@ -241,6 +265,7 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 				viewportListening = false;
 			}
 			host.classList.remove(ACTIONS_AWAKE_CLASS);
+			host.removeAttribute(ZONE_ATTR);
 			stack?.bar.classList.remove(ACTION_BAR_AWAKE_CLASS);
 			stack?.destroy();
 			stack = null;

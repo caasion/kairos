@@ -1,12 +1,12 @@
-// Pure geometry for the vertical action stack (EXPERIMENT; the DOM side is
+// Pure geometry for the vertical action stack (the DOM side is
 // actionStack.ts, driven by `actionZone` with `layout: "stack"`).
 //
-// The stack is one button wide. Its corner cell (the delete button on a task
-// row) sits exactly where the horizontal bar's last button sat: in the row's
-// top-right corner. The other buttons grow UP from there, so the stack covers
-// only one button's width of the row's text. When there is no room above
-// (top of the pane / of a scrolled list), it grows DOWN from the corner
-// instead.
+// The stack is one button wide. Its corner cell (the delete button, where a
+// bar has one) sits exactly where the horizontal bar's last button sat:
+// usually the row's top-right corner. The other buttons grow UP from there,
+// so the stack covers only one button's width of the row's text. When there
+// is no room above (top of the pane / of a scrolled list), it grows DOWN from
+// the corner instead.
 
 /** A screen rectangle (client coordinates). */
 export interface Box {
@@ -53,6 +53,55 @@ export function placeActionStack(
 	return roomUp >= roomDown
 		? { left, top: upTop, direction: "up" }
 		: { left, top: downTop, direction: "down" };
+}
+
+/** How far in from the row's top-right corner the horizontal bar sat. */
+export interface StackInset {
+	top: number;
+	right: number;
+}
+
+/**
+ * The corner cell's anchor (its top and right edge) on `row`: where the
+ * horizontal bar's right end sat (`inset`, measured once from it). For a bar
+ * centred vertically on the right edge (zone anchor "right", e.g. a backlog
+ * entry), the cell is centred on the row instead, so it stays put when the
+ * row's height changes.
+ */
+export function stackCorner(
+	row: Pick<Box, "top" | "right" | "bottom">,
+	inset: StackInset,
+	cell: number,
+	anchor: "top-right" | "right" = "top-right",
+): Pick<Box, "top" | "right"> {
+	const top = anchor === "right" ? (row.top + row.bottom - cell) / 2 : row.top + inset.top;
+	return { top, right: row.right - inset.right };
+}
+
+/**
+ * Each button's step in the reveal, given the buttons' CSS `order` values in
+ * DOM order: 0 for the corner cell (lowest order, first in DOM among equals),
+ * counting outward in stack order. The stack's flex direction puts the lowest
+ * order at the corner whether it rises or hangs.
+ */
+export function stackSteps(orders: readonly number[]): number[] {
+	const byStack = orders.map((order, dom) => ({ order, dom })).sort((a, b) => a.order - b.order || a.dom - b.dom);
+	const steps = new Array<number>(orders.length);
+	byStack.forEach((b, step) => (steps[b.dom] = step));
+	return steps;
+}
+
+/** Room (px) a left tooltip needs beside the stack before it flips right. */
+export const TOOLTIP_ROOM = 180;
+
+/**
+ * Which side the stack's tooltips open on: left, so they never cover the
+ * buttons above or below; right only when the stack is too near the window's
+ * left edge for a left tooltip to fit (Obsidian doesn't clamp left/right
+ * tooltips). Either way they are beside the stack, whichever way it grows.
+ */
+export function tooltipSide(stackLeft: number, windowLeft = 0, room = TOOLTIP_ROOM): "left" | "right" {
+	return stackLeft - windowLeft >= room ? "left" : "right";
 }
 
 /** Intersection of two boxes (may be empty: bottom < top or right < left). */
