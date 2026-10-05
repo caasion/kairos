@@ -1,28 +1,35 @@
 name: Node.js build
 
+# Pushes to main, plus every pull request. Running on every branch push as well
+# as on its PR doubled the jobs for each change, and with a three-version matrix
+# a handful of open PRs queued dozens of jobs at once — enough that GitHub
+# cancelled them after sitting 15 minutes without a runner.
 on:
     push:
-        branches: ['**']
+        branches: [main]
     pull_request:
-        branches: ['**']
+
+# A newer push to the same PR supersedes the run still going for the old one.
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
     build:
         runs-on: ubuntu-latest
 
-        strategy:
-            matrix:
-                node-version: [20.x, 22.x, 24.x]
-                # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
-
         steps:
             - uses: actions/checkout@v6
-            - name: Use Node.js ${{ matrix.node-version }}
+            - name: Use Node.js
               uses: actions/setup-node@v6
               with:
-                  node-version: ${{ matrix.node-version }}
+                  # Matches release.yml. Node only runs the build tooling here;
+                  # the plugin itself runs inside Obsidian's Electron.
+                  node-version: 24
                   cache: 'npm'
             - run: npm ci
             - run: npm run build --if-present
             - run: npm run lint
             - run: npm run lint:css
+            - run: npm test
+            - run: npx svelte-check --tsconfig tsconfig.json --threshold error
