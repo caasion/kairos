@@ -17,6 +17,7 @@
 	import type { Snippet } from "svelte";
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
+	import { inActionZone } from "./actionZone";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
 	import { longpress } from "../actions/longpress";
 
@@ -165,6 +166,21 @@
 
 	let rowEl = $state<HTMLDivElement>();
 
+	// ── Action bar: wakes near the right edge (see actionZone.ts) ──
+	// Tracked for a mouse only. Touch has no hover to track, so it keeps the
+	// plain `:hover` rule (see the styles).
+	let actionsEl = $state<HTMLDivElement>();
+	let nearEdge = $state(false);
+
+	function trackEdge(event: PointerEvent) {
+		if (event.pointerType !== "mouse" || !rowEl) return;
+		nearEdge = inActionZone(
+			event.clientX,
+			rowEl.getBoundingClientRect(),
+			actionsEl?.offsetWidth ?? 0,
+		);
+	}
+
 	// Open the association picker anchored at this task row. The parent (which
 	// owns the picker) decides what a pick does.
 	function requestAssociation() {
@@ -296,9 +312,12 @@
 	class:cancelled
 	bind:this={rowEl}
 	oncontextmenu={openContextMenu}
+	onpointermove={trackEdge}
+	onpointerleave={() => (nearEdge = false)}
 >
-	<!-- Hover action bar, floating top-right over the row. -->
-	<div class="k-task-actions">
+	<!-- Action bar, floating top-right over the row. Shown only while the
+	     pointer is near the row's right edge, not on any hover. -->
+	<div class="k-task-actions" class:shown={nearEdge} bind:this={actionsEl}>
 		<button
 			class="k-task-action"
 			title={association ? "Edit association" : "Add association"}
@@ -429,10 +448,24 @@
 		opacity: 0;
 		transition: opacity 0.1s;
 		z-index: 2;
+		/* Hidden means inert too: a click on the end of the task text must reach
+		   the text, not an invisible button lying over it. */
+		pointer-events: none;
 	}
 
-	.k-task:hover .k-task-actions {
+	.k-task-actions.shown,
+	.k-task-actions:focus-within {
 		opacity: 0.96;
+		pointer-events: auto;
+	}
+
+	/* Touch has no pointer to track: keep showing the bar on the row's (sticky)
+	   hover after a tap. */
+	@media (hover: none) {
+		.k-task:hover .k-task-actions {
+			opacity: 0.96;
+			pointer-events: auto;
+		}
 	}
 
 	.k-task-action {
