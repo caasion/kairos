@@ -115,6 +115,13 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'routinesPath': {
+				const path = normalizePath(String(value));
+				await this.plugin.updateSettings((s) => {
+					s.routinesPath = path;
+				});
+				return;
+			}
 			case 'askAssocOnBlockCreate': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {

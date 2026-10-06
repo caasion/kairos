@@ -37,6 +37,8 @@ export interface KairosSettings {
 	domainsFolder: string;
 	/** Vault path to the single global backlog file. */
 	backlogPath: string;
+	/** Vault path to the single routines file (recurring blocks and tasks). */
+	routinesPath: string;
 
 	/**
 	 * The daily-note section heading Kairos reads and writes, given verbatim with
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	projectsFolder: 'Projects',
 	domainsFolder: 'Domains',
 	backlogPath: 'Backlog.md',
+	routinesPath: 'Routines.md',
 	scheduleHeading: '## Schedule',
 	askAssocOnBlockCreate: false,
 	askAssocOnBacklogCreate: false,
@@ -227,6 +230,16 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					key: 'backlogPath',
 					placeholder: DEFAULT_SETTINGS.backlogPath,
 					defaultValue: DEFAULT_SETTINGS.backlogPath,
+				},
+			},
+			{
+				name: 'Routines file',
+				desc: 'Vault path to the file that lists your recurring blocks and tasks.',
+				control: {
+					type: 'text',
+					key: 'routinesPath',
+					placeholder: DEFAULT_SETTINGS.routinesPath,
+					defaultValue: DEFAULT_SETTINGS.routinesPath,
 				},
 			},
 		],
