@@ -18,6 +18,7 @@ import {
 import { KAIROS_GANTT_VIEW_TYPE, KairosGanttView } from './KairosGanttView';
 import { IndexAdapter } from './indexAdapter';
 import { openViewMenu } from './ui/views/viewMenu';
+import { DayPreparer } from './routines/dayPrep';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -100,8 +101,10 @@ export default class Kairos extends Plugin {
 		// Build the index now; cold-start it once the vault is fully loaded so
 		// the seed sees every file (and doesn't race Obsidian's own indexing).
 		this.indexAdapter = new IndexAdapter(this);
+		// Carry-over + routines run when a daily note is created (routines/dayPrep.ts).
+		const preparer = new DayPreparer(this);
 		this.app.workspace.onLayoutReady(() => {
-			void this.indexAdapter.start();
+			void this.indexAdapter.start().then(() => preparer.start());
 		});
 
 		this.registerView(
@@ -178,6 +181,12 @@ export default class Kairos extends Plugin {
 			id: 'open-gantt-view',
 			name: 'Open timeline view',
 			callback: () => void this.activateGanttView(),
+		});
+
+		this.addCommand({
+			id: 'apply-routines-to-day',
+			name: 'Apply routines to this day',
+			callback: () => void preparer.applyToActiveDay(),
 		});
 
 		this.addSettingTab(new KairosSettingTab(this.app, this));
