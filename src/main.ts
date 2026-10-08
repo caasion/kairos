@@ -186,7 +186,7 @@ export default class Kairos extends Plugin {
 		this.addCommand({
 			id: 'apply-routines-to-day',
 			name: 'Apply routines to this day',
-			callback: () => void preparer.applyToActiveDay(),
+			callback: () => void preparer.applyToCurrentDay(),
 		});
 
 		this.addSettingTab(new KairosSettingTab(this.app, this));

@@ -85,9 +85,12 @@
 		reveal$: Readable<RevealRequest | null>;
 		// The one write path back to the plugin; it persists and republishes.
 		updateSettings: (mutate: (s: KairosSettings) => void) => void;
+		// Reports the shown date, so commands like "Apply routines to this day"
+		// can act on the day the view is showing.
+		onDateChange?: (date: ISODate) => void;
 	}
 
-	let { app, index, settings$, reveal$, updateSettings }: Props = $props();
+	let { app, index, settings$, reveal$, updateSettings, onDateChange }: Props = $props();
 
 	// Local reactive view of the settings. `$store` auto-subscribes, so every
 	// derived below recomputes the instant the plugin republishes.
@@ -203,6 +206,9 @@
 	// The view owns a date, defaulting to today, independent of the active file.
 	// Navigation (arrows / calendar) changes this; nothing else does.
 	let date = $state<ISODate>(todayISO());
+	$effect(() => {
+		onDateChange?.(date);
+	});
 	// Backlog nudges surfacing on the shown day (declared here, after `date`).
 	const surfaced = $derived(surfacedOn(backlogEntries, date, todayISO()));
 	// The daily note backing `date`, or null when that day has no note yet. An

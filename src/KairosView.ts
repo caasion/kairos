@@ -4,6 +4,7 @@ import type { Component } from "svelte";
 import DayView from "./ui/timeline/DayView.svelte";
 import type Kairos from "./main";
 import type { KairosSettings } from "./settings";
+import type { ISODate } from "./types";
 
 export const KAIROS_VIEW_TYPE = "kairos-day-view";
 
@@ -12,6 +13,8 @@ export const KAIROS_VIEW_TYPE = "kairos-day-view";
 // task chips inside blocks. Interactivity (drag/resize/create) comes later.
 export class KairosView extends ItemView {
 	plugin: Kairos;
+	/** The date the view is showing, kept in sync by the component. */
+	date?: ISODate;
 	private component?: ReturnType<typeof mount>;
 
 	constructor(leaf: WorkspaceLeaf, plugin: Kairos) {
@@ -44,6 +47,9 @@ export class KairosView extends ItemView {
 				reveal$: this.plugin.reveal$,
 				updateSettings: (mutate: (s: KairosSettings) => void) =>
 					void this.plugin.updateSettings(mutate),
+				onDateChange: (date: ISODate) => {
+					this.date = date;
+				},
 			},
 		});
 	}

@@ -7,8 +7,9 @@
 //   • a block routine is skipped when the day has a block with the same title
 //     and the same time;
 //   • a task routine is skipped when the day already has a task with the same
-//     text and the same (effective) association, whatever its status — an open
-//     copy carried in from yesterday, or one already done today, both count.
+//     text and a compatible association (equal, or either side untagged),
+//     whatever its status — an open copy carried in from yesterday, or one
+//     already done today, both count.
 //
 // `routinesHash` fingerprints the routines due on one date. The daily note
 // records it in frontmatter (`kairos-routines: <hash>`) when routines are
@@ -85,15 +86,25 @@ function effectiveAssoc(r: TaskRoutine): Association | undefined {
 	return r.assoc ?? r.inherited;
 }
 
+/**
+ * Associations that don't contradict each other: equal, or either side has
+ * none. A routine with no association matches its text in any block — the task
+ * may sit in (and inherit from) a tagged block — and a day task whose tag was
+ * removed still counts as that routine's copy.
+ */
+function compatibleAssoc(a: Association | undefined, b: Association | undefined): boolean {
+	return !a || !b || sameAssoc(a, b);
+}
+
 function hasTask(blocks: Block[], r: TaskRoutine): boolean {
 	const assoc = effectiveAssoc(r);
 	return blocks.some((b) => {
 		// A checkable block's own line is a task too.
-		if (b.status !== undefined && b.title === r.text && sameAssoc(b.assoc, assoc)) {
+		if (b.status !== undefined && b.title === r.text && compatibleAssoc(b.assoc, assoc)) {
 			return true;
 		}
 		return b.tasks.some(
-			(t) => t.text === r.text && sameAssoc(t.assoc ?? b.assoc, assoc),
+			(t) => t.text === r.text && compatibleAssoc(t.assoc ?? b.assoc, assoc),
 		);
 	});
 }

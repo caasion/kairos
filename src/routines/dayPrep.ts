@@ -1,42 +1,47 @@
 // Day preparation — the Obsidian glue that runs carry-over and routines.
 //
-// The pure work lives in carry.ts and routines/apply.ts; this module decides
-// WHEN it runs and persists the result through the index's ordinary write path.
+// Every decision (carry or not, apply or not, which frontmatter keys change)
+// lives in plan.ts and is unit-tested there. This module only decides WHEN to
+// run, gathers the inputs, and persists the plan through the index's ordinary
+// write path.
 //
-// Trigger: a daily note is created (by Kairos's own `ensureNoteForDate`, the
-// Daily Notes plugin, Templater, or a sync). After a short delay — so a
-// template finishes writing first — Kairos prepares that day once:
-//   • carry-over, only when the new note is TODAY's: open and half-done tasks
-//     move in from the most recent earlier note. Planning a future day never
-//     pulls today's work forward. Recorded as `kairos-carried: <from date>`.
-//   • routines, for today or a future day, only when the note has no
-//     `kairos-routines` key yet. The key records a hash of the routines due
-//     that day. If it is already there, the day was set up before (perhaps on
-//     another device), so nothing is re-added — that is what protects lines the
-//     user deliberately deleted.
-// Past days are never touched.
-//
-// The "Apply routines to this day" command re-applies on demand (additive and
-// idempotent; it never removes lines) and records the new hash. When an open
-// day's recorded hash no longer matches its routines, a notice says so once.
+// Triggers:
+//   • A daily note is created (by Kairos, the Daily Notes plugin, Templater, or
+//     a sync). After a short delay — so a template finishes writing first — the
+//     day is prepared once in `auto` mode (see plan.ts for the table).
+//   • The "Apply routines to this day" command, in `manual` mode. "This day" is
+//     the day the Day view shows when it is focused, else the open daily note,
+//     else a day the user picks. It never silently creates a note the user
+//     didn't choose.
+//   • Opening a day whose recorded routines hash is out of date shows a notice
+//     once.
+//   • Saving the routines file reports any line Kairos can't use, so a typo in
+//     a rule doesn't fail without a word.
 
-import { Notice, TFile } from "obsidian";
+import { MarkdownView, Notice, SuggestModal, TFile } from "obsidian";
+import type { App } from "obsidian";
 import { getDateFromPath } from "obsidian-daily-notes-interface";
 import type Kairos from "../main";
-import type { Block, ISODate } from "../types";
-import { CARRIED_KEY, carryOver, previousDay } from "../carry";
-import { ensureNoteForDate, todayISO } from "../dayNote";
+import type { ISODate } from "../types";
+import { CARRIED_KEY, previousDay } from "../carry";
+import { ensureNoteForDate, shiftISO, todayISO } from "../dayNote";
 import { parseSchedule } from "../parser";
-import { ROUTINES_KEY, applyRoutines, routinesHash, routinesStale } from "./apply";
-import { parseRoutines, type Routine } from "./routinesFile";
+import { KairosView } from "../KairosView";
+import { ROUTINES_KEY, routinesFor, routinesStale } from "./apply";
+import { parseRoutines, type ParsedRoutines } from "./routinesFile";
+import { dayLabel as label, manualMessage, planDayPrep, type PrepMode, type PrepPlan } from "./plan";
 
 /** How long to let a template or sync finish writing a new note. */
 const SETTLE_MS = 1500;
+/** How long to wait after the routines file stops changing before checking it. */
+const CHECK_MS = 1000;
 
 export class DayPreparer {
 	private inFlight = new Set<ISODate>();
 	private warnedStale = new Set<ISODate>();
 	private timers = new Set<number>();
+	private checkTimer: number | undefined;
+	private lastProblems = "";
 
 	constructor(private plugin: Kairos) {}
 
@@ -46,6 +51,7 @@ export class DayPreparer {
 		this.plugin.register(() => {
 			for (const t of this.timers) window.clearTimeout(t);
 			this.timers.clear();
+			if (this.checkTimer !== undefined) window.clearTimeout(this.checkTimer);
 		});
 		this.plugin.registerEvent(
 			app.vault.on("create", (file) => {
@@ -64,45 +70,76 @@ export class DayPreparer {
 				if (file) void this.warnIfStale(file);
 			}),
 		);
-	}
-
-	/** The command: re-apply routines to the active daily note, or today's. */
-	async applyToActiveDay(): Promise<void> {
-		const { app } = this.plugin;
-		const active = app.workspace.getActiveFile();
-		let file = active && dateOf(active) ? active : null;
-		if (!file) {
-			const path = await ensureNoteForDate(todayISO());
-			const found = app.vault.getAbstractFileByPath(path);
-			file = found instanceof TFile ? found : null;
-		}
-		const date = file ? dateOf(file) : undefined;
-		if (!file || !date) {
-			new Notice("Kairos: open a daily note first.");
-			return;
-		}
-		const added = await this.prepare(file, date, "manual");
-		new Notice(
-			added === 0
-				? "Routines are already in this day."
-				: `Added ${added} item${added === 1 ? "" : "s"} from routines.`,
+		this.plugin.registerEvent(
+			app.vault.on("modify", (file) => {
+				if (file.path !== this.plugin.settings.routinesPath) return;
+				if (this.checkTimer !== undefined) window.clearTimeout(this.checkTimer);
+				this.checkTimer = window.setTimeout(() => {
+					this.checkTimer = undefined;
+					void this.reportProblems();
+				}, CHECK_MS);
+			}),
 		);
 	}
 
+	/** The command: re-apply routines to the day in front of the user. */
+	async applyToCurrentDay(): Promise<void> {
+		const date = this.focusedDate() ?? (await this.pickDate());
+		if (!date) return;
+
+		let file: TFile | null;
+		try {
+			const path = await ensureNoteForDate(date);
+			const found = this.plugin.app.vault.getAbstractFileByPath(path);
+			file = found instanceof TFile ? found : null;
+		} catch {
+			file = null;
+		}
+		if (!file) {
+			new Notice(`Kairos couldn't open the daily note for ${label(date)}.`);
+			return;
+		}
+
+		const parsed = await this.loadRoutines();
+		const plan = await this.prepare(file, date, "manual", parsed);
+		if (!plan) return; // already being prepared
+		new Notice(manualMessage(plan, date, parsed, this.plugin.settings.routinesPath));
+	}
+
 	/**
-	 * Prepare one day. `auto` carries (today only) and applies routines only on
-	 * a day that hasn't recorded them; `manual` re-applies routines regardless.
-	 * Returns how many routine items were added.
+	 * The date the user is looking at: the Day view's date when it is the
+	 * active view, else the date of the daily note open in the active editor.
+	 * Anything else (the Week view, the routines file itself) → undefined, and
+	 * the command asks rather than guessing.
 	 */
+	private focusedDate(): ISODate | undefined {
+		const { workspace } = this.plugin.app;
+		const dayView = workspace.getActiveViewOfType(KairosView);
+		if (dayView?.date) return dayView.date;
+		const file = workspace.getActiveViewOfType(MarkdownView)?.file;
+		return file ? dateOf(file) : undefined;
+	}
+
+	private async pickDate(): Promise<ISODate | undefined> {
+		const routines = (await this.loadRoutines()).routines;
+		return new Promise((resolve) => {
+			new DatePickModal(this.plugin.app, (date) => {
+				const due = routinesFor(routines, date).length;
+				return due === 0 ? "No routines due" : `${due} routine${due === 1 ? "" : "s"} due`;
+			}, resolve).open();
+		});
+	}
+
 	private async prepare(
 		file: TFile,
 		date: ISODate,
-		mode: "auto" | "manual",
-	): Promise<number> {
-		if (this.inFlight.has(date)) return 0;
+		mode: PrepMode,
+		parsed?: ParsedRoutines,
+	): Promise<PrepPlan | undefined> {
+		if (this.inFlight.has(date)) return undefined;
 		this.inFlight.add(date);
 		try {
-			return await this.prepareNow(file, date, mode);
+			return await this.prepareNow(file, date, mode, parsed ?? (await this.loadRoutines()));
 		} finally {
 			this.inFlight.delete(date);
 		}
@@ -111,89 +148,77 @@ export class DayPreparer {
 	private async prepareNow(
 		file: TFile,
 		date: ISODate,
-		mode: "auto" | "manual",
-	): Promise<number> {
+		mode: PrepMode,
+		parsed: ParsedRoutines,
+	): Promise<PrepPlan> {
 		const { app } = this.plugin;
 		const index = this.plugin.indexAdapter.index;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		const days = index.snapshot().days;
+		const day = days.get(date);
+		const blocks =
+			day && day.path === file.path
+				? day.blocks
+				: parseSchedule(await app.vault.read(file), file.path, this.plugin.settings.scheduleHeading);
 		const recorded = readKey(fm[ROUTINES_KEY]);
+		const prev = previousDay(days, date);
 
-		let blocks = await this.currentBlocks(file, date);
-		const frontmatter: Record<string, string | null> = {};
+		const plan = planDayPrep({
+			mode,
+			date,
+			today: todayISO(),
+			path: file.path,
+			blocks,
+			...(recorded !== undefined ? { recorded } : {}),
+			carried: fm[CARRIED_KEY] !== undefined,
+			...(prev ? { previous: { date: prev.date, path: prev.path, blocks: prev.blocks } } : {}),
+			routines: parsed.routines,
+		});
 
-		// Carry-over: today's note only, once.
-		let carriedFrom: { date: ISODate; path: string; blocks: Block[] } | undefined;
-		if (mode === "auto" && date === todayISO() && fm[CARRIED_KEY] === undefined) {
-			const prev = previousDay(index.snapshot().days, date);
-			if (prev) {
-				const r = carryOver(prev.blocks, blocks, file.path);
-				if (r.moved > 0) {
-					blocks = r.to;
-					carriedFrom = { date: prev.date, path: prev.path, blocks: r.from };
-					frontmatter[CARRIED_KEY] = prev.date;
-				}
-			}
-		}
-
-		// Routines.
-		let added = 0;
-		const routines = await this.loadRoutines();
-		const hash = routinesHash(routines, date);
-		const shouldApply = mode === "manual" || recorded === undefined;
-		if (shouldApply) {
-			const r = applyRoutines(blocks, routines, date, file.path);
-			blocks = r.blocks;
-			added = r.added;
-			if (hash !== "" && hash !== recorded) frontmatter[ROUTINES_KEY] = hash;
-			if (hash === "" && recorded !== undefined) frontmatter[ROUTINES_KEY] = null;
-		} else if (routinesStale(recorded, routines, date)) {
-			this.noticeStale(date);
-		}
-
-		if (Object.keys(frontmatter).length === 0 && !carriedFrom && added === 0) {
-			return 0;
-		}
+		if (plan.outcome === "stale") this.noticeStale(date);
 
 		// Frontmatter first, so the debounced schedule write that follows splices
 		// into a file that already carries the keys.
-		if (Object.keys(frontmatter).length > 0) {
+		const keys = Object.entries(plan.frontmatter);
+		if (keys.length > 0) {
 			await app.fileManager.processFrontMatter(file, (front: Record<string, unknown>) => {
-				for (const [key, value] of Object.entries(frontmatter)) {
+				for (const [key, value] of keys) {
 					if (value === null) delete front[key];
 					else front[key] = value;
 				}
 			});
 		}
 
-		if (carriedFrom) {
+		if (plan.previous) {
 			index.applyCrossDayMove(
-				carriedFrom.date,
-				carriedFrom.path,
-				carriedFrom.blocks,
+				plan.previous.date,
+				plan.previous.path,
+				plan.previous.blocks,
 				date,
 				file.path,
-				blocks,
+				plan.blocks,
 			);
-		} else if (added > 0) {
-			index.applyDayEdit(date, file.path, blocks);
+		} else if (plan.added > 0) {
+			index.applyDayEdit(date, file.path, plan.blocks);
 		}
-		return added;
+		return plan;
 	}
 
-	/** The day's blocks: the index's copy if it has one, else the file's. */
-	private async currentBlocks(file: TFile, date: ISODate): Promise<Block[]> {
-		const day = this.plugin.indexAdapter.index.snapshot().days.get(date);
-		if (day && day.path === file.path) return day.blocks;
-		const text = await this.plugin.app.vault.read(file);
-		return parseSchedule(text, file.path, this.plugin.settings.scheduleHeading);
+	private async loadRoutines(): Promise<ParsedRoutines> {
+		const file = this.plugin.app.vault.getAbstractFileByPath(this.plugin.settings.routinesPath);
+		if (!(file instanceof TFile)) return { routines: [], problems: [] };
+		return parseRoutines(await this.plugin.app.vault.read(file));
 	}
 
-	private async loadRoutines(): Promise<Routine[]> {
-		const file = this.plugin.app.vault.getAbstractFileByPath(
-			this.plugin.settings.routinesPath,
-		);
-		if (!(file instanceof TFile)) return [];
-		return parseRoutines(await this.plugin.app.vault.read(file)).routines;
+	/** After the routines file is saved: say once which lines Kairos can't use. */
+	private async reportProblems(): Promise<void> {
+		const { problems } = await this.loadRoutines();
+		const summary = problems.map((p) => `Line ${p.line + 1}: ${p.message}`).join("\n");
+		if (summary === this.lastProblems) return;
+		this.lastProblems = summary;
+		if (summary) {
+			new Notice(`${this.plugin.settings.routinesPath} has lines Kairos can't use:\n${summary}`, 10000);
+		}
 	}
 
 	private async warnIfStale(file: TFile): Promise<void> {
@@ -202,7 +227,7 @@ export class DayPreparer {
 		const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
 		const recorded = readKey(fm?.[ROUTINES_KEY]);
 		if (recorded === undefined) return;
-		if (routinesStale(recorded, await this.loadRoutines(), date)) {
+		if (routinesStale(recorded, (await this.loadRoutines()).routines, date)) {
 			this.noticeStale(date);
 		}
 	}
@@ -211,7 +236,7 @@ export class DayPreparer {
 		if (this.warnedStale.has(date)) return;
 		this.warnedStale.add(date);
 		new Notice(
-			`Your routines for ${date} changed since this day was set up. Run "Apply routines to this day" to add the new ones.`,
+			`Your routines for ${label(date)} changed since that day was set up. Run "Apply routines to this day" to add the new ones.`,
 		);
 	}
 }
@@ -223,8 +248,55 @@ function dateOf(file: TFile): ISODate | undefined {
 	return m ? m.format("YYYY-MM-DD") : undefined;
 }
 
-/** A frontmatter value as a string key (YAML may read a numeric hash as a number). */
+/** A frontmatter value as a string key, or undefined when absent. */
 function readKey(value: unknown): string | undefined {
-	if (value === undefined || value === null) return undefined;
-	return typeof value === "string" || typeof value === "number" ? String(value) : undefined;
+	if (typeof value === "string") return value;
+	// YAML may read an all-digit hash as a number.
+	if (typeof value === "number") return String(value);
+	return undefined;
+}
+
+/** Pick a day: yesterday through a week ahead, each with its routine count. */
+class DatePickModal extends SuggestModal<ISODate> {
+	private chosen = false;
+
+	constructor(
+		app: App,
+		private describe: (date: ISODate) => string,
+		private done: (date: ISODate | undefined) => void,
+	) {
+		super(app);
+		this.setPlaceholder("Apply routines to which day?");
+	}
+
+	getSuggestions(query: string): ISODate[] {
+		const today = todayISO();
+		const days = Array.from({ length: 9 }, (_, i) => shiftISO(today, i - 1));
+		const q = query.trim().toLowerCase();
+		return q ? days.filter((d) => this.text(d).toLowerCase().includes(q)) : days;
+	}
+
+	renderSuggestion(date: ISODate, el: HTMLElement): void {
+		el.createDiv({ text: this.text(date) });
+		el.createEl("small", { text: this.describe(date) });
+	}
+
+	onChooseSuggestion(date: ISODate): void {
+		this.chosen = true;
+		this.done(date);
+	}
+
+	onClose(): void {
+		// onChooseSuggestion fires after onClose; defer so a choice wins.
+		window.setTimeout(() => {
+			if (!this.chosen) this.done(undefined);
+		}, 0);
+	}
+
+	private text(date: ISODate): string {
+		const today = todayISO();
+		const rel =
+			date === today ? " (today)" : date === shiftISO(today, 1) ? " (tomorrow)" : date === shiftISO(today, -1) ? " (yesterday)" : "";
+		return `${label(date)}${rel}`;
+	}
 }

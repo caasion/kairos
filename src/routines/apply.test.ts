@@ -93,13 +93,33 @@ describe("applyRoutines", () => {
 		]);
 	});
 
-	it("does not skip a task whose association differs", () => {
+	it("counts an untagged copy of a tagged routine task as present", () => {
 		const day: Block[] = [
 			{
 				source: { path: PATH, line: 2 },
 				title: "Unscheduled",
 				scheduled: false,
 				tasks: [{ source: { path: PATH, line: 3 }, text: "Water the plants", status: " " }],
+			},
+		];
+		const { blocks } = applyRoutines(day, routines, SAT, PATH);
+		expect(inbox(blocks)!.tasks.filter((t) => t.text === "Water the plants")).toHaveLength(1);
+	});
+
+	it("does not skip a task tagged with a different association", () => {
+		const day: Block[] = [
+			{
+				source: { path: PATH, line: 2 },
+				title: "Unscheduled",
+				scheduled: false,
+				tasks: [
+					{
+						source: { path: PATH, line: 3 },
+						text: "Water the plants",
+						status: " ",
+						assoc: { kind: "domain", id: "Office" },
+					},
+				],
 			},
 		];
 		const { blocks } = applyRoutines(day, routines, SAT, PATH);
