@@ -4,6 +4,8 @@ import type { Component } from "svelte";
 import GridView from "./ui/grid/GridView.svelte";
 import type Kairos from "./main";
 import type { KairosSettings } from "./settings";
+import type { ISODate } from "./types";
+import type { Routine } from "./routines/routinesFile";
 
 export const KAIROS_GRID_VIEW_TYPE = "kairos-grid-view";
 
@@ -46,6 +48,12 @@ export class KairosGridView extends ItemView {
 					void this.plugin.updateSettings(mutate),
 				reveal: (date: string, blockLine: number) =>
 					void this.plugin.revealInDayView(date, blockLine),
+				routines$: this.plugin.routinesFeed.routines$,
+				marks$: this.plugin.routinesFeed.marks$,
+				insertRoutine: (date: ISODate, routine: Routine) =>
+					void this.plugin.dayPreparer.insertRoutine(date, routine),
+				applyRoutines: (date: ISODate) =>
+					void this.plugin.dayPreparer.applyToDate(date),
 			},
 		});
 	}

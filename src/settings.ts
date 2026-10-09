@@ -120,6 +120,7 @@ export class KairosSettingTab extends PluginSettingTab {
 				await this.plugin.updateSettings((s) => {
 					s.routinesPath = path;
 				});
+				this.plugin.routinesFeed?.refresh();
 				return;
 			}
 			case 'askAssocOnBlockCreate': {
