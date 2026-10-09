@@ -44,6 +44,7 @@
 	import { nextDraftLine } from "../../draftLine";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import TaskRow from "../task/Task.svelte";
+	import { requestRepeat } from "../../routines/repeat";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -1189,6 +1190,7 @@
 								onNest={(rect) => openBlockPicker(block, task, rect)}
 								onMoveToBacklog={() =>
 									void handleMoveTaskToBacklog(block, task)}
+								onRepeat={() => requestRepeat(task, block)}
 								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
 								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
 								onDelete={(_t) => handleDeleteTask(block, task)}

@@ -19,6 +19,8 @@ import { KAIROS_GANTT_VIEW_TYPE, KairosGanttView } from './KairosGanttView';
 import { IndexAdapter } from './indexAdapter';
 import { openViewMenu } from './ui/views/viewMenu';
 import { DayPreparer } from './routines/dayPrep';
+import { RoutinesStore } from './routines/routinesStore';
+import { registerRoutines } from './routines/register';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -84,6 +86,8 @@ export default class Kairos extends Plugin {
 	 */
 	backlogFilter$!: Readable<BacklogFilter | null>;
 	private pushBacklogFilter!: (f: BacklogFilter | null) => void;
+	/** The live routines file, read by the Routines view and "Repeat…". */
+	routines!: RoutinesStore;
 
 	async onload() {
 		await this.loadSettings();
@@ -103,9 +107,12 @@ export default class Kairos extends Plugin {
 		this.indexAdapter = new IndexAdapter(this);
 		// Carry-over + routines run when a daily note is created (routines/dayPrep.ts).
 		const preparer = new DayPreparer(this);
+		this.routines = new RoutinesStore(this);
 		this.app.workspace.onLayoutReady(() => {
 			void this.indexAdapter.start().then(() => preparer.start());
+			this.routines.start();
 		});
+		registerRoutines(this);
 
 		this.registerView(
 			KAIROS_VIEW_TYPE,

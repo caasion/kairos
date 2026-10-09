@@ -9,6 +9,7 @@
 	import type { Association, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
 	import Task_ from "../task/Task.svelte";
+	import { requestRepeat } from "../../routines/repeat";
 
 	interface Props {
 		tasks: ResolvedTask[];
@@ -142,6 +143,7 @@
 				onMoveToBacklog={task.colocated
 					? undefined
 					: () => onMoveToBacklog(task)}
+				onRepeat={() => requestRepeat(task, task.block)}
 				meta={task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
 				onGrab={task.colocated
 					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined

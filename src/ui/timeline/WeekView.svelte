@@ -33,6 +33,7 @@
 	import DayColumn from "./DayColumn.svelte";
 	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
+	import { requestRepeat } from "../../routines/repeat";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -697,6 +698,7 @@
 									onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
 									onNest={(rect) => columns[date]?.nestTask(block, task, rect)}
 									onMoveToBacklog={() => columns[date]?.moveToBacklog(block, task)}
+									onRepeat={() => requestRepeat(task, block)}
 									onSetStatus={(_t, status) => columns[date]?.setTaskStatus(block, task, status)}
 									onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
 									onDelete={(_t) => columns[date]?.deleteTask(block, task)}

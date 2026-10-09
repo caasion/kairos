@@ -12,6 +12,7 @@
   import { peek } from "../actions/peek";
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
+  import { blockLineTask, requestRepeat } from "../../routines/repeat";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
@@ -297,6 +298,15 @@
         .onClick(() => requestEditAssoc()),
     );
 
+    if (block.time) {
+      menu.addItem((item) =>
+        item
+          .setTitle("Repeat…")
+          .setIcon("repeat")
+          .onClick(() => requestRepeat(blockLineTask(block), block)),
+      );
+    }
+
     menu.addSeparator();
 
     // Convert the block to/from a checkable task. When it's already checkable,
@@ -551,6 +561,7 @@
                 onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
                 onNest={(rect) => onNestTask(block, task, rect)}
                 onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
+                onRepeat={() => requestRepeat(task, block)}
                 onGrab={(e) => onTaskGrab(block, task, e)}
                 onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
                 onSetText={(t, text) => onSetTaskText(block, t, text)}

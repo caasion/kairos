@@ -64,6 +64,9 @@
 		// its line (a colocated/checkable-block task) or where there is no backlog
 		// to move it to (the backlog view itself).
 		onMoveToBacklog?: () => void;
+		// Turn this task into a routine ("Repeat…"): opens the rule picker and adds
+		// a routine built from the task. The task itself stays as the first one.
+		onRepeat?: () => void;
 		// Extra metadata rendered inside the row, beneath the text on the same line
 		// as the association (so it shares the row's hover region). The grid uses
 		// this for the block-nesting badge. Snippet content is compiled in the
@@ -100,6 +103,7 @@
 		onNest,
 		nestLabel = "Nest under block",
 		onMoveToBacklog,
+		onRepeat,
 		meta,
 		onGrab,
 		lines = 1,
@@ -314,6 +318,15 @@
 			);
 		}
 
+		if (onRepeat) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Repeat…")
+					.setIcon("repeat")
+					.onClick(() => onRepeat()),
+			);
+		}
+
 		menu.addSeparator();
 
 		menu.addItem((item) =>
@@ -364,8 +377,8 @@
 	     top-right corner (see actions/actionZone.ts), not on any hover. On a
 	     mouse wake it is a vertical stack one button wide (`layout: "stack"`):
 	     delete stays in the row's top-right corner and the other actions rise
-	     above it, most used nearest: association, then nest. It hangs below
-	     instead when there's no room above. Touch keeps the horizontal bar.
+	     above it, most used nearest: association, then nest, then repeat. It
+	     hangs below instead when there's no room above. Touch keeps the horizontal bar.
 	     DOM (= tab) order is unchanged; CSS `order` sets the visual order.
 	     Tooltips open to the left of the stack (actions/tooltip.ts). -->
 	<div class="k-task-actions kairos-action-bar">
@@ -385,6 +398,16 @@
 				onclick={requestNest}
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 12H9"/><path d="m9 12 3-3"/><path d="m9 12 3 3"/></svg>
+			</button>
+		{/if}
+		{#if onRepeat}
+			<button
+				class="k-task-action"
+				aria-label="Repeat…"
+				use:tooltip={"Repeat…"}
+				onclick={() => onRepeat()}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
 			</button>
 		{/if}
 		{#if !checkable}

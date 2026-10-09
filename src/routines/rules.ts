@@ -81,3 +81,60 @@ export function occursOn(rule: Rule, date: ISODate): boolean {
 export function ruleKey(rule: Rule): string {
 	return rule.kind === "monthly" ? `m:${rule.day}` : `w:${rule.days.join(",")}`;
 }
+
+const SHORT_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Monday-first position of a weekday (Mon 0 … Sun 6), for display order. */
+export function mondayFirst(day: number): number {
+	return (day + 6) % 7;
+}
+
+/** The short name of a weekday (0 = Sunday): "Sun" … "Sat". */
+export function weekdayName(day: number): string {
+	return SHORT_NAMES[day] ?? "";
+}
+
+/**
+ * The canonical way to write a rule — what Kairos puts in a heading it creates
+ * and what the Routines view names a group: "Daily", "Weekdays", "Weekends",
+ * "Mon, Wed", "Monthly on 1". `parseRule(ruleText(r))` is always `r`.
+ */
+export function ruleText(rule: Rule): string {
+	if (rule.kind === "monthly") return `Monthly on ${rule.day}`;
+	const key = rule.days.join(",");
+	if (key === "0,1,2,3,4,5,6") return "Daily";
+	if (key === "1,2,3,4,5") return "Weekdays";
+	if (key === "0,6") return "Weekends";
+	return [...rule.days]
+		.sort((a, b) => mondayFirst(a) - mondayFirst(b))
+		.map(weekdayName)
+		.join(", ");
+}
+
+/** A rule as it reads mid-sentence: "daily", "on weekdays", "on Mon, Wed", "monthly on 1". */
+export function ruleSentence(rule: Rule): string {
+	const text = ruleText(rule);
+	if (text === "Daily") return "daily";
+	if (text === "Weekdays" || text === "Weekends") return `on ${text.toLowerCase()}`;
+	if (rule.kind === "monthly") return `monthly on ${rule.day}`;
+	return `on ${text}`;
+}
+
+/**
+ * Display order for rule groups: Daily, Weekdays, Weekends, then day lists by
+ * their first weekday (Monday first, fewer days before more), then monthly
+ * rules by day of month.
+ */
+export function compareRules(a: Rule, b: Rule): number {
+	return ruleRank(a) - ruleRank(b) || ruleText(a).localeCompare(ruleText(b));
+}
+
+function ruleRank(rule: Rule): number {
+	if (rule.kind === "monthly") return 1000 + rule.day;
+	const key = rule.days.join(",");
+	if (key === "0,1,2,3,4,5,6") return 0;
+	if (key === "1,2,3,4,5") return 1;
+	if (key === "0,6") return 2;
+	const first = Math.min(...rule.days.map(mondayFirst));
+	return 10 + first * 10 + rule.days.length;
+}

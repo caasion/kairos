@@ -68,10 +68,11 @@ export interface ParsedRoutines {
 	problems: RoutineProblem[];
 }
 
-const LIST_ITEM = /^([ \t]*)[-*+]\s+(?:\[(.)\]\s+)?(.*)$/;
-const HEADING = /^#{1,6}\s+(.*)$/;
+// Shared with the writer (routinesWriter.ts), which edits the same grammar.
+export const LIST_ITEM = /^([ \t]*)[-*+]\s+(?:\[(.)\]\s+)?(.*)$/;
+export const HEADING = /^#{1,6}\s+(.*)$/;
 // `🔁 rule` up to the next `[` or `(` (an association or note) or the end.
-const REPEAT = /\s*🔁\s*([^[(]*?)\s*(?=[[(]|$)/u;
+export const REPEAT = /\s*🔁\s*([^[(]*?)\s*(?=[[(]|$)/u;
 
 interface Parent {
 	indent: number;
@@ -194,7 +195,7 @@ function takeRepeat(body: string): {
 	return rule ? { body: rest, rule } : { body: rest, badRule: text };
 }
 
-function skipFrontmatter(lines: string[]): number {
+export function skipFrontmatter(lines: string[]): number {
 	if (lines[0]?.trim() !== "---") return 0;
 	for (let i = 1; i < lines.length; i++) {
 		if (lines[i]?.trim() === "---") return i + 1;
@@ -202,7 +203,7 @@ function skipFrontmatter(lines: string[]): number {
 	return 0;
 }
 
-function indentWidth(ws: string): number {
+export function indentWidth(ws: string): number {
 	let width = 0;
 	for (const ch of ws) width += ch === "\t" ? 4 : 1;
 	return width;
