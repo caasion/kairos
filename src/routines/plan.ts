@@ -10,6 +10,7 @@
 //   mode     date            kairos-routines         routines
 //   ───────  ──────────────  ──────────────────────  ─────────────────────────
 //   auto     past            —                       never touched
+//   auto     (setting off)   —                       not applied; outcome "off"
 //   auto     today/future    absent                  applied, hash recorded
 //   auto     today/future    equal to current hash   nothing
 //   auto     today/future    different               nothing; outcome "stale"
@@ -39,10 +40,13 @@ export interface PrepInput {
 	/** The most recent earlier daily note, for carry-over. */
 	previous?: { date: ISODate; path: string; blocks: Block[] };
 	routines: Routine[];
+	/** The "Add routines to new daily notes" setting; only `auto` reads it. */
+	autoApply: boolean;
 }
 
 export type PrepOutcome =
 	| "past" // auto mode on a past day: nothing considered
+	| "off" // auto mode with the setting off: carry-over only
 	| "none-due" // no routines occur on this date
 	| "added" // at least one routine item was added
 	| "present" // routines are due and every one is already in the day
@@ -90,6 +94,10 @@ export function planDayPrep(input: PrepInput): PrepPlan {
 
 	const hash = routinesHash(routines, date);
 	const base = { blocks, carried, due, frontmatter, ...(previous ? { previous } : {}) };
+
+	if (mode === "auto" && !input.autoApply) {
+		return { ...base, outcome: "off", added: 0 };
+	}
 
 	if (mode === "auto" && recorded !== undefined) {
 		const outcome = recorded === hash ? "recorded" : "stale";

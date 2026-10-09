@@ -136,6 +136,13 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'autoApplyRoutines': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.autoApplyRoutines = on;
+				});
+				return;
+			}
 		}
 		// Not a key this tab describes. Store it anyway rather than dropping the
 		// user's change, still through the one write path.

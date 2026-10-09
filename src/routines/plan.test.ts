@@ -30,6 +30,7 @@ function input(over: Partial<PrepInput>): PrepInput {
 		blocks: [],
 		carried: false,
 		routines: user.routines,
+		autoApply: true,
 		...over,
 	};
 }
@@ -82,6 +83,23 @@ describe("planDayPrep: the auto/manual table", () => {
 		expect(plan.outcome).toBe("past");
 		expect(plan.added).toBe(0);
 		expect(plan.frontmatter).toEqual({});
+	});
+
+	it("auto leaves routines alone when the setting is off, but still carries", () => {
+		const prev = {
+			date: WED,
+			path: "wed.md",
+			blocks: blocksOf("- Unscheduled\n\t- [ ] Leftover", "wed.md"),
+		};
+		const off = planDayPrep(
+			input({ mode: "auto", date: THU, autoApply: false, previous: prev, routines: parseRoutines("## Daily\n- [ ] Read").routines }),
+		);
+		expect(off.outcome).toBe("off");
+		expect(off.carried).toBe(1);
+		expect(texts(off.blocks)).toEqual(["Leftover"]);
+		expect(off.frontmatter).toEqual({ "kairos-carried": WED });
+		// The command still applies regardless of the setting.
+		expect(planDayPrep(input({ date: NEXT_MON, autoApply: false })).outcome).toBe("added");
 	});
 
 	it("auto applies to a future day with no key, and records the hash", () => {

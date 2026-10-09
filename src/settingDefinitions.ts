@@ -60,6 +60,13 @@ export interface KairosSettings {
 	 * domain group answers the question by where you created it.
 	 */
 	askAssocOnBacklogCreate: boolean;
+
+	/**
+	 * Add the day's routines as soon as a new daily note is created. Off by
+	 * default: routines are pulled in deliberately from the Grid (one at a time,
+	 * or all at once from the date row) or with "Apply routines to this day".
+	 */
+	autoApplyRoutines: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -75,6 +82,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	scheduleHeading: '## Schedule',
 	askAssocOnBlockCreate: false,
 	askAssocOnBacklogCreate: false,
+	autoApplyRoutines: false,
 };
 
 /** Every control key is a settings property, so the default value resolver works. */
@@ -194,6 +202,24 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					type: 'toggle',
 					key: 'askAssocOnBacklogCreate',
 					defaultValue: DEFAULT_SETTINGS.askAssocOnBacklogCreate,
+				},
+			},
+		],
+	},
+	{
+		type: 'group',
+		heading: 'Routines',
+		items: [
+			{
+				name: 'Add routines to new daily notes',
+				desc:
+					'Add the routines due on a day as soon as its daily note is ' +
+					'created. When off, add them from the Grid or with the ' +
+					'"Apply routines to this day" command.',
+				control: {
+					type: 'toggle',
+					key: 'autoApplyRoutines',
+					defaultValue: DEFAULT_SETTINGS.autoApplyRoutines,
 				},
 			},
 		],

@@ -8,7 +8,8 @@
 // Triggers:
 //   • A daily note is created (by Kairos, the Daily Notes plugin, Templater, or
 //     a sync). After a short delay — so a template finishes writing first — the
-//     day is prepared once in `auto` mode (see plan.ts for the table).
+//     day is prepared once in `auto` mode: carry-over always, routines only
+//     when "Add routines to new daily notes" is on (see plan.ts for the table).
 //   • The "Apply routines to this day" command, in `manual` mode. "This day" is
 //     the day the Day view shows when it is focused, else the open daily note,
 //     else a day the user picks. It never silently creates a note the user
@@ -173,6 +174,7 @@ export class DayPreparer {
 			carried: fm[CARRIED_KEY] !== undefined,
 			...(prev ? { previous: { date: prev.date, path: prev.path, blocks: prev.blocks } } : {}),
 			routines: parsed.routines,
+			autoApply: this.plugin.settings.autoApplyRoutines,
 		});
 
 		if (plan.outcome === "stale") this.noticeStale(date);
