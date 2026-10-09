@@ -188,6 +188,28 @@ describe("removeRoutine", () => {
 		expect(noMeds).toContain("Morning Routine");
 	});
 
+	it("drops a rule heading once its last routine is gone", () => {
+		const md = "# Mon, Wed\n- [ ] Rehearsal\n\n## Weekdays\n- [ ] Probe\n\n## Weekends\n- [ ] Other\n";
+		const next = removeRoutine(md, find(md, "Probe"));
+		expect(next).toBe("# Mon, Wed\n- [ ] Rehearsal\n\n## Weekends\n- [ ] Other\n");
+		const last = removeRoutine(next, find(next, "Other"));
+		expect(last).toBe("# Mon, Wed\n- [ ] Rehearsal\n");
+	});
+
+	it("keeps a rule heading that still has prose, and any heading that isn't a rule", () => {
+		const withNote = "## Weekdays\nMy weekday stuff.\n- [ ] Probe\n";
+		expect(removeRoutine(withNote, find(withNote, "Probe"))).toBe("## Weekdays\nMy weekday stuff.\n");
+		const notes = "## Notes\n🔁 none here\n\n## Daily\n- [ ] Read\n";
+		expect(removeRoutine(notes, find(notes, "Read"))).toBe("## Notes\n🔁 none here\n");
+	});
+
+	it("drops the old heading when its only block moves to another rule", () => {
+		const md = "## Weekdays\n- 07:00 - 08:00 Gym\n\t- [ ] Stretch\n";
+		const gym = find(md, "Gym");
+		const next = updateRoutine(md, gym, { ...(draftOf(gym) as Extract<RoutineDraft, { kind: "block" }>), rule: rule("weekends") });
+		expect(next).toBe("## Weekends\n- 07:00 - 08:00 Gym\n\t- [ ] Stretch\n");
+	});
+
 	it("refuses to edit when the line no longer holds that routine", () => {
 		const water = find(FILE, "Water the plants");
 		const shifted = "New line at the top\n" + FILE;

@@ -133,6 +133,7 @@ export function updateRoutine(
 		const moved = doc.lines.slice(from, to);
 		moved[0] = renderLine(draft);
 		doc.lines.splice(from, to - from);
+		pruneEmptySection(doc, from);
 		insertLines(doc, draft.rule, moved);
 		return close(doc);
 	}
@@ -276,13 +277,39 @@ function removeAt(doc: Doc, routine: Routine): void {
 	if (routine.kind === "block") {
 		const [from, to] = extent(doc.lines, i);
 		doc.lines.splice(from, to - from);
+		pruneEmptySection(doc, from);
 		return;
 	}
 	const parent = routine.home !== undefined ? parentLine(doc.lines, i) : undefined;
 	doc.lines.splice(i, 1);
-	if (parent === undefined || !isHomeLine(doc.lines[parent] ?? "")) return;
-	const [from, to] = extent(doc.lines, parent);
-	if (to - from === 1) doc.lines.splice(parent, 1);
+	if (parent !== undefined && isHomeLine(doc.lines[parent] ?? "")) {
+		const [from, to] = extent(doc.lines, parent);
+		if (to - from === 1) doc.lines.splice(parent, 1);
+	}
+	pruneEmptySection(doc, Math.min(i, parent ?? i));
+}
+
+/**
+ * Drop the rule heading above line `i` once its section holds nothing but
+ * blank lines — removing or moving its last routine shouldn't leave an empty
+ * "## Weekdays" behind. A heading that isn't a rule, or a section that still
+ * has any text (prose included), is left alone.
+ */
+function pruneEmptySection(doc: Doc, i: number): void {
+	let h = Math.min(i, doc.lines.length) - 1;
+	while (h >= 0 && !HEADING.test(doc.lines[h] ?? "")) h--;
+	if (h < 0) return;
+	const heading = HEADING.exec(doc.lines[h] ?? "");
+	if (!heading || !parseRule(heading[1] ?? "")) return;
+	let end = h + 1;
+	while (end < doc.lines.length && !HEADING.test(doc.lines[end] ?? "")) {
+		if ((doc.lines[end] ?? "").trim() !== "") return;
+		end++;
+	}
+	doc.lines.splice(h, end - h);
+	// Don't leave a doubled blank line (or a blank one at the very end) behind.
+	const blank = (k: number) => k < doc.lines.length && (doc.lines[k] ?? "").trim() === "";
+	if (h > 0 && blank(h - 1) && (h >= doc.lines.length || blank(h))) doc.lines.splice(h - 1, 1);
 }
 
 /** The nearest line above `i` that is a list item indented less than it. */
