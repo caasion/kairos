@@ -23,13 +23,13 @@ import { MarkdownView, Notice, SuggestModal, TFile } from "obsidian";
 import type { App } from "obsidian";
 import { getDateFromPath } from "obsidian-daily-notes-interface";
 import type Kairos from "../main";
-import type { ISODate } from "../types";
+import type { Block, ISODate } from "../types";
 import { CARRIED_KEY, previousDay } from "../carry";
 import { ensureNoteForDate, shiftISO, todayISO } from "../dayNote";
 import { parseSchedule } from "../parser";
 import { KairosView } from "../KairosView";
-import { ROUTINES_KEY, routinesFor, routinesStale } from "./apply";
-import { parseRoutines, type ParsedRoutines } from "./routinesFile";
+import { ROUTINES_KEY, applyRoutines, routinesFor, routinesStale } from "./apply";
+import { parseRoutines, type ParsedRoutines, type Routine } from "./routinesFile";
 import { dayLabel as label, manualMessage, planDayPrep, type PrepMode, type PrepPlan } from "./plan";
 
 /** How long to let a template or sync finish writing a new note. */
@@ -86,25 +86,55 @@ export class DayPreparer {
 	/** The command: re-apply routines to the day in front of the user. */
 	async applyToCurrentDay(): Promise<void> {
 		const date = this.focusedDate() ?? (await this.pickDate());
-		if (!date) return;
+		if (date) await this.applyToDate(date);
+	}
 
-		let file: TFile | null;
-		try {
-			const path = await ensureNoteForDate(date);
-			const found = this.plugin.app.vault.getAbstractFileByPath(path);
-			file = found instanceof TFile ? found : null;
-		} catch {
-			file = null;
-		}
-		if (!file) {
-			new Notice(`Kairos couldn't open the daily note for ${label(date)}.`);
-			return;
-		}
-
+	/**
+	 * Apply every routine due on `date` (creating its note if needed), record
+	 * the hash, and say what happened. Shared by the command and the Grid's
+	 * "Add routines" button.
+	 */
+	async applyToDate(date: ISODate): Promise<void> {
+		const file = await this.noteFor(date);
+		if (!file) return;
 		const parsed = await this.loadRoutines();
 		const plan = await this.prepare(file, date, "manual", parsed);
 		if (!plan) return; // already being prepared
 		new Notice(manualMessage(plan, date, parsed, this.plugin.settings.routinesPath));
+	}
+
+	/**
+	 * Add one routine to `date` (creating its note if needed), without recording
+	 * the hash — pulling in a single routine doesn't mark the day as set up.
+	 * Additive like every apply: a routine already in the day adds nothing.
+	 */
+	async insertRoutine(date: ISODate, routine: Routine): Promise<void> {
+		const file = await this.noteFor(date);
+		if (!file) return;
+		const blocks = await this.currentBlocks(file, date);
+		const r = applyRoutines(blocks, [routine], date, file.path);
+		if (r.added > 0) this.plugin.indexAdapter.index.applyDayEdit(date, file.path, r.blocks);
+	}
+
+	/** The daily note for `date`, created if missing; null (with a notice) on failure. */
+	private async noteFor(date: ISODate): Promise<TFile | null> {
+		try {
+			const path = await ensureNoteForDate(date);
+			const found = this.plugin.app.vault.getAbstractFileByPath(path);
+			if (found instanceof TFile) return found;
+		} catch {
+			// fall through to the notice
+		}
+		new Notice(`Kairos couldn't open the daily note for ${label(date)}.`);
+		return null;
+	}
+
+	/** The day's blocks: the index's copy if it has one, else the file's. */
+	private async currentBlocks(file: TFile, date: ISODate): Promise<Block[]> {
+		const day = this.plugin.indexAdapter.index.snapshot().days.get(date);
+		if (day && day.path === file.path) return day.blocks;
+		const text = await this.plugin.app.vault.read(file);
+		return parseSchedule(text, file.path, this.plugin.settings.scheduleHeading);
 	}
 
 	/**
@@ -156,11 +186,7 @@ export class DayPreparer {
 		const index = this.plugin.indexAdapter.index;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
 		const days = index.snapshot().days;
-		const day = days.get(date);
-		const blocks =
-			day && day.path === file.path
-				? day.blocks
-				: parseSchedule(await app.vault.read(file), file.path, this.plugin.settings.scheduleHeading);
+		const blocks = await this.currentBlocks(file, date);
 		const recorded = readKey(fm[ROUTINES_KEY]);
 		const prev = previousDay(days, date);
 

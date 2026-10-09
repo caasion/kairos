@@ -259,6 +259,27 @@ export function dayStatus(
 	return effectiveStatus(entity.history, date);
 }
 
+/**
+ * The key of the row an association files under, or undefined when the window
+ * has no such row. Resolves aliases to the canonical name first, the same way
+ * task ownership does, so an alias-tagged routine lands in its entity's row.
+ */
+export function rowKeyForAssoc(
+	rows: GridRow[],
+	assoc: { kind: "project" | "domain"; id: string },
+	snap: GridSnapshot,
+): RowKey | undefined {
+	const name = snap.resolve(assoc).displayName || assoc.id;
+	const key = `${assoc.kind}:${name}`;
+	return rows.some((r) => r.key === key) ? key : undefined;
+}
+
+/** `rows` with the Unassigned row appended when it isn't there already. */
+export function withUnassignedRow(rows: GridRow[]): GridRow[] {
+	if (rows.some((r) => r.kind === "unassigned")) return rows;
+	return [...rows, { kind: "unassigned", key: "unassigned", name: "Unassigned", depth: 0 }];
+}
+
 /** The association a create-in-cell applies for this row. */
 export function rowAssociation(row: GridRow): RowAssociation {
 	switch (row.kind) {

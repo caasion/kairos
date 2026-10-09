@@ -21,6 +21,7 @@ import { openViewMenu } from './ui/views/viewMenu';
 import { DayPreparer } from './routines/dayPrep';
 import { RoutinesStore } from './routines/routinesStore';
 import { registerRoutines } from './routines/register';
+import { RoutinesFeed } from './routines/routinesFeed';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -67,6 +68,10 @@ export default class Kairos extends Plugin {
 	private setSettings!: (s: KairosSettings) => void;
 	/** The live index. Views read from `plugin.index.index`. */
 	indexAdapter!: IndexAdapter;
+	/** Carry-over and routine application (routines/dayPrep.ts). */
+	dayPreparer!: DayPreparer;
+	/** The parsed routines file and each day's recorded hash, for views. */
+	routinesFeed!: RoutinesFeed;
 	/**
 	 * Cross-view reveal channel. The Grid pushes a `RevealRequest` here (via
 	 * `revealInDayView`); the Day view subscribes and jumps + scrolls to the
@@ -108,7 +113,10 @@ export default class Kairos extends Plugin {
 		// Carry-over + routines run when a daily note is created (routines/dayPrep.ts).
 		const preparer = new DayPreparer(this);
 		this.routines = new RoutinesStore(this);
+		this.dayPreparer = preparer;
+		this.routinesFeed = new RoutinesFeed(this, this.routines);
 		this.app.workspace.onLayoutReady(() => {
+			this.routinesFeed.start();
 			void this.indexAdapter.start().then(() => preparer.start());
 			this.routines.start();
 		});

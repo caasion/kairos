@@ -38,6 +38,16 @@ export interface ApplyResult {
 	added: number;
 }
 
+/** Whether `routine`'s block or task is already in the day (by the rules above). */
+export function isPresent(blocks: Block[], routine: Routine): boolean {
+	return routine.kind === "block" ? hasBlock(blocks, routine) : hasTask(blocks, routine);
+}
+
+/** The association a routine files under: a task's own or inherited, a block's. */
+export function routineAssoc(routine: Routine): Association | undefined {
+	return routine.kind === "block" ? routine.assoc : effectiveAssoc(routine);
+}
+
 /** Fold the routines due on `date` into `blocks` (a day note at `path`). */
 export function applyRoutines(
 	blocks: Block[],
