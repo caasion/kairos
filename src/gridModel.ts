@@ -34,6 +34,7 @@
 
 import type {
 	Association,
+	Block,
 	Domain,
 	ISODate,
 	LifecycleState,
@@ -341,6 +342,89 @@ export function cellTasks(
 ): ResolvedTask[] {
 	const { own, groups } = cellGroups(row, tasks, snap);
 	return [...own, ...groups.flatMap((g) => g.tasks)];
+}
+
+// ─── block groups (spec §5, decisions 70–74) ───────────────────
+//
+// With "Group by block" on, a cell's tasks sit under the block they live in, so
+// the Grid says what (rows), when (block groups) and, on a domain row that folds
+// in rolled-up projects, which project (an optional chip on the task's line).
+// Block groups then replace the rolled-up project groups above.
+
+/** One block's slice of a cell: the block's tasks that render on this row. */
+export interface BlockGroup {
+	/** Stable key for keyed rendering: the block's note path and line. */
+	key: string;
+	block: Block;
+	/**
+	 * The checkable block's own task, when it renders on this row. It is then
+	 * the group's header (checkbox, time, title). A checkable block whose own
+	 * task belongs to another row gets a plain header here, so there's only one
+	 * checkbox to tick.
+	 */
+	head?: ResolvedTask;
+	/** The block's nested tasks on this row, in note order. */
+	tasks: ResolvedTask[];
+}
+
+const UNSCHEDULED = "Unscheduled";
+
+/** True for the day's Unscheduled inbox (an untimed block by that name). */
+export function isUnscheduledBlock(block: Block): boolean {
+	return block.time === undefined && block.title === UNSCHEDULED;
+}
+
+/**
+ * A cell's tasks grouped by block: one group per block with tasks on this row,
+ * timed blocks by start time, then other untimed blocks, then Unscheduled last.
+ * A block whose tasks carry different associations appears in each of those
+ * rows (decision 73): the header is a label, not ownership.
+ */
+export function blockGroups(
+	row: GridRow,
+	tasks: ResolvedTask[],
+	snap: GridSnapshot,
+): BlockGroup[] {
+	const groups = new Map<string, BlockGroup>();
+	for (const t of tasks) {
+		if (ownerRowKey(t.owner, snap) !== row.key) continue;
+		const key = `${t.block.source.path}:${t.block.source.line}`;
+		let group = groups.get(key);
+		if (!group) {
+			group = { key, block: t.block, tasks: [] };
+			groups.set(key, group);
+		}
+		if (t.colocated) group.head = t;
+		else group.tasks.push(t);
+	}
+	return [...groups.values()].sort((a, b) => blockRank(a.block) - blockRank(b.block) || byTime(a.block, b.block));
+}
+
+// Timed blocks first, then other untimed blocks, then Unscheduled.
+function blockRank(block: Block): number {
+	if (block.time) return 0;
+	return isUnscheduledBlock(block) ? 2 : 1;
+}
+
+function byTime(a: Block, b: Block): number {
+	if (a.time && b.time) {
+		return a.time.start - b.time.start || a.time.end - b.time.end || a.title.localeCompare(b.title);
+	}
+	return 0; // untimed blocks keep their note order (the sort is stable)
+}
+
+/**
+ * The project a task on a domain row is there for by rollup (#11), for the
+ * optional chip at the end of its line. Undefined on other rows, and for the
+ * domain's own tasks.
+ */
+export function rolledUpProjectOf(
+	row: GridRow,
+	task: ResolvedTask,
+	snap: GridSnapshot,
+): string | undefined {
+	if (row.kind !== "domain" || task.owner?.kind !== "project") return undefined;
+	return snap.resolve(task.owner).displayName || task.owner.id;
 }
 
 /**

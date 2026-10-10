@@ -21,6 +21,7 @@
 // fallback. Append is signalled with a large index the caller's insert clamps.
 
 import type { Block, ResolvedTask, Task } from "../../types";
+import type { TimelineDrop } from "../../taskDrop";
 
 /** A flat item surfaced from DayColumn to WeekView for unscheduled rendering. */
 export interface UnscheduledItem {
@@ -116,6 +117,22 @@ export function hitTestDropSlot(
   }
 
   return null;
+}
+
+/**
+ * The Grid's block headers (block grouping on) are drop targets: dropping a task
+ * on one nests it in that block on that day. Each header (and a checkable
+ * block's own row, which is its group's header) carries `data-grid-block-line`
+ * and `data-grid-block-date`; the drop appends to the block's tasks.
+ */
+export function hitTestGridBlock(event: PointerEvent): TimelineDrop | null {
+  const el = document.elementFromPoint(event.clientX, event.clientY);
+  const head = el?.closest<HTMLElement>("[data-grid-block-line]");
+  if (!head) return null;
+  const date = head.dataset.gridBlockDate;
+  const blockLine = Number(head.dataset.gridBlockLine);
+  if (!date || Number.isNaN(blockLine)) return null;
+  return { kind: "block", date, blockLine, index: APPEND_INDEX };
 }
 
 // A slot index past any real list length: the caller's insert clamps it to an
