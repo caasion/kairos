@@ -79,6 +79,18 @@ function ownerIdentity(
 	return { kind: owner.kind, name: resolved.displayName || owner.id };
 }
 
+/** The key of the row a task files under, or undefined when no row exists. */
+function ownerRowKey(
+	task: ResolvedTask,
+	snap: GridSnapshot,
+	keys: Set<RowKey>,
+): RowKey | undefined {
+	const id = ownerIdentity(task, snap);
+	if (!id) return undefined;
+	const key = `${id.kind}:${id.name}`;
+	return keys.has(key) ? key : undefined;
+}
+
 // ─── window-aware visibility ───────────────────────────────────
 
 /** Does any task, on any visible day, name this project/domain as its owner? */
@@ -190,9 +202,12 @@ export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 		}
 	}
 
-	// 3. Unassigned row, only if some day has an unowned task.
+	// 3. Unassigned row, only if some day has a task with no row of its own:
+	//    untagged, or tagged with a project/domain that doesn't exist (a typo,
+	//    a deleted file, `[Name]` written for a domain).
+	const keys = new Set(rows.map((r) => r.key));
 	const hasUnassigned = snap.days.some((day) =>
-		day.tasks.some((t) => !t.owner),
+		day.tasks.some((t) => !ownerRowKey(t, snap, keys)),
 	);
 	if (hasUnassigned) {
 		rows.push({
@@ -220,10 +235,14 @@ export function cellTasks(
 	row: GridRow,
 	tasks: ResolvedTask[],
 	snap: GridSnapshot,
+	rows: GridRow[] = [],
 ): ResolvedTask[] {
 	switch (row.kind) {
-		case "unassigned":
-			return tasks.filter((t) => !t.owner);
+		case "unassigned": {
+			// Unowned tasks, plus any whose owner has no row — never dropped.
+			const keys = new Set(rows.map((r) => r.key));
+			return tasks.filter((t) => !ownerRowKey(t, snap, keys));
+		}
 
 		case "project":
 			return tasks.filter((t) => {

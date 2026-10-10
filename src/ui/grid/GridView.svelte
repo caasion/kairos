@@ -257,7 +257,7 @@
 	}
 
 	function tasksFor(row: GridRow, day: GridDay): ResolvedTask[] {
-		return snapshot ? cellTasks(row, day.tasks, snapshot) : [];
+		return snapshot ? cellTasks(row, day.tasks, snapshot, rows) : [];
 	}
 
 	// The row's entity was inactive/archived on this day — the cell is read-only

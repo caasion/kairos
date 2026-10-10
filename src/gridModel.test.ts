@@ -166,6 +166,20 @@ describe("buildRows", () => {
 		expect(buildRows(s, AS_OF).map((r) => r.name)).toEqual(["Wrapped"]);
 	});
 
+	it("files a task tagged with a project that doesn't exist under Unassigned", () => {
+		// `[Learning]` written for what is really a domain: no project row exists,
+		// so the task must still show somewhere rather than vanish.
+		const d = domain({ name: "Learning" });
+		const t = task({ owner: proj("Learning"), date: "2026-08-01" });
+		const s = snap([], [d], [t], ["2026-08-01"]);
+		const rows = buildRows(s, AS_OF);
+		const unassigned = rows.find((r) => r.kind === "unassigned");
+		expect(unassigned).toBeDefined();
+		expect(cellTasks(unassigned!, [t], s, rows)).toEqual([t]);
+		const learning = rows.find((r) => r.name === "Learning")!;
+		expect(cellTasks(learning, [t], s, rows)).toEqual([]);
+	});
+
 	it("keeps an archived project that still carries a task in the window", () => {
 		// Archived across the whole window, but a task is tagged to it → keep the
 		// row so that historic instance doesn't vanish.
