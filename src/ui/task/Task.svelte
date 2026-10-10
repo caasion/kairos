@@ -78,6 +78,12 @@
 		// ellipsis. 1 (the default) keeps the compact single-line row; roomier
 		// views like the grid pass 2.
 		lines?: number;
+		// Short muted labels on the task's own line. `lead` sits before the text
+		// (the Grid puts a checkable block's start time there); `trailing` after it
+		// (the Grid's rolled-up project chip), and gives way first when the line is
+		// tight, so the task text keeps its room.
+		lead?: string;
+		trailing?: string;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -103,6 +109,8 @@
 		meta,
 		onGrab,
 		lines = 1,
+		lead,
+		trailing,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -401,6 +409,8 @@
 
 	<div class="k-task-row" class:wrapped={lines > 1}>
 		<TaskCheckbox status={task.status} {color} onToggle={cycleStatus} onCancel={cancelStatus} />
+		<!-- Shown while editing too: the time is context, not part of the text. -->
+		{#if lead}<span class="k-task-lead">{lead}</span>{/if}
 
 		{#if editing && lines > 1}
 			<!-- Wrapped text edits in a growing textarea so it wraps exactly as the
@@ -446,6 +456,7 @@
 			>
 				{task.text}
 			</span>
+			{#if trailing}<span class="k-task-trailing" title={trailing}>{trailing}</span>{/if}
 		{/if}
 	</div>
 
@@ -583,6 +594,34 @@
 	/* Keep the checkbox on the first line when the text wraps. */
 	.k-task-row.wrapped {
 		align-items: flex-start;
+	}
+
+	/* Muted labels on the task's line (lead before the text, trailing after).
+	   Same size and line height as the task text, so a wrapped row's
+	   top-aligned items share one baseline. */
+	.k-task-lead,
+	.k-task-trailing {
+		font-size: 12px;
+		line-height: 1.4;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.k-task-lead {
+		flex-shrink: 0;
+		font-variant-numeric: tabular-nums;
+	}
+	/* With a trailing label the text sizes to its content, and the label's huge
+	   shrink factor makes it give way (and truncate) before the text does. */
+	.k-task-text:has(+ .k-task-trailing) {
+		flex: 0 1 auto;
+	}
+	.k-task-trailing {
+		flex: 0 1000 auto;
+		min-width: 0;
+		margin-left: auto;
+		padding-left: 4px;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.k-task-text.grabbable {

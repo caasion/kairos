@@ -6,13 +6,21 @@
 	// the day's blocks and persists through the index. That keeps all task
 	// read/write logic in one place and this component purely presentational.
 	//
-	// On a domain row, `tasks` are the domain's own tasks and render first with no
-	// header; `groups` are the rolled-up projects' tasks (#11), each under a small
-	// project header naming it. Ctrl/Cmd+click a header to open the project note.
+	// Two layouts:
+	//   • Grouped by block (`blockGroups`, the "Group by block" setting): tasks sit
+	//     under their block's header, in time order with Unscheduled last. A
+	//     checkable block's own task is its header. The header does what the
+	//     per-task badge did: Ctrl/Cmd+click opens the block in the Day view, and
+	//     a task dropped on it nests there. Nothing renders under a task
+	//     (decision 72).
+	//   • Flat: on a domain row, `tasks` are the domain's own tasks and render
+	//     first with no header; `groups` are the rolled-up projects' tasks (#11),
+	//     each under a small project header naming it. Ctrl/Cmd+click a header to
+	//     open the project note. Scheduled tasks carry the block badge.
 
-	import type { Association, ResolvedTask, Task, TaskStatus } from "../../types";
+	import type { Association, Block, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
-	import type { CellGroup } from "../../gridModel";
+	import { isUnscheduledBlock, type BlockGroup, type CellGroup } from "../../gridModel";
 	import Task_ from "../task/Task.svelte";
 
 	interface Props {
@@ -56,6 +64,12 @@
 		dragBlockLine?: number;
 		// True only when THIS cell is the live drop target (not just any drag).
 		isDropTarget?: boolean;
+		// Grouped by block: the cell's groups (replaces `tasks` and `groups`), the
+		// chip naming a rolled-up task's project, and the block a live drag would
+		// drop into (its header lights up).
+		blockGroups?: BlockGroup[];
+		chipFor?: (task: ResolvedTask) => string | undefined;
+		dropBlockLine?: number;
 	}
 
 	let {
@@ -79,7 +93,42 @@
 		dragTaskLine,
 		dragBlockLine,
 		isDropTarget = false,
+		blockGroups,
+		chipFor,
+		dropBlockLine,
 	}: Props = $props();
+
+	const grouped = $derived(blockGroups !== undefined);
+
+	// Each block group's offset into the cell's flat task order (its own task
+	// first, then its nested ones), so `data-task-index` runs across the cell.
+	const blockOffsets = $derived.by(() => {
+		let n = 0;
+		return (blockGroups ?? []).map((g) => {
+			const at = n;
+			n += (g.head ? 1 : 0) + g.tasks.length;
+			return at;
+		});
+	});
+
+	function headerLabel(block: Block): string {
+		return block.time ? `${fmtTime(block.time.start)} ${block.title}` : block.title;
+	}
+
+	// The date and a representative task of a group, for the drop hit-test and
+	// the Day view reveal (every task in a group shares its block and day).
+	function anyTask(group: BlockGroup): ResolvedTask | undefined {
+		return group.head ?? group.tasks[0];
+	}
+
+	function onBlockHeaderClick(e: MouseEvent, group: BlockGroup) {
+		if (!(e.ctrlKey || e.metaKey) || !group.block.time) return;
+		const task = anyTask(group);
+		if (!task) return;
+		e.preventDefault();
+		e.stopPropagation();
+		onReveal(task);
+	}
 
 	// A scheduled task shows a badge = its block's time + title. "Scheduled" here
 	// means nested in a *timed* block (a task in Unscheduled is not). You schedule
@@ -144,7 +193,7 @@
 		     dim/hatch reads the column as past context, not a place to add work. -->
 		<div class="grid-cell-inactive-badge" title="Not active on this day"></div>
 	{/if}
-	{#snippet taskItem(task: ResolvedTask, i: number)}
+	{#snippet taskItem(task: ResolvedTask, i: number, lead?: string)}
 		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
@@ -169,7 +218,9 @@
 				onMoveToBacklog={task.colocated
 					? undefined
 					: () => onMoveToBacklog(task)}
-				meta={task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
+				meta={grouped ? undefined : task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
+				{lead}
+				trailing={grouped ? chipFor?.(task) : undefined}
 				onGrab={task.colocated
 					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined
 					: onTaskGrab ? (e) => grabOf(task, e) : undefined}
@@ -215,11 +266,47 @@
 		</div>
 	{/snippet}
 
-	{#each tasks as task, i (task.source.path + ":" + task.source.line)}
+	{#if blockGroups}
+		{#each blockGroups as group, g (group.key)}
+			{@const date = anyTask(group)?.date}
+			{@const at = blockOffsets[g] ?? 0}
+			{#if group.head}
+				<!-- A checkable block heads its own group: its task row, with the
+				     start time before the title. It's also the block's drop target. -->
+				<div
+					class="grid-cell-block-head"
+					class:drop-target={dropBlockLine === group.block.source.line}
+					data-grid-block-line={group.block.source.line}
+					data-grid-block-date={date}
+				>
+					{@render taskItem(group.head, at, group.block.time ? fmtTime(group.block.time.start) : undefined)}
+				</div>
+			{:else}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="grid-cell-group-header grid-cell-block-header"
+					class:unscheduled={isUnscheduledBlock(group.block)}
+					class:drop-target={dropBlockLine === group.block.source.line}
+					data-grid-block-line={group.block.source.line}
+					data-grid-block-date={date}
+					title={group.block.time ? "Ctrl+click to open in Day view" : undefined}
+					onclick={(e) => onBlockHeaderClick(e, group)}
+				>
+					{headerLabel(group.block)}
+				</div>
+			{/if}
+			{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
+				{@render taskItem(task, at + (group.head ? 1 : 0) + j)}
+			{/each}
+		{/each}
+	{/if}
+
+	{#each grouped ? [] : tasks as task, i (task.source.path + ":" + task.source.line)}
 		{@render taskItem(task, i)}
 	{/each}
 
-	{#each groups as group, g (group.name)}
+	{#each grouped ? [] : groups as group, g (group.name)}
 		<!-- A rolled-up project's header: names the project once for its group,
 		     since Grid tasks carry no association line. Shown even for a lone
 		     group, so it never reads as the domain's own tasks. -->
@@ -307,6 +394,34 @@
 	}
 	.grid-cell-group-header:hover {
 		color: var(--text-normal);
+	}
+
+	/* ── Block groups ── */
+	/* A block header starts a group; a little air above every one but the first.
+	   Tabular digits keep the times lined up down a column. */
+	.grid-cell-block-header {
+		/* Start the header where task text starts (the row's 4px padding plus the
+		   checkbox and its gap), so its time lines up with a checkable block's
+		   time and with the task text under it. */
+		padding-left: calc(4px + var(--kairos-meta-indent));
+		/* The same type as a checkable block's time and the task text. */
+		font-size: 12px;
+		line-height: 1.4;
+		font-variant-numeric: tabular-nums;
+	}
+	.grid-cell-block-header:not(:first-child),
+	.grid-cell-block-head:not(:first-child) {
+		margin-top: 4px;
+	}
+	.grid-cell-block-header.unscheduled {
+		font-style: italic;
+	}
+	/* A live task drag would drop into this block. */
+	.grid-cell-block-header.drop-target,
+	.grid-cell-block-head.drop-target {
+		color: var(--text-normal);
+		box-shadow: inset 0 0 0 1.5px var(--interactive-accent);
+		border-radius: var(--radius-s);
 	}
 
 	/* Dim the row whose task is being dragged. */
