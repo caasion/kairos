@@ -57,9 +57,9 @@ describe("missingRoutines", () => {
 		]);
 	});
 
-	it("still lists a block routine moved to another time", () => {
+	it("doesn't list a block routine moved to another time", () => {
 		const day = blocksOf("- 09:00 - 09:30 Morning Routine [D:Health]");
-		expect(names(missingRoutines(day, routines, MON))).toContain("Morning Routine");
+		expect(names(missingRoutines(day, routines, MON))).not.toContain("Morning Routine");
 	});
 
 	it("is empty once every routine has been applied", () => {

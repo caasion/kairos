@@ -4,8 +4,12 @@
 // only ever adds: lines it wrote earlier are ordinary user content by now, so
 // nothing is removed or rewritten, and running it twice adds nothing the second
 // time. Matching is by exact text and association, never an ID (decision 19):
-//   • a block routine is skipped when the day has a block with the same title
-//     and the same time;
+//   • a block routine is skipped when the day has a block with the same title,
+//     at any time (decision 61): moving a routine block to another time on a
+//     day doesn't make it missing. Repeats count — two "Deep work" routines
+//     need two "Deep work" blocks. When there are fewer, a block at a
+//     routine's own time accounts for that routine first, and the rest pair
+//     up in order, so the routines left over are the missing ones;
 //   • a task routine is skipped when the day already has a task with the same
 //     text and a compatible association (equal, or either side untagged),
 //     whatever its status — an open copy carried in from yesterday, or one
@@ -38,9 +42,10 @@ export interface ApplyResult {
 	added: number;
 }
 
-/** Whether `routine`'s block or task is already in the day (by the rules above). */
-export function isPresent(blocks: Block[], routine: Routine): boolean {
-	return routine.kind === "block" ? hasBlock(blocks, routine) : hasTask(blocks, routine);
+/** The routines in `due` that the day doesn't contain yet (by the rules above), in order. */
+export function missingFrom(blocks: Block[], due: Routine[]): Routine[] {
+	const blocksMissing = missingBlocks(blocks, due);
+	return due.filter((r) => (r.kind === "block" ? blocksMissing.has(r) : !hasTask(blocks, r)));
 }
 
 /** The association a routine files under: a task's own or inherited, a block's. */
@@ -60,8 +65,7 @@ export function applyRoutines(
 	let added = 0;
 
 	// Blocks first, so a task homed in a block made today finds it.
-	for (const r of due) {
-		if (r.kind !== "block" || hasBlock(out, r)) continue;
+	for (const r of missingBlocks(out, due)) {
 		out = [...out, makeRoutineBlock(r, path)];
 		added++;
 	}
@@ -82,13 +86,29 @@ function sameAssoc(a: Association | undefined, b: Association | undefined): bool
 	return a.kind === b.kind && a.id === b.id;
 }
 
-function hasBlock(blocks: Block[], r: BlockRoutine): boolean {
-	return blocks.some(
-		(b) =>
-			b.title === r.title &&
-			b.time?.start === r.time.start &&
-			b.time?.end === r.time.end,
-	);
+/**
+ * The block routines in `due` that the day's blocks don't account for, in
+ * order. Matched by title, counting repeats; a block at a routine's own time
+ * claims that routine first, then the rest pair up in order.
+ */
+function missingBlocks(blocks: Block[], due: Routine[]): Set<BlockRoutine> {
+	const wanted = due.filter((r): r is BlockRoutine => r.kind === "block");
+	const unclaimed = new Set(blocks);
+	const missing = new Set<BlockRoutine>();
+	const pending: BlockRoutine[] = [];
+	for (const r of wanted) {
+		const exact = [...unclaimed].find(
+			(b) => b.title === r.title && b.time?.start === r.time.start && b.time?.end === r.time.end,
+		);
+		if (exact) unclaimed.delete(exact);
+		else pending.push(r);
+	}
+	for (const r of pending) {
+		const any = [...unclaimed].find((b) => b.title === r.title);
+		if (any) unclaimed.delete(any);
+		else missing.add(r);
+	}
+	return missing;
 }
 
 /** The association a routine task means: its own, else its home line's. */

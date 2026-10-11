@@ -126,7 +126,7 @@ describe("applyRoutines", () => {
 		expect(inbox(blocks)!.tasks.filter((t) => t.text === "Water the plants")).toHaveLength(2);
 	});
 
-	it("skips a block with the same title and time, but not a moved one", () => {
+	it("skips a block with the same title at any time, so a moved one isn't added again", () => {
 		const morning = (start: number): Block => ({
 			source: { path: PATH, line: 2 },
 			title: "Morning Routine",
@@ -137,7 +137,41 @@ describe("applyRoutines", () => {
 		const same = applyRoutines([morning(450)], routines, MON, PATH).blocks;
 		expect(same.filter((b) => b.title === "Morning Routine")).toHaveLength(1);
 		const moved = applyRoutines([morning(480)], routines, MON, PATH).blocks;
-		expect(moved.filter((b) => b.title === "Morning Routine")).toHaveLength(2);
+		expect(moved.filter((b) => b.title === "Morning Routine")).toHaveLength(1);
+	});
+
+	describe("repeated block titles", () => {
+		const twice = parseRoutines(
+			"## Daily\n- 09:00 - 11:00 Deep work\n- 14:00 - 16:00 Deep work\n",
+		).routines;
+		const deep = (start: number, line: number): Block => ({
+			source: { path: PATH, line },
+			title: "Deep work",
+			scheduled: true,
+			time: { start, end: start + 120 },
+			tasks: [],
+		});
+		const times = (blocks: Block[]) =>
+			blocks.filter((b) => b.title === "Deep work").map((b) => b.time!.start).sort((a, b) => a - b);
+
+		it("needs one block per routine", () => {
+			expect(times(applyRoutines([], twice, MON, PATH).blocks)).toEqual([540, 840]);
+		});
+
+		it("lets a block at a routine's own time account for that routine", () => {
+			// 14:00 is already there, so only 09:00 is missing.
+			expect(times(applyRoutines([deep(840, 1)], twice, MON, PATH).blocks)).toEqual([540, 840]);
+		});
+
+		it("pairs a moved block with the first routine left, and adds the rest", () => {
+			// One Deep work at 10:00 stands in for 09:00; 14:00 is still missing.
+			expect(times(applyRoutines([deep(600, 1)], twice, MON, PATH).blocks)).toEqual([600, 840]);
+		});
+
+		it("adds nothing when the day already has as many, wherever they sit", () => {
+			const day = [deep(600, 1), deep(1020, 2)];
+			expect(applyRoutines(day, twice, MON, PATH).added).toBe(0);
+		});
 	});
 
 	it("makes a checkable block routine with an open checkbox", () => {

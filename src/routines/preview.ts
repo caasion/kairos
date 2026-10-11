@@ -19,7 +19,7 @@
 // current window, is bucketed into the Unassigned row so it is never invisible.
 
 import type { Association, Block, ISODate } from "../types";
-import { isPresent, routineAssoc, routinesFor, routinesHash } from "./apply";
+import { missingFrom, routineAssoc, routinesFor, routinesHash } from "./apply";
 import type { Routine } from "./routinesFile";
 
 /** Routines due on `date` that the day doesn't contain yet, in file order. */
@@ -28,7 +28,7 @@ export function missingRoutines(
 	routines: Routine[],
 	date: ISODate,
 ): Routine[] {
-	return routinesFor(routines, date).filter((r) => !isPresent(blocks, r));
+	return missingFrom(blocks, routinesFor(routines, date));
 }
 
 export interface PreviewDay {
