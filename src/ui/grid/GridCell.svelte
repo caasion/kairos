@@ -10,9 +10,9 @@
 	//   • Grouped by block (`blockGroups`, the "Group by block" setting): tasks sit
 	//     under their block's header, in time order with Unscheduled last. A
 	//     checkable block's own task is its header. The header does what the
-	//     per-task badge did: Ctrl/Cmd+click opens the block in the Day view, and
-	//     a task dropped on it nests there. Nothing renders under a task
-	//     (decision 72).
+	//     per-task badge did: Ctrl/Cmd+click opens the block in the Day view,
+	//     pointing at it lights the block in other views, and a task dropped on it
+	//     nests there. Nothing renders under a task (decision 72).
 	//   • Flat: on a domain row, `tasks` are the domain's own tasks and render
 	//     first with no header; `groups` are the rolled-up projects' tasks (#11),
 	//     each under a small project header naming it. Ctrl/Cmd+click a header to
@@ -21,6 +21,7 @@
 	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
 	import { isUnscheduledBlock, type BlockGroup, type CellGroup } from "../../gridModel";
+	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
 
 	interface Props {
@@ -64,6 +65,10 @@
 		dragBlockLine?: number;
 		// True only when THIS cell is the live drop target (not just any drag).
 		isDropTarget?: boolean;
+		// Hover link (viewLinks.ts): how a task is lit (its block, or itself), and
+		// the report of the pointer entering/leaving one here.
+		highlightOf?: (task: ResolvedTask) => Highlight;
+		onHover?: (task: ResolvedTask, on: boolean) => void;
 		// Grouped by block: the cell's groups (replaces `tasks` and `groups`) and
 		// the chip naming a rolled-up task's project. Each group is a drop target
 		// (see taskDrag's `hitTestGridGroup`): `dropGroup` is the one a live drag
@@ -76,6 +81,10 @@
 		unscheduledSlot?: boolean;
 		// Grouped by block: add a new task to a group's block (its "+").
 		onCreateInBlock?: (block: Block) => void;
+		// Hover link for the block headers: whether a block is lit (pointed at in
+		// some row or view), and a header coming under / leaving the pointer.
+		isBlockLinked?: (block: Block) => boolean;
+		onBlockHover?: (block: Block, on: boolean) => void;
 	}
 
 	let {
@@ -99,12 +108,16 @@
 		dragTaskLine,
 		dragBlockLine,
 		isDropTarget = false,
+		highlightOf,
+		onHover,
 		blockGroups,
 		chipFor,
 		date,
 		dropGroup,
 		unscheduledSlot = false,
 		onCreateInBlock,
+		isBlockLinked,
+		onBlockHover,
 	}: Props = $props();
 
 	const canCreate = $derived(allowCreate && !inactive);
@@ -133,6 +146,12 @@
 		});
 	});
 
+	// A block's highlight color: its domain color, else the row's tint (and the
+	// theme accent when neither has one).
+	function blockColor(block: Block): string | undefined {
+		return (block.assoc ? resolve(block.assoc).color : undefined) ?? color;
+	}
+
 	function headerLabel(block: Block): string {
 		return block.time ? `${fmtTime(block.time.start)} ${block.title}` : block.title;
 	}
@@ -141,6 +160,21 @@
 	// the Day view reveal (every task in a group shares its block and day).
 	function anyTask(group: BlockGroup): ResolvedTask | undefined {
 		return group.head ?? group.tasks[0];
+	}
+
+	// A header removed while the pointer is on it (its last task dropped
+	// elsewhere) gets no leave event; report the leave on removal instead, or the
+	// block would stay lit in every view. Harmless when it isn't the hover.
+	function leaveOnRemove(_node: HTMLElement, leave: () => void) {
+		let current = leave;
+		return {
+			update(next: () => void) {
+				current = next;
+			},
+			destroy() {
+				current();
+			},
+		};
 	}
 
 	function onBlockHeaderClick(e: MouseEvent, group: BlockGroup) {
@@ -248,6 +282,8 @@
 				onGrab={task.colocated
 					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined
 					: onTaskGrab ? (e) => grabOf(task, e) : undefined}
+				highlight={highlightOf?.(task) ?? null}
+				onHoverChange={onHover ? (on: boolean) => onHover(task, on) : undefined}
 			/>
 
 			<!-- The block-nesting badge renders inside the Task (via its `meta`
@@ -321,8 +357,13 @@
 					<div
 						class="grid-cell-group-header grid-cell-block-header"
 						class:unscheduled={isUnscheduledBlock(group.block)}
+						class:linked={isBlockLinked?.(group.block) ?? false}
+						style:--kairos-link-color={blockColor(group.block)}
 						title={group.block.time ? "Ctrl+click to open in Day view" : undefined}
 						onclick={(e) => onBlockHeaderClick(e, group)}
+						onpointerenter={() => onBlockHover?.(group.block, true)}
+						onpointerleave={() => onBlockHover?.(group.block, false)}
+						use:leaveOnRemove={() => onBlockHover?.(group.block, false)}
 					>
 						{headerLabel(group.block)}
 					</div>
@@ -468,6 +509,17 @@
 	}
 	.grid-cell-block-header.unscheduled {
 		font-style: italic;
+	}
+	/* Hover link: this block, or a task in it, is under the pointer in some row
+	   or view (this header included). Tinted like the tasks under it, so the
+	   group lights up as one. */
+	.grid-cell-block-header.linked {
+		color: var(--text-normal);
+		background: color-mix(
+			in srgb,
+			var(--kairos-link-color, var(--interactive-accent)) 12%,
+			transparent
+		);
 	}
 	/* One block's header and tasks: a column, and one drop target. */
 	.grid-cell-block-group {

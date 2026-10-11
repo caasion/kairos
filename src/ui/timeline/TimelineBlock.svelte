@@ -8,6 +8,13 @@
     TimeRange,
   } from "../../types";
   import { isCheckable } from "../../types";
+  import {
+    blockLit,
+    hoverBlockTarget,
+    hoverTaskTarget,
+    taskHighlight,
+    type HoverTarget,
+  } from "../../viewLinks";
   import type { Resolver } from "../../index";
   import { peek } from "../actions/peek";
   import { Menu } from "obsidian";
@@ -76,6 +83,12 @@
 		onAddTask: (block: Block) => void;
 		// Open the association picker for this block, anchored at `rect`.
 		onEditAssoc: (block: Block, rect: DOMRect) => void;
+		// Hover link (viewLinks.ts): the item under the pointer in any view, so
+		// this block or one of its chips can glow when it's that item. The two
+		// callbacks report this block or a chip coming under / leaving the pointer.
+		hover?: HoverTarget | null;
+		onHoverEnter?: (target: HoverTarget) => void;
+		onHoverLeave?: (target: HoverTarget) => void;
   }
 
   let {
@@ -107,7 +120,30 @@
 		onToggleCheckable,
 		onAddTask,
 		onEditAssoc,
+		hover = null,
+		onHoverEnter,
+		onHoverLeave,
   }: Props = $props();
+
+  // ── Hover link ──
+  // One rule for every view (viewLinks.ts): pointing at this block or at any
+  // task in it lights the block; the task pointed at is marked on its own chip.
+  const blockTarget = $derived(hoverBlockTarget(block));
+  const blockLinked = $derived(blockLit(hover, block));
+  // Leaving a chip returns the hover to the block it sits in; leaving the block
+  // (which fires after its chip's leave) then clears it.
+  function chipHover(task: Task, on: boolean) {
+    if (removed) return;
+    onHoverEnter?.(on ? hoverTaskTarget(task, block) : blockTarget);
+  }
+  // A block removed under the pointer gets no leave event, so it clears its own
+  // hover on teardown (clearHover only acts if the hover still names it). Its
+  // chips may tear down after it; `removed` stops them handing the hover back.
+  let removed = false;
+  $effect(() => () => {
+    removed = true;
+    onHoverLeave?.(blockTarget);
+  });
 
   // The drop indicator's index within this block, when the live task drag is
   // hovering here. Undefined when the drag targets another block (or none).
@@ -347,11 +383,15 @@
   class="tl-block"
   class:selected
   class:dragging
+  class:linked={blockLinked}
+  style:--kairos-link-color={accentColor}
   data-block-line={block.source.line}
   bind:this={blockEl}
   style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}
   oncontextmenu={openContextMenu}
+  onpointerenter={() => onHoverEnter?.(blockTarget)}
+  onpointerleave={() => onHoverLeave?.(blockTarget)}
   use:actionZone={{ layout: "stack" }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
@@ -555,6 +595,8 @@
                 onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
                 onSetText={(t, text) => onSetTaskText(block, t, text)}
                 onDelete={(t) => onDeleteTask(block, t)}
+                highlight={taskHighlight(hover, task, block) === "task" ? "task" : null}
+                onHoverChange={(on: boolean) => chipHover(task, on)}
               />
             </div>
           {/each}
@@ -633,6 +675,18 @@
 
   .tl-content.checked {
     opacity: 0.6;
+  }
+
+  /* Hover link: this block, or a task in it, is under the pointer in some view
+     (this one included). Outlined and tinted in its domain color (the theme
+     accent without one); the task itself is marked on its chip. */
+  .tl-block.linked .tl-content {
+    box-shadow: 0 0 0 2px var(--kairos-link-color, var(--interactive-accent));
+    background: color-mix(
+      in srgb,
+      var(--kairos-link-color, var(--interactive-accent)) 12%,
+      var(--background-secondary)
+    );
   }
 
   /* Whole-block drop highlight: dropping anywhere on it appends the task. */

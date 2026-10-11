@@ -14,20 +14,18 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import {
-		copyTaskUnderBlock,
-		makeBlock,
-		nestTaskUnderBlock,
-	} from "../../writer";
+	import { makeBlock, nestTaskUnderBlock } from "../../writer";
 	import { moveTaskToBacklog } from "../../backlogActions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
 	import {
-		hitTestDropSlot,
-		type DropSlot,
+		hitTestTimeline,
 		type TaskDragState,
 		type UnscheduledItem,
 	} from "./taskDrag";
+	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
+	import { dropTaskOnTimeline } from "./dropTask";
+	import type { DragPreview, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		dateFromISO,
 		ensureNoteForDate,
@@ -99,6 +97,8 @@
 		// Called whenever the unscheduled task list changes, so the parent can
 		// render it outside this component (used by WeekView).
 		onUnscheduledChange?: (date: ISODate, items: UnscheduledItem[]) => void;
+		// The Grid ↔ timeline bridge: shared drag preview and hover (viewLinks.ts).
+		links: ViewLinks;
 	}
 
 	let {
@@ -115,7 +115,13 @@
 		askAssocOnCreate = false,
 		showUnscheduled = true,
 		onUnscheduledChange,
+		links,
 	}: Props = $props();
+
+	// Mirrors of the cross-view stores (subscribed on mount, like the resolver):
+	// the live task drag from any view, and the item under the pointer.
+	let dragPreview = $state<DragPreview | null>(null);
+	let hovered = $state<HoverTarget | null>(null);
 
 	function onNavigate(assoc: Association) {
 		navigateToAssociation(app, resolve(assoc));
@@ -312,20 +318,6 @@
 		writeToDisk();
 	}
 
-	// Ctrl-drag duplicate: insert a copy of the task under `destination`, leaving
-	// the source in place. Whole-array transform, like handleNestTask.
-	function handleCopyTask(
-		owner: Block,
-		task: Task,
-		destination: Block,
-		index?: number,
-	) {
-		const next = copyTaskUnderBlock(blocks, owner, task, destination, nextDraftLine(), index);
-		if (next === blocks) return;
-		blocks = next;
-		writeToDisk();
-	}
-
 	// The week-level block picker calls this after a pick (it holds the picker,
 	// like applyBlockAssoc). Appends the task to the chosen block.
 	export function applyNest(owner: Block, task: Task, destination: Block) {
@@ -420,11 +412,54 @@
 	let draft = $state<TimeRange | null>(null);
 	let canvasEl = $state<HTMLDivElement>();
 
-	// Task drag-to-nest, scoped to this column's own blocks (a week-wide task move
-	// across days is a separate, larger gesture; here a task nests among the same
-	// day's blocks). See taskDrag.ts for the hit-test contract.
+	// Task drag. This column owns a drag that starts here, but the drop can land
+	// on any timeline: this day, another Week column, or the Day view. See
+	// taskDrag.ts for the hit-test contract and taskDrop.ts for what a drop writes.
 	let taskDrag = $state<TaskDragState | null>(null);
-	let taskDrop = $state<DropSlot | null>(null);
+	let taskDrop = $state<TimelineDrop | null>(null);
+
+	// What this column draws for the live task drag, whichever view started it:
+	// the drop line in a block, the dimmed origin row, the new-block preview.
+	const dropSlot = $derived.by(() => {
+		const drop = dragPreview?.drop;
+		return drop?.kind === "block" && drop.date === date
+			? { blockLine: drop.blockLine, index: drop.index }
+			: undefined;
+	});
+	const dragTaskLine = $derived(
+		dragPreview?.from.date === date ? dragPreview.from.line : undefined,
+	);
+	const timePreview = $derived.by(() => {
+		const p = dragPreview;
+		const drop = p?.drop;
+		if (!p || drop?.kind !== "time" || drop.date !== date) return null;
+		const top = minutesToOffset(drop.time.start, geo);
+		return {
+			top,
+			height: minutesToOffset(drop.time.end, geo) - top,
+			label: p.label,
+			timebox: p.timebox,
+			duplicate: p.duplicate,
+		};
+	});
+
+	// Hover link: report what's under the pointer; glow what another view points at.
+	function hoverEnter(target: HoverTarget) {
+		links.setHover(target);
+	}
+	function hoverLeave(target: HoverTarget) {
+		links.clearHover(target);
+	}
+	function taskHover(task: Task, on: boolean) {
+		// Only untimed (Unscheduled) rows report here, so the task lights alone.
+		const target: HoverTarget = { kind: "task", path: task.source.path, line: task.source.line };
+		if (on) hoverEnter(target);
+		else hoverLeave(target);
+	}
+	function isLinked(task: Task): boolean {
+		const h = hovered;
+		return h?.kind === "task" && h.path === task.source.path && h.line === task.source.line;
+	}
 
 	const displayBlocks = $derived.by(() => {
 		if (preview.size === 0) return blocks;
@@ -535,13 +570,34 @@
 			ghostY: event.clientY,
 			label: task.text,
 			duplicate: event.ctrlKey || event.metaKey,
+			timebox: event.altKey,
 		};
-		taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+		taskDrop = hitTestTimeline(event);
+		publishDrag();
 	}
 
+	function publishDrag() {
+		const drag = taskDrag;
+		links.setDrag(
+			drag
+				? {
+						from: { date, line: drag.task.source.line },
+						drop: taskDrop,
+						label: newBlockLabel(drag.task, drag.owner, drag),
+						duplicate: drag.duplicate,
+						timebox: drag.timebox,
+					}
+				: null,
+		);
+	}
+
+	// Only clears the shared preview when this column owned the drag, so the
+	// Week view's Escape (sent to every column) can't cancel another view's.
 	export function cancelTaskDrag() {
+		if (!taskDrag) return;
 		taskDrag = null;
 		taskDrop = null;
+		links.setDrag(null);
 	}
 
 	// Parent forwards window pointer moves so a drag keeps tracking across
@@ -555,8 +611,10 @@
 				ghostX: event.clientX,
 				ghostY: event.clientY,
 				duplicate: event.ctrlKey || event.metaKey,
+				timebox: event.altKey,
 			};
-			taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+			taskDrop = hitTestTimeline(event);
+			publishDrag();
 			return true;
 		}
 		if (!gesture) return false;
@@ -584,20 +642,11 @@
 		if (taskDrag) {
 			const drag = taskDrag;
 			const drop = taskDrop;
-			taskDrag = null;
-			taskDrop = null;
+			cancelTaskDrag();
+			// Same day, another column, or the Day view: the planner decides what
+			// the drop writes, and the index publishes it back to every column.
 			if (drop) {
-				const destination = blocks.find(
-					(b) => b.source.line === drop.blockLine,
-				);
-				if (destination) {
-					// Ctrl/Cmd-drag → nest a copy; a plain drag moves the task.
-					if (drag.duplicate) {
-						handleCopyTask(drag.owner, drag.task, destination, drop.index);
-					} else {
-						handleNestTask(drag.owner, drag.task, destination, drop.index);
-					}
-				}
+				void dropTaskOnTimeline(index, date, drag.owner, drag.task, drop, drag);
 			}
 			return null;
 		}
@@ -794,11 +843,20 @@
 	onMount(() => {
 		lastDate = date;
 		retarget(date);
+		const unsubscribeDrag = links.drag$.subscribe((p) => {
+			dragPreview = p;
+		});
+		const unsubscribeHover = links.hover$.subscribe((h) => {
+			hovered = h;
+		});
 		const tick = window.setInterval(() => {
 			nowMinutes = currentMinutes();
 		}, 60_000);
 		return () => {
 			unsubscribeDay?.();
+			unsubscribeDrag();
+			unsubscribeHover();
+			cancelTaskDrag();
 			window.clearInterval(tick);
 		};
 	});
@@ -839,6 +897,8 @@
 						onSetText={(_t, text) => handleSetTaskText(block, task, text)}
 						onDelete={(_t) => handleDeleteTask(block, task)}
 						onGrab={(e) => onTaskGrab(block, task, e)}
+						highlight={isLinked(task) ? "task" : null}
+						onHoverChange={(on: boolean) => taskHover(task, on)}
 					/>
 				{/each}
 			{/each}
@@ -851,6 +911,11 @@
 	<div
 		class="col-canvas"
 		class:creating={gesture?.mode === "create"}
+		data-tl-date={date}
+		data-tl-start-hour={geo.startHour}
+		data-tl-end-hour={geo.endHour}
+		data-tl-hour-height={geo.hourHeight}
+		data-tl-top-pad={geo.topPad}
 		bind:this={canvasEl}
 		onpointerdown={onCanvasPointerDown}
 	>
@@ -886,9 +951,12 @@
 				onMoveTaskToBacklog={(owner, task) =>
 					void handleMoveTaskToBacklog(owner, task)}
 				onTaskGrab={onTaskGrab}
-				dragTaskLine={taskDrag?.task.source.line}
-				dropSlot={taskDrop ?? undefined}
-				dragActive={taskDrag !== null}
+				{dragTaskLine}
+				{dropSlot}
+				dragActive={dragPreview !== null}
+				hover={hovered}
+				onHoverEnter={hoverEnter}
+				onHoverLeave={hoverLeave}
 			/>
 		{/each}
 
@@ -897,6 +965,18 @@
 				class="col-draft"
 				style={`top: ${draftRect.top}px; height: ${draftRect.height}px;`}
 			></div>
+		{/if}
+
+		{#if timePreview}
+			<!-- Where a task released here would land: a new block. -->
+			<div
+				class="kairos-drop-preview"
+				class:timebox={timePreview.timebox}
+				class:duplicate={timePreview.duplicate}
+				style={`top: ${timePreview.top}px; height: ${timePreview.height}px;`}
+			>
+				<span class="kairos-drop-preview-label">{timePreview.label}</span>
+			</div>
 		{/if}
 	</div>
 </div>

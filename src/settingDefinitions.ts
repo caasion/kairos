@@ -60,6 +60,19 @@ export interface KairosSettings {
 	askAssocOnBacklogCreate: boolean;
 
 	/**
+	 * The Day view follows the Grid: grabbing, adding or editing a task in the
+	 * Grid shows that day in the Day view. Moving the Day view by hand still
+	 * works; the next Grid action moves it again. (Selecting a Grid column header
+	 * shows its day whether or not this is on.)
+	 */
+	followGrid: boolean;
+	/**
+	 * Pointing at a block or task lights it up in every open view: the block as
+	 * a whole, and the task itself on top (viewLinks.ts). On by default.
+	 */
+	highlightAcrossViews: boolean;
+
+	/**
 	 * Group each Grid cell's tasks under the block they sit in, in start-time
 	 * order with Unscheduled last (decision 70). On by default: it's what ties
 	 * the Grid to the timelines. A setting because some workflows want the flat
@@ -85,6 +98,8 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	scheduleHeading: '## Schedule',
 	askAssocOnBlockCreate: false,
 	askAssocOnBacklogCreate: false,
+	followGrid: true,
+	highlightAcrossViews: true,
 	gridGroupByBlock: true,
 	gridShowRollupProjects: false,
 };
@@ -188,6 +203,34 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					type: 'toggle',
 					key: 'gridShowRollupProjects',
 					defaultValue: DEFAULT_SETTINGS.gridShowRollupProjects,
+				},
+			},
+		],
+	},
+	{
+		type: 'group',
+		heading: 'Grid and timelines',
+		items: [
+			{
+				name: 'Highlight across views',
+				desc:
+					'Pointing at a block or task lights it up in the grid, day and ' +
+					'week views: the whole block, and the task itself.',
+				control: {
+					type: 'toggle',
+					key: 'highlightAcrossViews',
+					defaultValue: DEFAULT_SETTINGS.highlightAcrossViews,
+				},
+			},
+			{
+				name: 'Follow the grid',
+				desc:
+					'Show the day you are working on in the grid. Grabbing, adding ' +
+					'or editing a task there moves the day view to that day.',
+				control: {
+					type: 'toggle',
+					key: 'followGrid',
+					defaultValue: DEFAULT_SETTINGS.followGrid,
 				},
 			},
 		],
