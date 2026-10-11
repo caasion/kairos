@@ -82,6 +82,7 @@
 		previewRoutines,
 		routineKey,
 	} from "../../routines/preview";
+	import { activeRoutines, ownerActive } from "../../routines/owners";
 	import RoutineNudge from "../routines/RoutineNudge.svelte";
 	import { surfacedOn } from "../../backlogModel";
 	import {
@@ -271,6 +272,8 @@
 	const previewsByDate = $derived.by(() => {
 		const today = todayISO();
 		const out = new Map<ISODate, Routine[]>();
+		// A routine whose project or domain isn't active that day is paused.
+		const active = snapshot ? ownerActive(snapshot.projects, snapshot.domains) : undefined;
 		for (const date of dates) {
 			const recorded = marks(date);
 			out.set(
@@ -279,7 +282,7 @@
 					date,
 					today,
 					...(recorded !== undefined ? { recorded } : {}),
-					routines: routines.routines,
+					routines: activeRoutines(routines.routines, date, active),
 					blocks: dayOf(date)?.blocks ?? [],
 				}),
 			);

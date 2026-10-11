@@ -29,6 +29,7 @@ import { ensureNoteForDate, shiftISO, todayISO } from "../dayNote";
 import { parseSchedule } from "../parser";
 import { KairosView } from "../KairosView";
 import { ROUTINES_KEY, applyRoutines, routinesFor, routinesStale } from "./apply";
+import { activeRoutines, ownerActive, type OwnerActive } from "./owners";
 import { parseRoutines, type ParsedRoutines, type Routine } from "./routinesFile";
 import { dayLabel as label, manualMessage, planDayPrep, type PrepMode, type PrepPlan } from "./plan";
 
@@ -155,7 +156,7 @@ export class DayPreparer {
 		const routines = (await this.loadRoutines()).routines;
 		return new Promise((resolve) => {
 			new DatePickModal(this.plugin.app, (date) => {
-				const due = routinesFor(routines, date).length;
+				const due = activeRoutines(routinesFor(routines, date), date, this.ownerActive()).length;
 				return due === 0 ? "No routines due" : `${due} routine${due === 1 ? "" : "s"} due`;
 			}, resolve).open();
 		});
@@ -200,6 +201,7 @@ export class DayPreparer {
 			carried: fm[CARRIED_KEY] !== undefined,
 			...(prev ? { previous: { date: prev.date, path: prev.path, blocks: prev.blocks } } : {}),
 			routines: parsed.routines,
+			active: this.ownerActive(),
 			autoApply: this.plugin.settings.autoApplyRoutines,
 		});
 
@@ -232,6 +234,12 @@ export class DayPreparer {
 		return plan;
 	}
 
+	/** Whether a routine's project or domain is active on a date, from the index. */
+	private ownerActive(): OwnerActive {
+		const { projects, domains } = this.plugin.indexAdapter.index.snapshot();
+		return ownerActive(projects, domains);
+	}
+
 	private async loadRoutines(): Promise<ParsedRoutines> {
 		const file = this.plugin.app.vault.getAbstractFileByPath(this.plugin.settings.routinesPath);
 		if (!(file instanceof TFile)) return { routines: [], problems: [] };
@@ -255,7 +263,8 @@ export class DayPreparer {
 		const fm = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
 		const recorded = readKey(fm?.[ROUTINES_KEY]);
 		if (recorded === undefined) return;
-		if (routinesStale(recorded, (await this.loadRoutines()).routines, date)) {
+		const routines = activeRoutines((await this.loadRoutines()).routines, date, this.ownerActive());
+		if (routinesStale(recorded, routines, date)) {
 			this.noticeStale(date);
 		}
 	}

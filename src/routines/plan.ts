@@ -19,10 +19,14 @@
 // Carry-over runs only in `auto` mode, only for today, and only once per note
 // (`kairos-carried` absent). It runs before routines, so a routine task that
 // carried in open from yesterday is found and not added a second time.
+//
+// Routines whose project or domain isn't active on the date are left out of
+// everything here, the hash included (decision 87, owners.ts).
 
 import type { Block, ISODate } from "../types";
 import { CARRIED_KEY, carryOver } from "../carry";
 import { ROUTINES_KEY, applyRoutines, routinesFor, routinesHash } from "./apply";
+import { activeRoutines, type OwnerActive } from "./owners";
 import type { ParsedRoutines, Routine } from "./routinesFile";
 
 export type PrepMode = "auto" | "manual";
@@ -40,6 +44,8 @@ export interface PrepInput {
 	/** The most recent earlier daily note, for carry-over. */
 	previous?: { date: ISODate; path: string; blocks: Block[] };
 	routines: Routine[];
+	/** Whether a routine's owner is active on a date; without it, every routine is. */
+	active?: OwnerActive;
 	/** The "Add routines to new daily notes" setting; only `auto` reads it. */
 	autoApply: boolean;
 }
@@ -63,19 +69,24 @@ export interface PrepPlan {
 	carried: number;
 	/** How many routine blocks/tasks were added. */
 	added: number;
-	/** How many routines occur on this date. */
+	/** How many routines occur on this date (active owners only). */
 	due: number;
+	/** How many more occur but are paused because their owner isn't active. */
+	paused: number;
 	/** Frontmatter keys to set (string) or delete (null). */
 	frontmatter: Record<string, string | null>;
 }
 
 export function planDayPrep(input: PrepInput): PrepPlan {
-	const { mode, date, today, path, recorded, routines } = input;
-	const due = routinesFor(routines, date).length;
+	const { mode, date, today, path, recorded } = input;
+	const scheduled = routinesFor(input.routines, date);
+	const routines = activeRoutines(scheduled, date, input.active);
+	const due = routines.length;
+	const paused = scheduled.length - due;
 	const frontmatter: Record<string, string | null> = {};
 
 	if (mode === "auto" && date < today) {
-		return { outcome: "past", blocks: input.blocks, carried: 0, added: 0, due, frontmatter };
+		return { outcome: "past", blocks: input.blocks, carried: 0, added: 0, due, paused, frontmatter };
 	}
 
 	// Carry-over first, so routines see what carried in.
@@ -93,7 +104,7 @@ export function planDayPrep(input: PrepInput): PrepPlan {
 	}
 
 	const hash = routinesHash(routines, date);
-	const base = { blocks, carried, due, frontmatter, ...(previous ? { previous } : {}) };
+	const base = { blocks, carried, due, paused, frontmatter, ...(previous ? { previous } : {}) };
 
 	if (mode === "auto" && !input.autoApply) {
 		return { ...base, outcome: "off", added: 0 };
@@ -146,6 +157,10 @@ export function manualMessage(
 				parsed.routines.length === 0
 					? `No routines found in ${routinesPath}.`
 					: `No routines are due on ${day}.`;
+	}
+	if (plan.paused > 0) {
+		const n = plan.paused;
+		message += ` ${n} routine${n === 1 ? " is" : "s are"} paused because ${n === 1 ? "its" : "their"} project or domain isn't active then.`;
 	}
 	const first = parsed.problems[0];
 	if (first) {
