@@ -82,6 +82,10 @@
 		onToggleCheckable: (block: Block) => void;
 		// Create a new child task inside this block.
 		onAddTask: (block: Block) => void;
+		// Notes (decision 96): add one at the end, or set note `index`'s text
+		// (blank deletes it).
+		onAddNote: (block: Block, text: string) => void;
+		onSetNoteText: (block: Block, index: number, text: string) => void;
 		// Open the association picker for this block, anchored at `rect`.
 		onEditAssoc: (block: Block, rect: DOMRect) => void;
 		// Hover link (viewLinks.ts): the item under the pointer in any view, so
@@ -120,6 +124,8 @@
 		onSetBlockStatus,
 		onToggleCheckable,
 		onAddTask,
+		onAddNote,
+		onSetNoteText,
 		onEditAssoc,
 		hover = null,
 		onHoverEnter,
@@ -183,6 +189,75 @@
   // The colocated task is represented by the block header itself, so it is not
   // repeated in the chip list.
   const chips = $derived(tasks.filter((t) => !t.colocated));
+  const notes = $derived(block.notes ?? []);
+
+  // ── Notes (decision 96) ──
+  // A note is edited in place like a task's text; clearing it deletes it. A
+  // new note starts as an empty row and is only written once it has text.
+  let editingNote = $state<number | null>(null);
+  let addingNote = $state(false);
+  let noteDraft = $state("");
+
+  function focusOnMount(node: HTMLInputElement) {
+    queueMicrotask(() => node.focus());
+  }
+
+  function beginNoteEdit(index: number) {
+    noteDraft = notes[index]?.text ?? "";
+    addingNote = false;
+    editingNote = index;
+  }
+
+  function beginNoteAdd() {
+    noteDraft = "";
+    editingNote = null;
+    addingNote = true;
+    // Grow the block so the new row is in view.
+    expand();
+  }
+
+  function commitNote() {
+    const text = noteDraft.trim();
+    if (addingNote) {
+      addingNote = false;
+      if (text) onAddNote(block, text);
+    } else if (editingNote !== null) {
+      const index = editingNote;
+      editingNote = null;
+      if (text !== notes[index]?.text) onSetNoteText(block, index, text);
+    }
+  }
+
+  function cancelNote() {
+    addingNote = false;
+    editingNote = null;
+  }
+
+  function onNoteKeydown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitNote();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelNote();
+    }
+  }
+
+  function openNoteMenu(event: MouseEvent, index: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item.setTitle("Edit note").setIcon("pencil").onClick(() => beginNoteEdit(index)),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle("Delete note")
+        .setIcon("trash")
+        .onClick(() => onSetNoteText(block, index, "")),
+    );
+    menu.showAtMouseEvent(event);
+  }
 
   // Horizontal lane geometry: equal-width columns within the block's cluster.
   // Blocks occupy a left band (BAND%) of the row, leaving a gutter on the right
@@ -348,20 +423,28 @@
     return () => ro.disconnect();
   });
 
-  // How many task rows the block has room for (none when compact).
+  // How many rows the block has room for (none when compact). Rows are its
+  // tasks, then its notes, then a note being added.
   const capacity = $derived(
     compact ? 0 : Math.max(0, Math.floor((taskAreaHeight + 0.5) / rowHeight)),
   );
+  const rowCount = $derived(chips.length + notes.length + (addingNote ? 1 : 0));
   // During a drag every block shows all its rows: they are the drop slots.
-  const overflowing = $derived(!dragActive && chips.length > capacity);
-  const shownChips = $derived(
-    overflowing && !expanded ? chips.slice(0, Math.max(0, capacity - 1)) : chips,
-  );
-  const hiddenCount = $derived(overflowing ? chips.length - Math.max(0, capacity - 1) : 0);
+  const overflowing = $derived(!dragActive && rowCount > capacity);
+  const room = $derived(overflowing && !expanded ? Math.max(0, capacity - 1) : rowCount);
+  const shownChips = $derived(chips.slice(0, room));
+  const shownNotes = $derived(notes.slice(0, Math.max(0, room - chips.length)));
+  const hiddenCount = $derived(overflowing ? rowCount - Math.max(0, capacity - 1) : 0);
+  // What's hidden: tasks (they come first) when no note is, notes when no task
+  // is, else both.
+  const hiddenNoun = $derived.by(() => {
+    const one = hiddenCount === 1;
+    if (shownChips.length + hiddenCount <= chips.length) return one ? "task" : "tasks";
+    if (shownChips.length === chips.length) return one ? "note" : "notes";
+    return "items";
+  });
   const moreLabel = $derived(
-    capacity <= 1
-      ? `${hiddenCount} ${hiddenCount === 1 ? "task" : "tasks"}`
-      : `${hiddenCount} more`,
+    capacity <= 1 ? `${hiddenCount} ${hiddenNoun}` : `${hiddenCount} more`,
   );
   // A compact block that grows lays out like a full one, so its tasks show.
   const compactLayout = $derived(compact && !expanded);
@@ -440,6 +523,13 @@
 
     menu.addItem((item) =>
       item
+        .setTitle("Add note")
+        .setIcon("sticky-note")
+        .onClick(() => beginNoteAdd()),
+    );
+
+    menu.addItem((item) =>
+      item
         .setTitle(block.assoc ? "Edit association" : "Add association")
         .setIcon("folder-symlink")
         .onClick(() => requestEditAssoc()),
@@ -508,7 +598,7 @@
     class:pill
     style={pill ? undefined : `height: ${rowHeight}px;`}
     bind:this={moreEl}
-    aria-label={`Show all ${chips.length} tasks`}
+    aria-label={`Show all ${rowCount} rows`}
     aria-expanded={expanded}
     onpointerdown={(e) => e.stopPropagation()}
     onpointerenter={onMoreEnter}
@@ -580,7 +670,7 @@
     }}
   ></div>
 
-	<!-- Action bar: add-task + convert + delete, top-right corner. Woken from
+	<!-- Action bar: add-task + add-note + convert + delete, top-right corner. Woken from
 	     the top-right corner zone (see actions/actionZone.ts), not on any hover.
 	     On a mouse wake it's a vertical stack: delete stays in the corner and
 	     the rest rise above it (above the block). Touch keeps the bar. -->
@@ -597,6 +687,19 @@
 			}}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
+		</button>
+		<button
+			type="button"
+			class="tl-action-btn"
+			aria-label="Add note"
+			use:tooltip={"Add note"}
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={(e) => {
+				e.stopPropagation();
+				beginNoteAdd();
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg>
 		</button>
 		<button
 			type="button"
@@ -751,7 +854,7 @@
           {/if}
         </div>
       {/if}
-      {#if chips.length > 0 || dragActive}
+      {#if rowCount > 0 || dragActive}
         <!-- Editable tasks. A press here must not start a block move/resize, so
              the container swallows pointerdown before it reaches the block.
              `data-drop-block` lets the parent's drag hit-test find this list —
@@ -782,6 +885,45 @@
               {@render chip(task, tr)}
             </div>
           {/each}
+          {#each shownNotes as note, n (n)}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="tl-note" oncontextmenu={(e) => openNoteMenu(e, n)}>
+              <span class="tl-note-bullet" aria-hidden="true"></span>
+              {#if editingNote === n}
+                <input
+                  class="tl-note-text tl-note-input kairos-inline-input"
+                  type="text"
+                  bind:value={noteDraft}
+                  use:focusOnMount
+                  onkeydown={onNoteKeydown}
+                  onblur={commitNote}
+                />
+              {:else}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <span
+                  class="tl-note-text"
+                  role="textbox"
+                  tabindex="0"
+                  onclick={() => beginNoteEdit(n)}
+                  use:peek={{ text: note.text }}
+                >{note.text}</span>
+              {/if}
+            </div>
+          {/each}
+          {#if addingNote && (!overflowing || expanded)}
+            <div class="tl-note">
+              <span class="tl-note-bullet" aria-hidden="true"></span>
+              <input
+                class="tl-note-text tl-note-input kairos-inline-input"
+                type="text"
+                placeholder="What happened?"
+                bind:value={noteDraft}
+                use:focusOnMount
+                onkeydown={onNoteKeydown}
+                onblur={commitNote}
+              />
+            </div>
+          {/if}
           <!-- Trailing drop zone: carries the append indicator inside a padded,
                non-clipped element so a line at the list's bottom edge isn't cut. -->
           {#if overflowing && !expanded}
@@ -1155,6 +1297,45 @@
   /* ── Task drag-to-nest ── */
   .tl-task-wrap {
     min-width: 0;
+  }
+
+  /* A note: a task row's box and type, with a small dot where the checkbox
+     would be and muted text, so it reads as a record, not something to do. */
+  .tl-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 2px 4px;
+  }
+  .tl-note-bullet {
+    flex: none;
+    width: 18px;
+    display: flex;
+    justify-content: center;
+  }
+  .tl-note-bullet::before {
+    content: "";
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--text-faint);
+  }
+  .tl-note-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text;
+  }
+  input.tl-note-input {
+    padding: 0;
+    font-family: inherit;
+    color: var(--text-normal);
   }
 
   /* The origin row dims while its task is being dragged elsewhere. */

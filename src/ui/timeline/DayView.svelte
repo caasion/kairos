@@ -19,6 +19,8 @@
 		copyBlockIntoDay,
 		makeBlock,
 		nestTaskUnderBlock,
+		notesWithAdded,
+		notesWithText,
 	} from "../../writer";
 	import { surfacedOn } from "../../backlogModel";
 	import {
@@ -579,6 +581,21 @@
 			status: " ",
 		};
 		real.tasks = [...real.tasks, task];
+		void writeToDisk();
+	}
+
+	function handleAddNote(block: Block, text: string) {
+		const real = ownerFor(block);
+		if (!real) return;
+		real.notes = notesWithAdded(real, text);
+		void writeToDisk();
+	}
+
+	// Blank text deletes the note.
+	function handleSetNoteText(block: Block, index: number, text: string) {
+		const real = ownerFor(block);
+		if (!real) return;
+		real.notes = notesWithText(real, index, text);
 		void writeToDisk();
 	}
 
@@ -1443,6 +1460,8 @@
 							onSetBlockStatus={handleSetBlockStatus}
 							onToggleCheckable={handleToggleBlockCheckable}
 							onAddTask={handleAddTask}
+							onAddNote={handleAddNote}
+							onSetNoteText={handleSetNoteText}
 							onMoveTaskToBacklog={(owner, task) =>
 								void handleMoveTaskToBacklog(owner, task)}
 							onEditAssoc={openAssocPicker}

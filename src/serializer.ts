@@ -16,8 +16,8 @@
 //            [ " [" Assoc "]" ] [ " (" tag ")" ]
 //
 // Associations serialize as `[Project]` or `[D:Domain]`; a checkbox on a block
-// line comes from that block's colocated `task`. Nested tasks are indented one
-// tab under their block.
+// line comes from that block's colocated `task`. Nested tasks and notes are
+// indented one tab under their block, each note after the tasks it followed.
 //
 // Fidelity note: the parser strips a trailing `[...]` or `(...)` off any title,
 // so a title/text that itself *ends* with a bracketed or parenthesised token
@@ -71,10 +71,16 @@ function serializeBlock(block: Block): string[] {
       }),
   );
 
-  // Nested tasks, one indent step deeper.
-  for (const task of block.tasks) {
+  // Nested tasks and notes, one indent step deeper. A note goes after the
+  // `at` tasks it followed; one past the end goes last.
+  const notes = block.notes ?? [];
+  const notesAt = (i: number) =>
+    notes.filter((n) => Math.min(n.at, block.tasks.length) === i);
+  block.tasks.forEach((task, i) => {
+    for (const note of notesAt(i)) lines.push(INDENT + "- " + note.text);
     lines.push(INDENT + "- " + serializeTask(task));
-  }
+  });
+  for (const note of notesAt(block.tasks.length)) lines.push(INDENT + "- " + note.text);
 
   return lines;
 }

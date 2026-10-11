@@ -62,3 +62,41 @@ describe("serialize / parseSchedule round-trip", () => {
 		expect(back[0]?.tasks[0]?.text).toBe("Agenda");
 	});
 });
+
+describe("notes: bullets without a checkbox under a block", () => {
+	const md = [
+		"## Schedule",
+		"",
+		"- 12:00 - 13:00 Lunch",
+		"\t- Ran into Sam, talked about the [[Origin]] pitch",
+		"\t- [ ] Book the room",
+		"\t- Ate outside (sunny)",
+		"\t- [x] Pay back Ana",
+		"",
+	].join("\n");
+
+	it("reads them as notes, verbatim, not as open tasks", () => {
+		const [lunch] = parseSchedule(md, "x");
+		expect(lunch?.tasks.map((t) => t.text)).toEqual(["Book the room", "Pay back Ana"]);
+		expect(lunch?.notes).toEqual([
+			{ text: "Ran into Sam, talked about the [[Origin]] pitch", at: 0 },
+			{ text: "Ate outside (sunny)", at: 1 },
+		]);
+	});
+
+	it("writes them back where they were, between the tasks", () => {
+		expect(serialize(parseSchedule(md, "x"))).toBe(md);
+	});
+
+	it("puts a note past the last task at the end", () => {
+		const block: Block = {
+			source: { path: "x", line: -1 },
+			title: "Rehearsal",
+			scheduled: true,
+			time: { start: 1140, end: 1260 },
+			tasks: [],
+			notes: [{ text: "Ran the second act twice", at: 3 }],
+		};
+		expect(serialize([block])).toContain("- 19:00 - 21:00 Rehearsal\n\t- Ran the second act twice\n");
+	});
+});

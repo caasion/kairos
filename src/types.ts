@@ -43,6 +43,17 @@ interface ResolvedTask extends Task {
   colocated: boolean; // shares its line with a block
 }
 
+// ─── note ──────────────────────────────────────────────────────
+
+// A bullet without a checkbox nested under a block: a record of what happened
+// in that time, not something to do (decision 96). Kept verbatim. `at` is how
+// many of the block's tasks come before it, so a note is written back where
+// it was. Notes are addressed by their index in `Block.notes`.
+interface Note {
+  text: string;
+  at: number;
+}
+
 // ─── block ─────────────────────────────────────────────────────
 
 // A block is a task with scheduling: it carries the same intrinsic fields a
@@ -55,6 +66,7 @@ interface Block {
   assoc?: Association;
   metadata?: string; // freeform user data, same as a task's
   tasks: Task[];
+  notes?: Note[]; // checkbox-less bullets under the block, in note order
   status?: TaskStatus; // present iff the block line carries a checkbox
   scheduled: boolean;
   time?: TimeRange;
@@ -183,6 +195,7 @@ export type {
   Task,
   Block,
   CheckableBlock,
+  Note,
   Day,
   LifecycleState,
   StatusRecord,

@@ -24,6 +24,7 @@ import { DEFAULT_HEADING, spliceSection } from "./section";
 import type {
   Association,
   Block,
+  Note,
   SourceRef,
   Task,
   TaskStatus,
@@ -788,7 +789,26 @@ export function copyBlockIntoDay(
     ...(assoc ? { assoc } : {}),
   };
   if (!assoc) delete (copy as Partial<Block>).assoc;
+  // Notes record what happened in the original's time; a copy starts fresh.
+  delete (copy as Partial<Block>).notes;
   return [...toBlocks, copy];
+}
+
+// ─── notes (decision 96) ───────────────────────────────────────
+
+/** `block`'s notes with `text` added at the end, after all its tasks. */
+export function notesWithAdded(block: Block, text: string): Note[] {
+  return [...(block.notes ?? []), { text, at: block.tasks.length }];
+}
+
+/**
+ * `block`'s notes with note `index` set to `text`, or removed when `text` is
+ * blank: clearing a note deletes it.
+ */
+export function notesWithText(block: Block, index: number, text: string): Note[] {
+  const notes = block.notes ?? [];
+  if (text.trim() === "") return notes.filter((_, i) => i !== index);
+  return notes.map((n, i) => (i === index ? { ...n, text } : n));
 }
 
 // ─── schedule a task across views ──────────────────────────────

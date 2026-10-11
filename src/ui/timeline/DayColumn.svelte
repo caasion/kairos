@@ -14,7 +14,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock, nestTaskUnderBlock } from "../../writer";
+	import { makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
 	import { moveTaskToBacklog } from "../../backlogActions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
@@ -292,6 +292,21 @@
 			status: " ",
 		};
 		real.tasks = [...real.tasks, task];
+		writeToDisk();
+	}
+
+	function handleAddNote(block: Block, text: string) {
+		const real = ownerFor(block);
+		if (!real) return;
+		real.notes = notesWithAdded(real, text);
+		writeToDisk();
+	}
+
+	// Blank text deletes the note.
+	function handleSetNoteText(block: Block, index: number, text: string) {
+		const real = ownerFor(block);
+		if (!real) return;
+		real.notes = notesWithText(real, index, text);
 		writeToDisk();
 	}
 
@@ -956,6 +971,8 @@
 				onSetBlockStatus={handleSetBlockStatus}
 				onToggleCheckable={handleToggleBlockCheckable}
 				onAddTask={handleAddTask}
+				onAddNote={handleAddNote}
+				onSetNoteText={handleSetNoteText}
 				onEditAssoc={openAssocPicker}
 				onEditTaskAssoc={openTaskAssocPicker}
 				onNestTask={openBlockPicker}

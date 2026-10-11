@@ -11,7 +11,8 @@
 //     (paren note)  a single trailing parenthesised note -> Task.tag
 //
 // Top-level list items are blocks. Items indented under a block are that
-// block's tasks. A block line that carries a checkbox also gets a colocated
+// block's tasks when they carry a checkbox, and its notes when they don't
+// (kept verbatim). A block line that carries a checkbox also gets a colocated
 // `task` sharing the block's source line.
 //
 // The parser is deliberately literal: it records associations exactly as
@@ -84,9 +85,14 @@ function parseSchedule(
     const body = item[3] ?? "";
     const source: SourceRef = { path, line: i };
 
-    // Nested item under an open block → a task of that block.
+    // Nested item under an open block → a task of that block, or a note when
+    // it has no checkbox.
     if (current && indent > blockIndent) {
-      current.tasks.push(parseTask(body, status, source));
+      if (status === undefined) {
+        (current.notes ??= []).push({ text: body, at: current.tasks.length });
+      } else {
+        current.tasks.push(parseTask(body, status, source));
+      }
       continue;
     }
 
@@ -159,7 +165,7 @@ function parseTask(
   };
 }
 
-// A checkbox-less nested item is treated as an open task.
+// An unknown status char reads as open.
 function toStatus(status: string | undefined): TaskStatus {
   switch (status) {
     case "x":

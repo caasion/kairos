@@ -4,6 +4,8 @@ import {
 	copyBlockIntoDay,
 	deleteBlock,
 	makeBlock,
+	notesWithAdded,
+	notesWithText,
 	moveBlockAcrossDays,
 	nestTaskUnderBlock,
 	retimeBlock,
@@ -591,5 +593,33 @@ describe("a new block alongside the Unscheduled inbox", () => {
 		// No task shares a line with a block either.
 		const all = [...day.map((b) => b.source.line), ...taskLines];
 		expect(new Set(all).size).toBe(all.length);
+	});
+});
+
+describe("notes", () => {
+	const block: Block = {
+		source: { path: "mon.md", line: 3 },
+		title: "Lunch",
+		scheduled: true,
+		time: { start: 720, end: 780 },
+		tasks: [{ source: { path: "mon.md", line: 4 }, text: "Book the room", status: " " }],
+		notes: [{ text: "Ran into Sam", at: 0 }],
+	};
+
+	it("adds a note after the block's tasks", () => {
+		expect(notesWithAdded(block, "Ate outside")).toEqual([
+			{ text: "Ran into Sam", at: 0 },
+			{ text: "Ate outside", at: 1 },
+		]);
+	});
+
+	it("edits a note's text, and deletes it when cleared", () => {
+		expect(notesWithText(block, 0, "Ran into Sam and Ana")).toEqual([{ text: "Ran into Sam and Ana", at: 0 }]);
+		expect(notesWithText(block, 0, "  ")).toEqual([]);
+	});
+
+	it("leaves notes behind when a block is copied to another day", () => {
+		const [copy] = copyBlockIntoDay([], block, "tue.md");
+		expect(copy?.notes).toBeUndefined();
 	});
 });
