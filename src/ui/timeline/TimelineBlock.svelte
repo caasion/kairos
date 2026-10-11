@@ -580,10 +580,10 @@
     }}
   ></div>
 
-	<!-- Action bar: add-task + delete, top-right corner. Woken from the
-	     top-right corner zone (see actions/actionZone.ts), not on any hover.
+	<!-- Action bar: add-task + convert + delete, top-right corner. Woken from
+	     the top-right corner zone (see actions/actionZone.ts), not on any hover.
 	     On a mouse wake it's a vertical stack: delete stays in the corner and
-	     add-task rises above it (above the block). Touch keeps the bar. -->
+	     the rest rise above it (above the block). Touch keeps the bar. -->
 	<div class="tl-actions kairos-action-bar">
 		<button
 			type="button"
@@ -597,6 +597,23 @@
 			}}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
+		</button>
+		<button
+			type="button"
+			class="tl-action-btn"
+			aria-label={checkable ? "Convert to block" : "Convert to task"}
+			use:tooltip={checkable ? "Convert to block" : "Convert to task"}
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={(e) => {
+				e.stopPropagation();
+				onToggleCheckable(block);
+			}}
+		>
+			{#if checkable}
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+			{:else}
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
+			{/if}
 		</button>
 		<button
 			type="button"
@@ -914,7 +931,7 @@
     bottom: 2px;
   }
 
-	/* Hover action bar (add-task + delete), top-right corner. */
+	/* Hover action bar (add-task + convert + delete), top-right corner. */
 	.tl-actions {
 		position: absolute;
 		top: 4px;

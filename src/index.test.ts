@@ -380,7 +380,7 @@ describe("KairosIndex", () => {
 		await vi.advanceTimersByTimeAsync(500);
 
 		const file = read();
-		expect(file).toContain("- 09:00 - 10:00 Deep work");
+		expect(file).toContain("- [ ] 09:00 - 10:00 Deep work");
 		// The inbox survives with both entries, and there is still only one of it.
 		expect(file.match(/- Unscheduled$/gm)).toHaveLength(1);
 		expect(file).toContain("\t- [ ] Buy milk");
