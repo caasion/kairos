@@ -1016,9 +1016,7 @@ export function deleteBlocks(
 }
 
 /**
- * Build a fresh timed block with a placeholder title. It is checkable (an open
- * checkbox) so it shows up in the Grid as a task too; "Convert to block" drops
- * the checkbox. Not spliced into an array
+ * Build a fresh timed block with a placeholder title. Not spliced into an array
  * here — the caller appends it and persists — so callers stay in control of
  * ordering (which `writeSchedule` normalizes anyway).
  *
@@ -1039,7 +1037,6 @@ export function makeBlock(
   return {
     source: { path, line },
     title,
-    status: " ",
     tasks: [],
     scheduled: true,
     time,

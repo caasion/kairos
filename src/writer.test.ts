@@ -415,10 +415,6 @@ describe("draft lines are unique across the cross-day primitives", () => {
 		expect(new Set(lines).size).toBe(lines.length);
 	});
 
-	it("makes a new block checkable, so the Grid shows it as a task", () => {
-		expect(makeBlock({ start: 540, end: 600 }, "wed.md").status).toBe(" ");
-	});
-
 	it("never collides with a block created by makeBlock in the same day", () => {
 		const fresh = makeBlock({ start: 540, end: 600 }, "wed.md");
 		const to = copyBlockIntoDay([fresh], sampleBlock("mon.md"), "wed.md");
