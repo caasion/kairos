@@ -866,12 +866,17 @@ function insertIntoBlock(
  * Build the block a drop on empty time creates for `task` (association already
  * materialized onto it). The block's line is drawn before the task's so the
  * draft lines keep the order the real ones will have after the reparse.
+ *
+ * A container block takes `title` when one is given (the "Name for blocks made
+ * by a drop" setting), else the task's project or domain name, else the
+ * default block title.
  */
 export function blockForTask(
   task: Task,
   time: TimeRange,
   path: string,
   mode: NewBlockMode,
+  title?: string,
 ): Block {
   const source: SourceRef = { path, line: nextDraftLine() };
   if (mode === "timebox") {
@@ -888,7 +893,7 @@ export function blockForTask(
   }
   return {
     source,
-    title: task.assoc ? task.assoc.id : DEFAULT_BLOCK_TITLE,
+    title: title?.trim() || (task.assoc ? task.assoc.id : DEFAULT_BLOCK_TITLE),
     ...(task.assoc ? { assoc: task.assoc } : {}),
     tasks: [{ ...task, source: { path, line: nextDraftLine() } }],
     scheduled: true,
@@ -937,11 +942,12 @@ export function scheduleTaskInNewBlock(
   time: TimeRange,
   mode: NewBlockMode,
   assoc?: Association | null,
+  title?: string,
 ): Block[] {
   const lifted = liftTask(blocks, owner, target, assoc);
   if (!lifted) return blocks;
   const path = owner.source.path;
-  return [...lifted.without, blockForTask(lifted.task, time, path, mode)];
+  return [...lifted.without, blockForTask(lifted.task, time, path, mode, title)];
 }
 
 /**
@@ -957,12 +963,13 @@ export function scheduleTaskInNewBlockAcrossDays(
   time: TimeRange,
   mode: NewBlockMode,
   assoc?: Association | null,
+  title?: string,
 ): CrossDayTaskMove {
   const lifted = liftTask(fromBlocks, sourceOwner, target, assoc);
   if (!lifted) return { from: fromBlocks, to: toBlocks };
   return {
     from: lifted.without,
-    to: [...toBlocks, blockForTask(lifted.task, time, toPath, mode)],
+    to: [...toBlocks, blockForTask(lifted.task, time, toPath, mode, title)],
   };
 }
 
@@ -992,9 +999,10 @@ export function copyTaskIntoNewBlock(
   toPath: string,
   time: TimeRange,
   mode: NewBlockMode,
+  title?: string,
 ): Block[] {
   const copy = cloneTask(task, toPath, task.source.line, assoc);
-  return [...toBlocks, blockForTask(copy, time, toPath, mode)];
+  return [...toBlocks, blockForTask(copy, time, toPath, mode, title)];
 }
 
 /** Return a copy of `blocks` with every block in `targets` removed. */

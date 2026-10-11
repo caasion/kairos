@@ -17,6 +17,7 @@
 	import type { Snippet } from "svelte";
 	import { autogrow, singleLine } from "../actions/autogrow";
 	import type { Association, Task, TaskStatus } from "../../types";
+	import type { Highlight } from "../../viewLinks";
 	import type { ResolvedAssociation } from "../../association";
 	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
@@ -78,6 +79,11 @@
 		// ellipsis. 1 (the default) keeps the compact single-line row; roomier
 		// views like the grid pass 2.
 		lines?: number;
+		// Hover link (viewLinks.ts): "block" when the block this task sits in is
+		// under the pointer somewhere, "task" when this task is. `onHoverChange`
+		// reports the pointer entering (true) or leaving (false) this row.
+		highlight?: Highlight;
+		onHoverChange?: (hovering: boolean) => void;
 		// Short muted labels on the task's own line. `lead` sits before the text
 		// (the Grid puts a checkable block's start time there); `trailing` after it
 		// (the Grid's rolled-up project chip), and gives way first when the line is
@@ -114,6 +120,8 @@
 		meta,
 		onGrab,
 		lines = 1,
+		highlight = null,
+		onHoverChange,
 		lead,
 		trailing,
 		onAddInside,
@@ -128,6 +136,19 @@
 	const assocLabel = $derived(resolved?.displayName ?? association?.id ?? "");
 	// The association button's tooltip and accessible name.
 	const assocAction = $derived(association ? "Edit association" : "Add association");
+
+	// ── Hover link ──────────────────────────────────────────────────
+	// Reported on enter/leave. A row removed while the pointer is on it gets no
+	// leave event, so it reports leaving on teardown — otherwise its stale
+	// path/line would keep glowing on whatever lands on that line next.
+	let hovering = false;
+	function setHovering(on: boolean) {
+		hovering = on;
+		onHoverChange?.(on);
+	}
+	$effect(() => () => {
+		if (hovering) onHoverChange?.(false);
+	});
 
 	// ── Status / checkbox ───────────────────────────────────────────
 	// Behaviour matches Holos (see TaskCheckbox): click cycles
@@ -380,8 +401,13 @@
 	class:done
 	class:half
 	class:cancelled
+	class:lit-block={highlight === "block"}
+	class:lit-task={highlight === "task"}
+	style:--kairos-link-color={color}
 	bind:this={rowEl}
 	oncontextmenu={openContextMenu}
+	onpointerenter={() => setHovering(true)}
+	onpointerleave={() => setHovering(false)}
 	use:actionZone={{ layout: "stack" }}
 >
 	<!-- Action bar. Shown only while the pointer is in a triangle at the row's
@@ -534,6 +560,25 @@
 
 	.k-task:hover {
 		background: var(--background-modifier-hover);
+	}
+
+	/* Hover link, in the task's domain color (the theme accent without one).
+	   A tint when its block is lit; a stronger tint and a bar on the left edge
+	   when it's the task itself. The same in every view. */
+	.k-task.lit-block {
+		background: color-mix(
+			in srgb,
+			var(--kairos-link-color, var(--interactive-accent)) 12%,
+			transparent
+		);
+	}
+	.k-task.lit-task {
+		background: color-mix(
+			in srgb,
+			var(--kairos-link-color, var(--interactive-accent)) 22%,
+			transparent
+		);
+		box-shadow: inset 3px 0 0 var(--kairos-link-color, var(--interactive-accent));
 	}
 
 	.k-task.checkable {

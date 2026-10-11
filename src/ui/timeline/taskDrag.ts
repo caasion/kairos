@@ -22,6 +22,11 @@
 
 import type { Block, ResolvedTask, Task } from "../../types";
 import type { TimelineDrop } from "../../taskDrop";
+import {
+  dropRange,
+  offsetToMinutes,
+  type TimelineGeometry,
+} from "./layout";
 
 /** A flat item surfaced from DayColumn to WeekView for unscheduled rendering. */
 export interface UnscheduledItem {
@@ -41,6 +46,10 @@ export interface TaskDragState {
   // Ctrl/Cmd held → drop a copy instead of moving. Tracked live (set on grab,
   // refreshed on every move) so the user can decide mid-drag; read at drop.
   duplicate: boolean;
+  // Option/Alt held → a drop on empty time time-boxes the task (it becomes a
+  // checkable block) instead of nesting it in a new block. Tracked like
+  // `duplicate`.
+  timebox: boolean;
 }
 
 /** A checkable block being dragged (grid block DnD). */
@@ -117,6 +126,70 @@ export function hitTestDropSlot(
   }
 
   return null;
+}
+
+// ── Timeline canvases ─────────────────────────────────────────────
+//
+// Each timeline canvas (the Day view's one, each Week column's) carries its
+// date and geometry as data attributes, so any drag — including one that began
+// in another view — can tell which day a block belongs to and turn a pointer
+// position over empty time into minutes, without importing that view's state:
+//
+//   data-tl-date="<ISO date>"
+//   data-tl-start-hour, data-tl-end-hour, data-tl-hour-height, data-tl-top-pad
+//
+// Block line numbers are only unique within a day, so the date is what makes a
+// `data-block-line` meaningful outside its own column.
+
+function canvasGeometry(canvas: HTMLElement): TimelineGeometry | null {
+  const d = canvas.dataset;
+  const geo = {
+    startHour: Number(d.tlStartHour),
+    endHour: Number(d.tlEndHour),
+    hourHeight: Number(d.tlHourHeight),
+    topPad: Number(d.tlTopPad),
+  };
+  return Object.values(geo).some(Number.isNaN) ? null : geo;
+}
+
+/**
+ * Where a task released at this pointer position would land on a timeline: a
+ * block (and the slot within it), its Unscheduled list, or a span of empty
+ * time. Null when the pointer isn't over any of them.
+ *
+ * `roots` bounds the search the same way `hitTestDropSlot` does; omit it to
+ * accept any canvas in the document (a drag from another view).
+ */
+export function hitTestTimeline(
+  event: PointerEvent,
+  roots?: Element[],
+): TimelineDrop | null {
+  const el = document.elementFromPoint(event.clientX, event.clientY);
+  if (!el) return null;
+  const inRoots = (node: Element) =>
+    !roots || roots.length === 0 || roots.some((r) => r.contains(node));
+
+  // A timeline's Unscheduled list (`data-unscheduled-date`): dropping there
+  // takes the task out of its block.
+  const inbox = el.closest<HTMLElement>("[data-unscheduled-date]");
+  if (inbox && inRoots(inbox)) {
+    const date = inbox.dataset.unscheduledDate;
+    return date ? { kind: "unscheduled", date } : null;
+  }
+
+  const canvas = el.closest<HTMLElement>("[data-tl-date]");
+  if (!canvas) return null;
+  if (!inRoots(canvas)) return null;
+  const date = canvas.dataset.tlDate;
+  if (!date) return null;
+
+  const slot = hitTestDropSlot(event, [canvas]);
+  if (slot) return { kind: "block", date, ...slot };
+
+  const geo = canvasGeometry(canvas);
+  if (!geo) return null;
+  const offset = event.clientY - canvas.getBoundingClientRect().top;
+  return { kind: "time", date, time: dropRange(offsetToMinutes(offset, geo), geo) };
 }
 
 /** A drop on a Grid block group: where it lands, and the row it's in. */

@@ -43,8 +43,18 @@
 	} from "../../writer";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import type { GridDay, GridSnapshot, KairosIndex, Resolver } from "../../index";
-	import { hitTestGridCell, hitTestGridGroup, type BlockDragState, type GridDropSlot, type GridGroupDrop, type TaskDragState } from "../timeline/taskDrag";
+	import { hitTestGridCell, hitTestGridGroup, hitTestTimeline, type BlockDragState, type GridDropSlot, type GridGroupDrop, type TaskDragState } from "../timeline/taskDrag";
+	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline } from "../timeline/dropTask";
+	import {
+		blockLit,
+		hoverBlockTarget,
+		hoverTaskTarget,
+		taskHighlight,
+		type Highlight,
+		type HoverTarget,
+		type ViewLinks,
+	} from "../../viewLinks";
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		blockGroups,
@@ -92,10 +102,53 @@
 		updateSettings: (mutate: (s: KairosSettings) => void) => void;
 		// Open the Day view and scroll to a block (a nested task's badge click).
 		reveal: (date: ISODate, blockLine: number) => void;
+		// The Grid ↔ timeline bridge: focus for the Day view to follow, the live
+		// drag every timeline previews, hover, and the Day view's date.
+		links: ViewLinks;
+		// Open the Day view on a date (a column header click).
+		showDay: (date: ISODate) => void;
 	}
 
-	let { app, index, settings$, updateSettings, reveal }: Props = $props();
+	let { app, index, settings$, updateSettings, reveal, links, showDay }: Props = $props();
 
+	// ── Bridge to the timelines (viewLinks.ts) ──
+	// Acting on a day here (grab, add or edit a task) asks the Day view to show
+	// it; the Day view follows when "Follow the grid" is on. Selecting a column
+	// header is a direct ask (`showDay`), which opens the Day view on that day.
+	function focusDay(date: ISODate) {
+		links.focus(date);
+	}
+
+	// The date the Day view is showing, marked on its column header. And the item
+	// under the pointer in any view, so the same task glows here. Both mirrored
+	// from the stores on mount, like the resolver.
+	let dayViewDate = $state<ISODate | null>(null);
+	let hovered = $state<HoverTarget | null>(null);
+
+	// A Grid task's hover identity. A checkable block's own task *is* the block,
+	// so it reports the block — which also lights it in the timelines.
+	function hoverTargetOf(task: ResolvedTask): HoverTarget {
+		return task.colocated ? hoverBlockTarget(task.block) : hoverTaskTarget(task, task.block);
+	}
+	function onTaskHover(task: ResolvedTask, on: boolean) {
+		const target = hoverTargetOf(task);
+		if (on) links.setHover(target);
+		else links.clearHover(target);
+	}
+	// One rule for every view (viewLinks.ts): pointing at a block, its header or
+	// any task in it lights the block's header and all its tasks; the task
+	// pointed at is marked on top.
+	function highlightOf(task: ResolvedTask): Highlight {
+		return taskHighlight(hovered, task, task.block);
+	}
+	function isBlockLinked(block: Block): boolean {
+		return blockLit(hovered, block);
+	}
+	function onBlockHover(block: Block, on: boolean) {
+		const target = hoverBlockTarget(block);
+		if (on) links.setHover(target);
+		else links.clearHover(target);
+	}
 
 	const settings = $derived($settings$);
 
@@ -209,12 +262,20 @@
 		return (task) => rolledUpProjectOf(row, task, snap);
 	}
 
-	// The block group a live task drag would land in, for this cell (date, row).
+	// The block group a live task drag would land in, for this cell (date, row):
+	// the group under the pointer, or — when the pointer is over a timeline — that
+	// block (or Unscheduled) in every row it shows in.
 	function dropGroupOn(date: ISODate, row: GridRow): number | "unscheduled" | undefined {
 		const g = groupDrop;
-		if (!g || g.rowKey !== row.key || g.drop.date !== date) return undefined;
-		if (g.drop.kind === "unscheduled") return "unscheduled";
-		return g.drop.kind === "block" ? g.drop.blockLine : undefined;
+		if (g) {
+			if (g.rowKey !== row.key || g.drop.date !== date) return undefined;
+			if (g.drop.kind === "unscheduled") return "unscheduled";
+			return g.drop.kind === "block" ? g.drop.blockLine : undefined;
+		}
+		const t = timelineDrop;
+		if (!t || t.date !== date) return undefined;
+		if (t.kind === "unscheduled") return "unscheduled";
+		return t.kind === "block" ? t.blockLine : undefined;
 	}
 
 	// While a task is dragged over a grouped cell with no Unscheduled group, the
@@ -237,6 +298,11 @@
 	function setGroupByBlock(on: boolean) {
 		updateSettings((s) => {
 			s.gridGroupByBlock = on;
+		});
+	}
+	function setHighlightAcrossViews(on: boolean) {
+		updateSettings((s) => {
+			s.highlightAcrossViews = on;
 		});
 	}
 	function setShowRollupProjects(on: boolean) {
@@ -330,6 +396,7 @@
 	}
 
 	function onSetStatus(task: ResolvedTask, status: TaskStatus) {
+		focusDay(task.date);
 		const day = dayOf(task.date);
 		if (!day || day.path === null) return;
 		commit(
@@ -339,6 +406,7 @@
 		);
 	}
 	function onSetText(task: ResolvedTask, text: string) {
+		focusDay(task.date);
 		const day = dayOf(task.date);
 		if (!day || day.path === null) return;
 		commit(task.date, day.path, setTaskText(day.blocks, task.block, task, text));
@@ -410,6 +478,7 @@
 	}
 
 	async function onCreate(row: GridRow, date: ISODate) {
+		focusDay(date);
 		const assoc = rowAssociation(row);
 		const day = dayOf(date);
 		const path = day?.path ?? (await ensureNoteForDate(date));
@@ -428,6 +497,7 @@
 			await onCreate(row, date);
 			return;
 		}
+		focusDay(date);
 		const day = dayOf(date);
 		if (!day || day.path === null) return;
 		commit(
@@ -442,6 +512,9 @@
 	// hovered cell's (date, rowKey) is tracked as the live drop target. On release:
 	//   • Same day → unnest + re-associate within that day.
 	//   • Different day → cross-day move via moveTaskAcrossDays.
+	//   • Over a Day or Week timeline → schedule it there (taskDrop.ts): into a
+	//     block at the marked slot, or a new block on empty time. Leaves share
+	//     one document, so the timeline's DOM is hit-testable from here.
 	// The grid drags *resolved* tasks: the drop handler needs the task's date to
 	// find the day it came from, which the shared (timeline) drag state — where a
 	// column already knows its own date — doesn't carry.
@@ -452,6 +525,9 @@
 	// task in that block, or takes it out of its block on Unscheduled. Takes
 	// precedence over the cell the group sits in.
 	let groupDrop = $state<GridGroupDrop | null>(null);
+	// The timeline position under the pointer, when it's over a Day/Week view.
+	// Takes precedence over a grid cell (the two never overlap on screen).
+	let timelineDrop = $state<TimelineDrop | null>(null);
 	// Last pointer coordinates, updated on every pointermove during a drag.
 	// Re-hit-tested at pointerup to get the freshest drop slot.
 	let lastPointerX = 0;
@@ -467,7 +543,10 @@
 			ghostY: event.clientY,
 			label: task.text,
 			duplicate: event.ctrlKey || event.metaKey,
+			timebox: event.altKey,
 		};
+		// Show the task's day in the Day view, so its blocks are there to drop on.
+		focusDay(task.date);
 		hitTestDrag(event);
 	}
 
@@ -480,20 +559,70 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			duplicate: event.ctrlKey || event.metaKey,
+			timebox: event.altKey,
 		};
 		hitTestDrag(event);
 	}
 
-	// What's under the pointer: a block group (grouping on), or else a cell.
+	// Find what's under the pointer — a timeline first, then a block group, else
+	// a grid cell — and publish the drag so every timeline can draw where it
+	// would land.
 	function hitTestDrag(event: PointerEvent) {
-		groupDrop = hitTestGridGroup(event);
-		taskDrop = groupDrop ? null : hitTestGridCell(event);
+		const drag = taskDrag;
+		if (!drag) return;
+		timelineDrop = hitTestTimeline(event);
+		groupDrop = timelineDrop ? null : hitTestGridGroup(event);
+		taskDrop = timelineDrop || groupDrop ? null : hitTestGridCell(event);
+		springLoad(event);
+		links.setDrag({
+			from: { date: drag.task.date, line: drag.task.source.line },
+			// A Grid block group lands in that block, so the timelines show it too.
+			drop: timelineDrop ?? groupDrop?.drop ?? null,
+			label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
+			duplicate: drag.duplicate,
+			timebox: drag.timebox,
+		});
+	}
+
+	// What a drop applies: the drag's modifiers plus the block-name setting.
+	function dropMods(drag: GridTaskDrag) {
+		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: settings.dropBlockTitle };
+	}
+
+	// Holding a drag on a column header shows that day in the Day view, so one
+	// drag can reach another day's blocks in the sidebar.
+	const SPRING_MS = 400;
+	let springDate = $state<ISODate | null>(null);
+	let springTimer: number | null = null;
+	function springLoad(event: PointerEvent) {
+		const el = document.elementFromPoint(event.clientX, event.clientY);
+		const head = el?.closest<HTMLElement>("[data-grid-head-date]");
+		const date = head?.dataset.gridHeadDate ?? null;
+		if (date === springDate) return;
+		clearSpring();
+		springDate = date;
+		if (date) {
+			// Holding on a header is a direct ask, so it works with follow off.
+			// Only while a Day view is open: an unanswered explicit request would
+			// otherwise wait and move the next Day view that opens.
+			springTimer = window.setTimeout(() => {
+				if (dayViewDate !== null) links.focus(date, true);
+			}, SPRING_MS);
+		}
+	}
+	function clearSpring() {
+		if (springTimer !== null) window.clearTimeout(springTimer);
+		springTimer = null;
+		springDate = null;
 	}
 
 	function endTaskDrag() {
 		taskDrag = null;
 		taskDrop = null;
 		groupDrop = null;
+		timelineDrop = null;
+		clearSpring();
+		links.setDrag(null);
 	}
 
 	async function onTaskDragUp() {
@@ -502,10 +631,22 @@
 		// Re-hit-test at the exact release coordinates for the freshest slot —
 		// taskDrop could be stale if no pointermove fired since entering this cell.
 		const synth = new MouseEvent("pointermove", { clientX: lastPointerX, clientY: lastPointerY }) as PointerEvent;
-		const onGroup = hitTestGridGroup(synth) ?? groupDrop;
-		const drop = onGroup ? null : (hitTestGridCell(synth) ?? taskDrop);
+		let onTimeline = hitTestTimeline(synth);
+		let onGroup = onTimeline ? null : hitTestGridGroup(synth);
+		let drop = onTimeline || onGroup ? null : hitTestGridCell(synth);
+		// Nothing under the release point: use the last position seen.
+		if (!onTimeline && !onGroup && !drop) {
+			onTimeline = timelineDrop;
+			onGroup = groupDrop;
+			drop = taskDrop;
+		}
 		endTaskDrag();
 
+		// Released over a timeline: schedule it there.
+		if (onTimeline) {
+			void dropTaskOnTimeline(index, drag.task.date, drag.owner, drag.task, onTimeline, dropMods(drag));
+			return;
+		}
 		if (onGroup) {
 			void dropOnGroup(drag, onGroup);
 			return;
@@ -795,6 +936,7 @@
 	let pickerAnchor = $state<DOMRect | null>(null);
 
 	function openTaskAssoc(task: ResolvedTask, anchor: DOMRect) {
+		focusDay(task.date);
 		pickerTask = task;
 		pickerAnchor = anchor;
 	}
@@ -851,6 +993,9 @@
 	});
 
 	function openBlockPicker(task: ResolvedTask, anchor: DOMRect) {
+		// Show the day in the Day view too, so the blocks you're choosing between
+		// are on screen.
+		focusDay(task.date);
 		blockPickerTask = task;
 		blockPickerAnchor = anchor;
 	}
@@ -950,6 +1095,12 @@
 		const unsubBacklog = index.backlog().subscribe((e) => {
 			backlogEntries = e;
 		});
+		const unsubDayDate = links.dayDate$.subscribe((d) => {
+			dayViewDate = d;
+		});
+		const unsubHover = links.hover$.subscribe((h) => {
+			hovered = h;
+		});
 
 		const move = (e: PointerEvent) => {
 			if (taskDrag) onTaskDragMove(e);
@@ -965,6 +1116,9 @@
 		return () => {
 			unsub();
 			unsubBacklog();
+			unsubDayDate();
+			unsubHover();
+			if (taskDrag) endTaskDrag();
 			unsubscribeGrid?.();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
@@ -1054,6 +1208,10 @@
 						<span class="controls-label">Show projects on rolled-up tasks</span>
 						<input type="checkbox" checked={settings.gridShowRollupProjects} disabled={!settings.gridGroupByBlock} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
 					</label>
+					<label class="controls-field">
+						<span class="controls-label">Highlight across views</span>
+						<input type="checkbox" checked={settings.highlightAcrossViews} onchange={(e) => setHighlightAcrossViews(e.currentTarget.checked)} />
+					</label>
 				</div>
 			{/if}
 		</div>
@@ -1068,16 +1226,25 @@
 			<button
 				class="grid-colhead date-card"
 				class:today={isToday(date)}
-				title="Click to open daily note"
+				class:in-day={dayViewDate === date}
+				class:spring={springDate === date}
+				data-grid-head-date={date}
+				title={dayViewDate === date
+					? "Shown in the Day view · Ctrl+click to open the daily note"
+					: "Click to show in the Day view · Ctrl+click to open the daily note"}
 				onclick={(e) => {
 					e.stopPropagation();
-					void openDayNote(date);
+					if (e.ctrlKey || e.metaKey) void openDayNote(date);
+					else showDay(date);
 				}}
 			>
 				<span class="dow-label">{dowLabel(date)}</span>
 				<span class="date-number">{dayNumber(date)}</span>
 				{#if isToday(date)}
 					<span class="today-indicator"></span>
+				{/if}
+				{#if dayViewDate === date}
+					<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
 				{/if}
 			</button>
 		{/each}
@@ -1154,12 +1321,16 @@
 								dragTaskLine={taskDrag?.task.source.line}
 								dragBlockLine={blockDrag?.block.source.line}
 								isDropTarget={isDropTargetFor(date, row.key)}
+								{highlightOf}
+								onHover={onTaskHover}
 								blockGroups={cell.blocks}
 								chipFor={chipFor(row)}
 								{date}
 								dropGroup={dropGroupOn(date, row)}
 								unscheduledSlot={wantsUnscheduledSlot(cell, inactive, date, row)}
 								onCreateInBlock={(block: Block) => void onCreateInBlock(row, date, block)}
+								{isBlockLinked}
+								{onBlockHover}
 							/>
 						{:else if nudges.length === 0}
 							<div class="grid-datacell-empty"></div>
@@ -1473,6 +1644,21 @@
 	}
 	.grid-colhead.today .date-number {
 		color: var(--interactive-accent);
+	}
+
+	/* The day the Day view is showing: a small dot in the card's top corner. */
+	.grid-colhead .in-day-indicator {
+		position: absolute;
+		top: 5px;
+		right: 6px;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--interactive-accent);
+	}
+	/* A drag held on this header is about to show its day in the Day view. */
+	.grid-colhead.spring {
+		box-shadow: inset 0 0 0 2px var(--interactive-accent);
 	}
 
 	.grid-rowlabel {

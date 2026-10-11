@@ -65,6 +65,11 @@ export interface DragSource {
 export interface DropModifiers {
 	duplicate: boolean;
 	timebox: boolean;
+	/**
+	 * The title a block made by a drop on empty time gets (a setting). Empty or
+	 * absent: the task's project or domain name.
+	 */
+	blockTitle?: string;
 }
 
 /** What to commit: one day rewritten, or a task moved between two days. */
@@ -115,7 +120,7 @@ export function planTaskDrop(
 				? copyTaskIntoBlock(target.blocks, task, copyAssoc, destination!, drop.index)
 				: drop.kind === "unscheduled"
 					? copyTaskIntoDay(target.blocks, task, target.path, nextDraftLine(), copyAssoc)
-					: copyTaskIntoNewBlock(target.blocks, task, copyAssoc, target.path, drop.time, mode);
+					: copyTaskIntoNewBlock(target.blocks, task, copyAssoc, target.path, drop.time, mode, mods.blockTitle);
 		return blocks === target.blocks ? null : { kind: "day", day: { ...target, blocks } };
 	}
 
@@ -128,7 +133,7 @@ export function planTaskDrop(
 				? nestTaskUnderBlock(day.blocks, owner, task, destination!, drop.index, assoc)
 				: drop.kind === "unscheduled"
 					? unnestTask(day.blocks, owner, task, day.path, assoc)
-					: scheduleTaskInNewBlock(day.blocks, owner, task, drop.time, mode, assoc);
+					: scheduleTaskInNewBlock(day.blocks, owner, task, drop.time, mode, assoc, mods.blockTitle);
 		return blocks === day.blocks ? null : { kind: "day", day: { ...day, blocks } };
 	}
 
@@ -143,7 +148,7 @@ export function planTaskDrop(
 						from0, target.blocks, owner, task, target.path, nextDraftLine(), assoc,
 					)
 				: scheduleTaskInNewBlockAcrossDays(
-						from0, target.blocks, owner, task, target.path, drop.time, mode, assoc,
+						from0, target.blocks, owner, task, target.path, drop.time, mode, assoc, mods.blockTitle,
 					);
 	if (from === from0 && to === target.blocks) return null;
 	return {
@@ -159,6 +164,8 @@ export function planTaskDrop(
  */
 export function newBlockLabel(task: Task, owner: Block, mods: DropModifiers): string {
 	if (mods.timebox) return task.text;
+	const title = mods.blockTitle?.trim();
+	if (title) return title;
 	const assoc = task.assoc ?? owner.assoc;
 	return assoc ? assoc.id : "New block";
 }
