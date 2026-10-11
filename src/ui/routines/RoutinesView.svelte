@@ -28,6 +28,8 @@
 	import { todayISO } from "../../dayNote";
 	import { parseRoutines, type ParsedRoutines, type Routine } from "../../routines/routinesFile";
 	import { groupRoutines, type RoutineGroup } from "../../routines/routinesModel";
+	import { routineLink } from "../../routines/templateWeek";
+	import TemplateWeek from "./TemplateWeek.svelte";
 	import {
 		addRoutine,
 		draftOf,
@@ -57,6 +59,24 @@
 	let parsed = $state<ParsedRoutines>({ routines: [], problems: [] });
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 	const groups = $derived<RoutineGroup[]>(groupRoutines(parsed.routines));
+
+	// ── The list beside the template week ──
+	// Pointing at a routine in either lights it in both: a block on every day it
+	// repeats, with the tasks homed in it (routineLink). Selecting one in the
+	// week scrolls the list to it, since the list is where routines are edited.
+	let hovered = $state<number | null>(null);
+	const link = $derived(routineLink(parsed.routines));
+	let listEl = $state<HTMLDivElement>();
+	let flashLine = $state<number | null>(null);
+	let flashTimer: number | undefined;
+	function revealInList(r: Routine) {
+		const row = listEl?.querySelector<HTMLElement>(`[data-routine-line="${r.line}"]`);
+		row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+		flashLine = r.line;
+		window.clearTimeout(flashTimer);
+		flashTimer = window.setTimeout(() => (flashLine = null), 1200);
+	}
+	$effect(() => () => window.clearTimeout(flashTimer));
 
 	const DAILY = parseRule("daily")!;
 	const NEW_TASK = "New routine";
@@ -271,7 +291,8 @@
 		</button>
 	</div>
 
-	<div class="routines-scroll">
+	<div class="routines-body">
+	<div class="routines-scroll" bind:this={listEl}>
 		{#if parsed.problems.length > 0}
 			<div class="routines-problems">
 				<div class="routines-problems-title">
@@ -310,7 +331,17 @@
 						{@const assoc = shownAssoc(r)}
 						{@const ra = assoc ? resolve(assoc) : undefined}
 						{@const paused = isPaused(r)}
-						<li class="routine-row" class:is-homed={r.kind === "task" && r.home !== undefined} class:paused use:actionZone={{ anchor: "right", layout: "stack" }}>
+						<li
+							class="routine-row"
+							class:is-homed={r.kind === "task" && r.home !== undefined}
+							class:paused
+							class:linked={hovered !== null && link(r) === hovered}
+							class:flash={flashLine === r.line}
+							data-routine-line={r.line}
+							onpointerenter={() => (hovered = link(r))}
+							onpointerleave={() => (hovered = null)}
+							use:actionZone={{ anchor: "right", layout: "stack" }}
+						>
 							<div class="routine-main">
 								<span class="routine-kind" title={r.kind === "block" ? (r.checkable ? "Checkable block" : "Block") : "Task"}>
 									{#if r.kind === "block"}
@@ -424,6 +455,21 @@
 			</section>
 		{/each}
 	</div>
+
+	<!-- The template week: what the routines add up to, read-only. Edit in the
+	     list; pointing at a routine in either lights it in both. -->
+	<div class="routines-week">
+		<TemplateWeek
+			routines={parsed.routines}
+			{resolve}
+			{hovered}
+			{link}
+			{isPaused}
+			onHover={(key) => (hovered = key)}
+			onSelect={revealInList}
+		/>
+	</div>
+	</div>
 </div>
 
 {#if pickerRoutine && pickerAnchor}
@@ -474,10 +520,41 @@
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 	}
-	.routines-scroll {
+	/* List and template week side by side; stacked when the view is narrow. */
+	.routines-view {
+		container-type: inline-size;
+	}
+	.routines-body {
 		flex: 1;
+		min-height: 0;
+		display: flex;
+	}
+	.routines-scroll {
+		flex: 1 1 0;
+		min-width: 0;
 		overflow: auto;
 		padding: 0 12px 16px;
+	}
+	.routines-week {
+		flex: 1.3 1 0;
+		min-width: 0;
+		overflow: auto;
+		padding: 0 12px 16px 4px;
+	}
+	@container (max-width: 640px) {
+		.routines-body {
+			flex-direction: column;
+			overflow: auto;
+		}
+		.routines-scroll,
+		.routines-week {
+			flex: none;
+			overflow: visible;
+		}
+		.routines-week {
+			padding: 8px 12px 16px;
+			border-top: 1px solid var(--background-modifier-border);
+		}
 	}
 	.routines-problems {
 		margin: 0 4px 12px;
@@ -566,8 +643,13 @@
 	.routine-row.is-homed {
 		margin-left: 16px;
 	}
-	.routine-row:hover {
+	.routine-row:hover,
+	.routine-row.linked {
 		background: var(--background-modifier-hover);
+	}
+	.routine-row.flash {
+		background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+		transition: background 300ms ease;
 	}
 	.routine-row.paused .routine-kind,
 	.routine-row.paused .routine-text,
