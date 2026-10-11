@@ -127,6 +127,10 @@ textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
    the styles load in. Touch never gets this layout. */
 body .kairos-action-bar.kairos-action-stack {
 	position: fixed;
+	/* Above anything positioned in the rows it floats over (a cell's "+", a
+	   neighbouring row's own bits), so the pointer stays on the stack all the
+	   way along it, up or down. */
+	z-index: var(--layer-popover);
 	left: var(--kairos-action-stack-left, 0);
 	top: var(--kairos-action-stack-top, 0);
 	right: auto;

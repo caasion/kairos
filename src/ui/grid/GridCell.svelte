@@ -531,11 +531,16 @@
 		box-shadow: none;
 		cursor: pointer;
 		opacity: 0;
+		/* Hidden means inert: an invisible "+" must not catch the pointer. It sits
+		   above the rows (z-index), so it would otherwise cut through a task's
+		   action stack hanging down over it and drop the stack. */
+		pointer-events: none;
 		transition: opacity 0.1s;
 	}
 
 	.grid-cell:hover .grid-cell-add {
 		opacity: 0.75;
+		pointer-events: auto;
 	}
 
 	.grid-cell-add:hover {
@@ -573,10 +578,13 @@
 		box-shadow: none;
 		cursor: pointer;
 		opacity: 0;
+		/* Inert while hidden, like the cell's "+". */
+		pointer-events: none;
 		transition: opacity 0.1s;
 	}
 	.grid-cell-block-group:hover > .grid-cell-group-add {
 		opacity: 0.75;
+		pointer-events: auto;
 	}
 	.grid-cell-group-add:hover {
 		opacity: 1;
@@ -598,6 +606,7 @@
 		.grid-cell-add,
 		.grid-cell-group-add {
 			opacity: 0.45;
+			pointer-events: auto;
 		}
 		.grid-cell-block-group:has(:global(.k-task:hover)) > .grid-cell-group-add {
 			opacity: 0;
