@@ -7,16 +7,22 @@
 // the decision here means a drop behaves the same from every view.
 //
 //   drop on a block      same day → nest at the slot; other day → move there
+//   drop on Unscheduled  out of its block, into the day's Unscheduled (made if
+//                        the day has none)
 //   drop on empty time   a new block at that time (see writer's NewBlockMode)
 //   Ctrl/Cmd held        drop a copy instead; the source day isn't touched
 //   Option/Alt held      on empty time, time-box: the task becomes the block
 
 import type { Association, Block, ISODate, Task, TimeRange } from "./types";
+import { nextDraftLine } from "./draftLine";
 import {
 	copyTaskIntoBlock,
+	copyTaskIntoDay,
 	copyTaskIntoNewBlock,
+	moveTaskAcrossDays,
 	moveTaskIntoBlockAcrossDays,
 	nestTaskUnderBlock,
+	unnestTask,
 	scheduleTaskInNewBlock,
 	scheduleTaskInNewBlockAcrossDays,
 	type NewBlockMode,
@@ -25,6 +31,7 @@ import {
 /** A drop position on a timeline, found by hit-testing its DOM. */
 export type TimelineDrop =
 	| { kind: "block"; date: ISODate; blockLine: number; index: number }
+	| { kind: "unscheduled"; date: ISODate }
 	| { kind: "time"; date: ISODate; time: TimeRange };
 
 /** True when two drops name the same position (or are both absent). */
@@ -37,7 +44,7 @@ export function sameDrop(a: TimelineDrop | null, b: TimelineDrop | null): boolea
   if (a.kind === "time" && b.kind === "time") {
     return a.time.start === b.time.start && a.time.end === b.time.end;
   }
-  return false;
+  return a.kind === "unscheduled";
 }
 
 /** One day as the planner sees it. `path` is where its note lives (or will). */
@@ -69,17 +76,27 @@ function modeOf(mods: DropModifiers): NewBlockMode {
 	return mods.timebox ? "timebox" : "container";
 }
 
+/** True for the day's Unscheduled inbox (an untimed block by that name). */
+function isInbox(block: Block): boolean {
+	return block.time === undefined && block.title === "Unscheduled";
+}
+
 /**
  * Decide what releasing `source`'s task on `drop` (a position on `target`'s
- * timeline) writes. Null when nothing changes: the destination block is gone,
- * the task can't be lifted (a checkable block's own checkbox), or the result
- * equals the input.
+ * timeline, or a Grid block group) writes. Null when nothing changes: the
+ * destination block is gone, the task can't be lifted (a checkable block's own
+ * checkbox), or the result equals the input.
+ *
+ * `assoc` re-files the task as it moves (a drop in another Grid row): an
+ * association, or null for none. Omitted, the task keeps the association it
+ * had, inherited or not (materialize-on-move).
  */
 export function planTaskDrop(
 	source: DragSource,
 	target: DayBlocks,
 	drop: TimelineDrop,
 	mods: DropModifiers,
+	assoc?: Association | null,
 ): DropOutcome | null {
 	const { owner, task } = source;
 	const mode = modeOf(mods);
@@ -91,44 +108,44 @@ export function planTaskDrop(
 
 	// Ctrl/Cmd: a copy lands on the target; the source stays where it is.
 	if (mods.duplicate) {
-		const assoc: Association | null = task.assoc ?? owner.assoc ?? null;
+		const copyAssoc: Association | null =
+			assoc !== undefined ? assoc : (task.assoc ?? owner.assoc ?? null);
 		const blocks =
 			drop.kind === "block"
-				? copyTaskIntoBlock(target.blocks, task, assoc, destination!, drop.index)
-				: copyTaskIntoNewBlock(target.blocks, task, assoc, target.path, drop.time, mode);
+				? copyTaskIntoBlock(target.blocks, task, copyAssoc, destination!, drop.index)
+				: drop.kind === "unscheduled"
+					? copyTaskIntoDay(target.blocks, task, target.path, nextDraftLine(), copyAssoc)
+					: copyTaskIntoNewBlock(target.blocks, task, copyAssoc, target.path, drop.time, mode);
 		return blocks === target.blocks ? null : { kind: "day", day: { ...target, blocks } };
 	}
 
 	if (source.day.date === target.date) {
 		const day = source.day;
+		// Already in Unscheduled, and not being re-filed: nothing to do.
+		if (drop.kind === "unscheduled" && isInbox(owner) && assoc === undefined) return null;
 		const blocks =
 			drop.kind === "block"
-				? nestTaskUnderBlock(day.blocks, owner, task, destination!, drop.index)
-				: scheduleTaskInNewBlock(day.blocks, owner, task, drop.time, mode);
+				? nestTaskUnderBlock(day.blocks, owner, task, destination!, drop.index, assoc)
+				: drop.kind === "unscheduled"
+					? unnestTask(day.blocks, owner, task, day.path, assoc)
+					: scheduleTaskInNewBlock(day.blocks, owner, task, drop.time, mode, assoc);
 		return blocks === day.blocks ? null : { kind: "day", day: { ...day, blocks } };
 	}
 
+	const from0 = source.day.blocks;
 	const { from, to } =
 		drop.kind === "block"
 			? moveTaskIntoBlockAcrossDays(
-					source.day.blocks,
-					target.blocks,
-					owner,
-					task,
-					destination!,
-					target.path,
-					drop.index,
+					from0, target.blocks, owner, task, destination!, target.path, drop.index, assoc,
 				)
-			: scheduleTaskInNewBlockAcrossDays(
-					source.day.blocks,
-					target.blocks,
-					owner,
-					task,
-					target.path,
-					drop.time,
-					mode,
-				);
-	if (from === source.day.blocks && to === target.blocks) return null;
+			: drop.kind === "unscheduled"
+				? moveTaskAcrossDays(
+						from0, target.blocks, owner, task, target.path, nextDraftLine(), assoc,
+					)
+				: scheduleTaskInNewBlockAcrossDays(
+						from0, target.blocks, owner, task, target.path, drop.time, mode, assoc,
+					);
+	if (from === from0 && to === target.blocks) return null;
 	return {
 		kind: "cross",
 		from: { ...source.day, blocks: from },

@@ -42,12 +42,12 @@
 	} from "../../writer";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import type { GridDay, GridSnapshot, KairosIndex, Resolver } from "../../index";
-	import { hitTestGridBlock, hitTestGridCell, type BlockDragState, type GridDropSlot, type TaskDragState } from "../timeline/taskDrag";
-	import type { TimelineDrop } from "../../taskDrop";
+	import { hitTestGridCell, hitTestGridGroup, type BlockDragState, type GridDropSlot, type GridGroupDrop, type TaskDragState } from "../timeline/taskDrag";
 	import { dropTaskOnTimeline } from "../timeline/dropTask";
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		blockGroups,
+		isUnscheduledBlock,
 		buildRows,
 		cellGroups,
 		dayStatus,
@@ -208,11 +208,29 @@
 		return (task) => rolledUpProjectOf(row, task, snap);
 	}
 
-	// The block a live task drag would drop into on `date`, so its headers light
-	// up (in every row it shows in).
-	function dropBlockLineOn(date: ISODate): number | undefined {
-		const drop = headerDrop;
-		return drop?.kind === "block" && drop.date === date ? drop.blockLine : undefined;
+	// The block group a live task drag would land in, for this cell (date, row).
+	function dropGroupOn(date: ISODate, row: GridRow): number | "unscheduled" | undefined {
+		const g = groupDrop;
+		if (!g || g.rowKey !== row.key || g.drop.date !== date) return undefined;
+		if (g.drop.kind === "unscheduled") return "unscheduled";
+		return g.drop.kind === "block" ? g.drop.blockLine : undefined;
+	}
+
+	// While a task is dragged over a grouped cell with no Unscheduled group, the
+	// cell offers an empty one to drop into, so a task can always leave its block.
+	// Only the cell under the pointer grows, so the rest of the grid holds still.
+	function wantsUnscheduledSlot(
+		cell: { blocks?: BlockGroup[] },
+		inactive: boolean,
+		date: ISODate,
+		row: GridRow,
+	): boolean {
+		if (taskDrag === null || inactive || !cell.blocks) return false;
+		if (cell.blocks.some((g) => isUnscheduledBlock(g.block))) return false;
+		const overCell =
+			(taskDrop?.date === date && taskDrop.rowKey === row.key) ||
+			(groupDrop?.drop.date === date && groupDrop.rowKey === row.key);
+		return overCell;
 	}
 
 	function setGroupByBlock(on: boolean) {
@@ -413,9 +431,10 @@
 	type GridTaskDrag = Omit<TaskDragState, "task"> & { task: ResolvedTask };
 	let taskDrag = $state<GridTaskDrag | null>(null);
 	let taskDrop = $state<GridDropSlot | null>(null);
-	// The block header under the pointer (grouping on): a drop there nests the
-	// task in that block. Takes precedence over the cell the header sits in.
-	let headerDrop = $state<TimelineDrop | null>(null);
+	// The block group under the pointer (grouping on): a drop there nests the
+	// task in that block, or takes it out of its block on Unscheduled. Takes
+	// precedence over the cell the group sits in.
+	let groupDrop = $state<GridGroupDrop | null>(null);
 	// Last pointer coordinates, updated on every pointermove during a drag.
 	// Re-hit-tested at pointerup to get the freshest drop slot.
 	let lastPointerX = 0;
@@ -448,17 +467,16 @@
 		hitTestDrag(event);
 	}
 
-	// What's under the pointer: a block header (grouping on), whose block the
-	// task would nest in, or else a cell.
+	// What's under the pointer: a block group (grouping on), or else a cell.
 	function hitTestDrag(event: PointerEvent) {
-		headerDrop = hitTestGridBlock(event);
-		taskDrop = headerDrop ? null : hitTestGridCell(event);
+		groupDrop = hitTestGridGroup(event);
+		taskDrop = groupDrop ? null : hitTestGridCell(event);
 	}
 
 	function endTaskDrag() {
 		taskDrag = null;
 		taskDrop = null;
-		headerDrop = null;
+		groupDrop = null;
 	}
 
 	async function onTaskDragUp() {
@@ -467,17 +485,12 @@
 		// Re-hit-test at the exact release coordinates for the freshest slot —
 		// taskDrop could be stale if no pointermove fired since entering this cell.
 		const synth = new MouseEvent("pointermove", { clientX: lastPointerX, clientY: lastPointerY }) as PointerEvent;
-		const onHeader = hitTestGridBlock(synth) ?? headerDrop;
-		const drop = onHeader ? null : (hitTestGridCell(synth) ?? taskDrop);
+		const onGroup = hitTestGridGroup(synth) ?? groupDrop;
+		const drop = onGroup ? null : (hitTestGridCell(synth) ?? taskDrop);
 		endTaskDrag();
 
-		// Released on a block header: nest the task in that block on that day,
-		// whichever day it came from. Ctrl/Cmd drops a copy.
-		if (onHeader) {
-			void dropTaskOnTimeline(index, drag.task.date, drag.owner, drag.task, onHeader, {
-				duplicate: drag.duplicate,
-				timebox: false,
-			});
+		if (onGroup) {
+			void dropOnGroup(drag, onGroup);
 			return;
 		}
 		if (!drop) return;
@@ -580,6 +593,35 @@
 			drop.date as ISODate,
 			targetPath,
 			to,
+		);
+	}
+
+	// Released on a block group: the task lands in that block (or Unscheduled),
+	// on that day and in that row. Where you drop says both when (the block) and
+	// what (the row): a different row re-files it like a cell drop does, the row
+	// it's already on keeps its association. Ctrl/Cmd drops a copy.
+	async function dropOnGroup(drag: GridTaskDrag, at: GridGroupDrop) {
+		const targetRow = rows.find((r) => r.key === at.rowKey);
+		if (!targetRow || !snapshot) return;
+		// Never drop into a read-only history cell (row inactive/archived that day).
+		if (isCellInactive(targetRow, at.drop.date)) return;
+		const target = dropAssociation(targetRow, drag.task.owner, snapshot);
+		const assoc = target && !target.sameRow ? target.assoc : undefined;
+		// Dropped back on its own group: nothing to do.
+		const sameDay = at.drop.date === drag.task.date;
+		const ownGroup =
+			at.drop.kind === "block"
+				? at.drop.blockLine === drag.owner.source.line
+				: at.drop.kind === "unscheduled" && isUnscheduledBlock(drag.owner);
+		if (sameDay && ownGroup && assoc === undefined && !drag.duplicate) return;
+		await dropTaskOnTimeline(
+			index,
+			drag.task.date,
+			drag.owner,
+			drag.task,
+			at.drop,
+			{ duplicate: drag.duplicate, timebox: false },
+			assoc,
 		);
 	}
 
@@ -1097,7 +1139,9 @@
 								isDropTarget={isDropTargetFor(date, row.key)}
 								blockGroups={cell.blocks}
 								chipFor={chipFor(row)}
-								dropBlockLine={dropBlockLineOn(date)}
+								{date}
+								dropGroup={dropGroupOn(date, row)}
+								unscheduledSlot={wantsUnscheduledSlot(cell, inactive, date, row)}
 							/>
 						{:else if nudges.length === 0}
 							<div class="grid-datacell-empty"></div>

@@ -334,6 +334,18 @@ function insertIntoUnscheduled(
 }
 
 /**
+ * The association a task carries once it leaves `source`. By default its own,
+ * else the one it was inheriting from `source` (materialize-on-move, §4.3), so
+ * moving never changes its owner. `assoc` overrides that when the move is also a
+ * re-filing (a drop in another Grid row): an association, or null for none.
+ */
+function pinAssoc(nested: Task, source: Block, assoc?: Association | null): Task {
+  const next = assoc !== undefined ? assoc ?? undefined : nested.assoc ?? source.assoc;
+  const { assoc: _old, ...rest } = nested;
+  return next ? { ...rest, assoc: next } : rest;
+}
+
+/**
  * Unnest a task: move it out of its (timed) block into the day's Unscheduled
  * block. This is the Grid view's one time-dimension write — you *schedule*
  * blocks, not tasks, so a task loses its time by leaving the block, never by a
@@ -355,6 +367,7 @@ export function unnestTask(
   owner: Block,
   target: Task,
   path: string,
+  assoc?: Association | null,
 ): Block[] {
   const source = blocks.find((b) => isOwner(b, owner));
   if (!source) return blocks;
@@ -364,9 +377,9 @@ export function unnestTask(
   const nested = source.tasks.find((t) => sameSource(t.source, target.source));
   if (!nested) return blocks;
 
-  // Materialize: keep an explicit assoc; otherwise inherit the block's onto it.
-  const assoc = nested.assoc ?? source.assoc;
-  const moved: Task = { ...nested, ...(assoc ? { assoc } : {}) };
+  // Materialize: keep an explicit assoc; otherwise inherit the block's onto it
+  // (unless the caller re-files it).
+  const moved = pinAssoc(nested, source, assoc);
 
   // Remove from the source block, then insert into Unscheduled.
   const without = blocks.map((b) =>
@@ -417,6 +430,7 @@ export function nestTaskUnderBlock(
   target: Task,
   destination: Block,
   index = Number.MAX_SAFE_INTEGER,
+  assoc?: Association | null,
 ): Block[] {
   const source = blocks.find((b) => isOwner(b, sourceOwner));
   const dest = blocks.find((b) => isOwner(b, destination));
@@ -432,9 +446,9 @@ export function nestTaskUnderBlock(
   if (!nested) return blocks;
 
   // Materialize: keep an explicit assoc, else inherit the *source* block's onto
-  // the task so its owner doesn't change by moving under a different block.
-  const assoc = nested.assoc ?? source.assoc;
-  const moved: Task = { ...nested, ...(assoc ? { assoc } : {}) };
+  // the task so its owner doesn't change by moving under a different block
+  // (unless the caller re-files it).
+  const moved = pinAssoc(nested, source, assoc);
 
   const sameBlock = isOwner(source, dest);
 
@@ -783,11 +797,16 @@ interface Lifted {
 
 /**
  * Remove `target` from `owner` in `blocks`, returning the remainder and the
- * task with its association pinned. Null when the owner or task can't be found,
+ * task with its association pinned (`assoc` overrides it, see `pinAssoc`). Null when the owner or task can't be found,
  * or when the target is a colocated task (a block's own checkbox line, which
  * can't leave that line).
  */
-function liftTask(blocks: Block[], owner: Block, target: Task): Lifted | null {
+function liftTask(
+  blocks: Block[],
+  owner: Block,
+  target: Task,
+  assoc?: Association | null,
+): Lifted | null {
   const source = blocks.find((b) => isOwner(b, owner));
   if (!source) return null;
   if (source.status !== undefined && sameSource(source.source, target.source)) {
@@ -796,8 +815,7 @@ function liftTask(blocks: Block[], owner: Block, target: Task): Lifted | null {
   const nested = source.tasks.find((t) => sameSource(t.source, target.source));
   if (!nested) return null;
 
-  const assoc = nested.assoc ?? source.assoc;
-  const task: Task = { ...nested, ...(assoc ? { assoc } : {}) };
+  const task = pinAssoc(nested, source, assoc);
   const without = blocks.map((b) =>
     isOwner(b, source)
       ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
@@ -869,8 +887,9 @@ export function moveTaskIntoBlockAcrossDays(
   destination: Block,
   toPath: string,
   index = Number.MAX_SAFE_INTEGER,
+  assoc?: Association | null,
 ): CrossDayTaskMove {
-  const lifted = liftTask(fromBlocks, sourceOwner, target);
+  const lifted = liftTask(fromBlocks, sourceOwner, target, assoc);
   if (!lifted || !toBlocks.some((b) => isOwner(b, destination))) {
     return { from: fromBlocks, to: toBlocks };
   }
@@ -894,8 +913,9 @@ export function scheduleTaskInNewBlock(
   target: Task,
   time: TimeRange,
   mode: NewBlockMode,
+  assoc?: Association | null,
 ): Block[] {
-  const lifted = liftTask(blocks, owner, target);
+  const lifted = liftTask(blocks, owner, target, assoc);
   if (!lifted) return blocks;
   const path = owner.source.path;
   return [...lifted.without, blockForTask(lifted.task, time, path, mode)];
@@ -913,8 +933,9 @@ export function scheduleTaskInNewBlockAcrossDays(
   toPath: string,
   time: TimeRange,
   mode: NewBlockMode,
+  assoc?: Association | null,
 ): CrossDayTaskMove {
-  const lifted = liftTask(fromBlocks, sourceOwner, target);
+  const lifted = liftTask(fromBlocks, sourceOwner, target, assoc);
   if (!lifted) return { from: fromBlocks, to: toBlocks };
   return {
     from: lifted.without,

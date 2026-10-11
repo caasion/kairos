@@ -6,7 +6,7 @@
 // goes through here, so they all write the same thing.
 
 import type { KairosIndex } from "../../index";
-import type { Block, ISODate, Task } from "../../types";
+import type { Association, Block, ISODate, Task } from "../../types";
 import { ensureNoteForDate } from "../../dayNote";
 import {
 	commitTaskDrop,
@@ -23,8 +23,8 @@ function indexedDay(index: KairosIndex, date: ISODate): DayBlocks | null {
 }
 
 /**
- * Drop `task` (sitting in `owner` on `fromDate`) on `drop`. Returns whether
- * anything was written. The source is read after the target note is ensured,
+ * Drop `task` (sitting in `owner` on `fromDate`) on `drop`, re-filing it to
+ * `assoc` when given (see `planTaskDrop`). Returns whether anything was written. The source is read after the target note is ensured,
  * so an await can't leave the plan working from stale blocks.
  */
 export async function dropTaskOnTimeline(
@@ -34,6 +34,7 @@ export async function dropTaskOnTimeline(
 	task: Task,
 	drop: TimelineDrop,
 	mods: DropModifiers,
+	assoc?: Association | null,
 ): Promise<boolean> {
 	const target =
 		indexedDay(index, drop.date) ?? {
@@ -43,7 +44,7 @@ export async function dropTaskOnTimeline(
 		};
 	const source = fromDate === drop.date ? target : indexedDay(index, fromDate);
 	if (!source) return false;
-	const outcome = planTaskDrop({ day: source, owner, task }, target, drop, mods);
+	const outcome = planTaskDrop({ day: source, owner, task }, target, drop, mods, assoc);
 	if (!outcome) return false;
 	commitTaskDrop(index, outcome);
 	return true;

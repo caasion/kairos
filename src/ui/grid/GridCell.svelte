@@ -18,7 +18,7 @@
 	//     each under a small project header naming it. Ctrl/Cmd+click a header to
 	//     open the project note. Scheduled tasks carry the block badge.
 
-	import type { Association, Block, ResolvedTask, Task, TaskStatus } from "../../types";
+	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
 	import { isUnscheduledBlock, type BlockGroup, type CellGroup } from "../../gridModel";
 	import Task_ from "../task/Task.svelte";
@@ -64,12 +64,16 @@
 		dragBlockLine?: number;
 		// True only when THIS cell is the live drop target (not just any drag).
 		isDropTarget?: boolean;
-		// Grouped by block: the cell's groups (replaces `tasks` and `groups`), the
-		// chip naming a rolled-up task's project, and the block a live drag would
-		// drop into (its header lights up).
+		// Grouped by block: the cell's groups (replaces `tasks` and `groups`) and
+		// the chip naming a rolled-up task's project. Each group is a drop target
+		// (see taskDrag's `hitTestGridGroup`): `dropGroup` is the one a live drag
+		// would land in (a block line, or "unscheduled"), and `unscheduledSlot`
+		// shows an empty Unscheduled group to drop into while a drag is live.
 		blockGroups?: BlockGroup[];
 		chipFor?: (task: ResolvedTask) => string | undefined;
-		dropBlockLine?: number;
+		date?: ISODate;
+		dropGroup?: number | "unscheduled";
+		unscheduledSlot?: boolean;
 	}
 
 	let {
@@ -95,8 +99,15 @@
 		isDropTarget = false,
 		blockGroups,
 		chipFor,
-		dropBlockLine,
+		date,
+		dropGroup,
+		unscheduledSlot = false,
 	}: Props = $props();
+
+	// The value `dropGroup` takes when a drag is over this group.
+	function dropKey(group: BlockGroup): number | "unscheduled" {
+		return isUnscheduledBlock(group.block) ? "unscheduled" : group.block.source.line;
+	}
 
 	const grouped = $derived(blockGroups !== undefined);
 
@@ -268,38 +279,50 @@
 
 	{#if blockGroups}
 		{#each blockGroups as group, g (group.key)}
-			{@const date = anyTask(group)?.date}
 			{@const at = blockOffsets[g] ?? 0}
-			{#if group.head}
-				<!-- A checkable block heads its own group: its task row, with the
-				     start time before the title. It's also the block's drop target. -->
-				<div
-					class="grid-cell-block-head"
-					class:drop-target={dropBlockLine === group.block.source.line}
-					data-grid-block-line={group.block.source.line}
-					data-grid-block-date={date}
-				>
+			<!-- The whole group (header and tasks) is one drop target: a task
+			     dropped anywhere on it nests in this block. The Unscheduled group
+			     carries no block line, so a drop there takes a task out of its
+			     block instead. -->
+			<div
+				class="grid-cell-block-group"
+				class:drop-target={dropGroup === dropKey(group)}
+				data-grid-drop-date={date}
+				data-grid-drop-block={isUnscheduledBlock(group.block) ? undefined : group.block.source.line}
+			>
+				{#if group.head}
+					<!-- A checkable block heads its own group: its task row, with the
+					     start time before the title. -->
 					{@render taskItem(group.head, at, group.block.time ? fmtTime(group.block.time.start) : undefined)}
-				</div>
-			{:else}
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
-					class="grid-cell-group-header grid-cell-block-header"
-					class:unscheduled={isUnscheduledBlock(group.block)}
-					class:drop-target={dropBlockLine === group.block.source.line}
-					data-grid-block-line={group.block.source.line}
-					data-grid-block-date={date}
-					title={group.block.time ? "Ctrl+click to open in Day view" : undefined}
-					onclick={(e) => onBlockHeaderClick(e, group)}
-				>
-					{headerLabel(group.block)}
-				</div>
-			{/if}
-			{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
-				{@render taskItem(task, at + (group.head ? 1 : 0) + j)}
-			{/each}
+				{:else}
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class="grid-cell-group-header grid-cell-block-header"
+						class:unscheduled={isUnscheduledBlock(group.block)}
+						title={group.block.time ? "Ctrl+click to open in Day view" : undefined}
+						onclick={(e) => onBlockHeaderClick(e, group)}
+					>
+						{headerLabel(group.block)}
+					</div>
+				{/if}
+				{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
+					{@render taskItem(task, at + (group.head ? 1 : 0) + j)}
+				{/each}
+			</div>
 		{/each}
+		{#if unscheduledSlot}
+			<!-- While a task is being dragged, a cell with no Unscheduled group
+			     offers an empty one, so a task can always be dropped out of its
+			     block. -->
+			<div
+				class="grid-cell-block-group grid-cell-unscheduled-slot"
+				class:drop-target={dropGroup === "unscheduled"}
+				data-grid-drop-date={date}
+			>
+				<div class="grid-cell-group-header grid-cell-block-header unscheduled">Unscheduled</div>
+			</div>
+		{/if}
 	{/if}
 
 	{#each grouped ? [] : tasks as task, i (task.source.path + ":" + task.source.line)}
@@ -409,19 +432,37 @@
 		line-height: 1.4;
 		font-variant-numeric: tabular-nums;
 	}
-	.grid-cell-block-header:not(:first-child),
-	.grid-cell-block-head:not(:first-child) {
-		margin-top: 4px;
-	}
 	.grid-cell-block-header.unscheduled {
 		font-style: italic;
 	}
-	/* A live task drag would drop into this block. */
-	.grid-cell-block-header.drop-target,
-	.grid-cell-block-head.drop-target {
-		color: var(--text-normal);
-		box-shadow: inset 0 0 0 1.5px var(--interactive-accent);
+	/* One block's header and tasks: a column, and one drop target. */
+	.grid-cell-block-group {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-width: 0;
 		border-radius: var(--radius-s);
+	}
+	.grid-cell-block-group + .grid-cell-block-group {
+		margin-top: 4px;
+	}
+	/* A live task drag would land in this block: outline the whole group. */
+	.grid-cell-block-group.drop-target {
+		box-shadow: inset 0 0 0 1.5px var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	}
+	.grid-cell-block-group.drop-target .grid-cell-block-header {
+		color: var(--text-normal);
+	}
+	/* The empty Unscheduled slot shown during a drag: a dashed outline so it
+	   reads as a place to drop, not a group with tasks. */
+	.grid-cell-unscheduled-slot {
+		outline: 1px dashed var(--background-modifier-border);
+		outline-offset: -1px;
+		padding-block: 2px;
+	}
+	.grid-cell-unscheduled-slot.drop-target {
+		outline-color: transparent;
 	}
 
 	/* Dim the row whose task is being dragged. */

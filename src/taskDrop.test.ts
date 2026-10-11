@@ -121,3 +121,50 @@ describe("newBlockLabel", () => {
 		expect(newBlockLabel(owner.tasks[0]!, owner, { duplicate: false, timebox: true })).toBe("Fix carry bug");
 	});
 });
+
+describe("planTaskDrop to Unscheduled", () => {
+	const fixFrom = (day: DayBlocks): DragSource => {
+		const owner = day.blocks[0]!;
+		return { day, owner, task: owner.tasks[0]! };
+	};
+
+	it("takes a task out of its block into the same day's Unscheduled", () => {
+		const day = wed();
+		const out = planTaskDrop(fixFrom(day), day, { kind: "unscheduled", date: day.date }, plain);
+		if (out?.kind !== "day") throw new Error("expected a same-day edit");
+		expect(out.day.blocks[0]!.tasks).toEqual([]);
+		const inbox = out.day.blocks.find((b) => b.title === "Unscheduled")!;
+		expect(inbox.tasks.map((t) => t.text)).toEqual(["Launch post", "Fix carry bug"]);
+		// It was inheriting Kairos from its block; that's written onto it.
+		expect(inbox.tasks[1]!.assoc).toEqual({ kind: "project", id: "Kairos" });
+	});
+
+	it("creates the target day's Unscheduled when moving to a day without one", () => {
+		const out = planTaskDrop(fixFrom(wed()), thu(), { kind: "unscheduled", date: "2026-10-08" }, plain);
+		if (out?.kind !== "cross") throw new Error("expected a cross-day move");
+		const inbox = out.to.blocks.find((b) => b.title === "Unscheduled")!;
+		expect(inbox.tasks.map((t) => t.text)).toEqual(["Fix carry bug"]);
+	});
+
+	it("does nothing for a task already in Unscheduled", () => {
+		const day = wed();
+		expect(planTaskDrop(launchFrom(day), day, { kind: "unscheduled", date: day.date }, plain)).toBeNull();
+	});
+
+	it("re-files the task when given an association", () => {
+		const day = wed();
+		const out = planTaskDrop(fixFrom(day), day, { kind: "block", date: day.date, blockLine: 6, index: 0 }, plain, null);
+		if (out?.kind !== "day") throw new Error("expected a same-day edit");
+		const moved = out.day.blocks[1]!.tasks[0]!;
+		expect(moved.text).toBe("Fix carry bug");
+		expect(moved.assoc).toBeUndefined();
+	});
+
+	it("re-files a task already in Unscheduled", () => {
+		const day = wed();
+		const out = planTaskDrop(launchFrom(day), day, { kind: "unscheduled", date: day.date }, plain, { kind: "domain", id: "Writing" });
+		if (out?.kind !== "day") throw new Error("expected a same-day edit");
+		const inbox = out.day.blocks.find((b) => b.title === "Unscheduled")!;
+		expect(inbox.tasks[0]!.assoc).toEqual({ kind: "domain", id: "Writing" });
+	});
+});
