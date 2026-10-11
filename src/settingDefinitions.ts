@@ -88,14 +88,7 @@ export interface KairosSettings {
 	dropBlockTitle: string;
 
 	/**
-	 * Group each Grid cell's tasks under the block they sit in, in start-time
-	 * order with Unscheduled last (decision 70). On by default: it's what ties
-	 * the Grid to the timelines. A setting because some workflows want the flat
-	 * list instead.
-	 */
-	gridGroupByBlock: boolean;
-	/**
-	 * With block groups on, show a rolled-up task's project as a muted label at
+	 * Show a rolled-up task's project as a muted label at
 	 * the end of its line on its domain's row (decision 74). Off by default.
 	 */
 	gridShowRollupProjects: boolean;
@@ -118,7 +111,6 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	followGrid: true,
 	highlightAcrossViews: true,
 	dropBlockTitle: '',
-	gridGroupByBlock: true,
 	gridShowRollupProjects: false,
 };
 
@@ -201,22 +193,10 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 		heading: 'Grid view',
 		items: [
 			{
-				name: 'Group by block',
-				desc:
-					'Group the tasks in each grid cell under the block they sit in, ' +
-					'in time order, with unscheduled tasks last.',
-				control: {
-					type: 'toggle',
-					key: 'gridGroupByBlock',
-					defaultValue: DEFAULT_SETTINGS.gridGroupByBlock,
-				},
-			},
-			{
 				name: 'Show projects on rolled-up tasks',
 				desc:
 					'On a domain row that includes rolled-up projects, show each ' +
-					"task's project at the end of its line. Applies when grouping " +
-					'by block.',
+					"task's project at the end of its line.",
 				control: {
 					type: 'toggle',
 					key: 'gridShowRollupProjects',

@@ -591,6 +591,40 @@ describe("blockGroups", () => {
 		expect(inSyde[0]!.tasks.map((t) => t.text)).toEqual(["Problem set"]);
 	});
 
+	it("shows a timed block in its own row even with no tasks, but not an empty inbox", () => {
+		const rehearsal = { ...deepWork, source: { path, line: 30 }, title: "Rehearsal", time: { start: 1140, end: 1260 } };
+		const s = snap([], [domain()], []);
+		const row = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
+		const groups = blockGroups(row, [], s, [rehearsal, inbox]);
+		expect(groups.map((g) => g.block.title)).toEqual(["Rehearsal"]);
+		expect(groups[0]!.tasks).toEqual([]);
+	});
+
+	it("shows a block in its own row when all its tasks are in other rows", () => {
+		const school = domain({ id: "d-school", name: "School" });
+		const syde = project({ id: "p-syde", name: "SYDE 223", domain: "d-school" });
+		const lecture = { ...deepWork, title: "Lecture", assoc: dom("School") };
+		const tasks = [
+			task({ text: "Problem set", block: lecture, assoc: proj("SYDE 223"), owner: proj("SYDE 223"), scheduled: true }),
+		];
+		const s = snap([syde], [school], tasks);
+		const rows = buildRows(s, AS_OF);
+		const inSchool = blockGroups(rows.find((r) => r.name === "School")!, tasks, s, [lecture]);
+		const inSyde = blockGroups(rows.find((r) => r.name === "SYDE 223")!, tasks, s, [lecture]);
+		expect(inSchool.map((g) => [g.block.title, g.tasks.length])).toEqual([["Lecture", 0]]);
+		expect(inSyde.map((g) => [g.block.title, g.tasks.length])).toEqual([["Lecture", 1]]);
+	});
+
+	it("puts a timed block with no association on the Unassigned row", () => {
+		const lunch = { ...deepWork, title: "Lunch" };
+		delete (lunch as { assoc?: Association }).assoc;
+		const s = snap([], [domain()], []);
+		s.days[0]!.blocks = [lunch, inbox];
+		const unassigned = buildRows(s, AS_OF).find((r) => r.kind === "unassigned");
+		expect(unassigned).toBeDefined();
+		expect(blockGroups(unassigned!, [], s, s.days[0]!.blocks).map((g) => g.block.title)).toEqual(["Lunch"]);
+	});
+
 	it("names a rolled-up task's project for the chip, and nothing else", () => {
 		const groceries = project({ id: "p-groc", name: "Groceries", domain: "d-health", rollup: true });
 		const own = task({ text: "Walk", owner: dom("Health") });

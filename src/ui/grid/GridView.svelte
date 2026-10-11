@@ -60,7 +60,6 @@
 		blockGroups,
 		isUnscheduledBlock,
 		buildRows,
-		cellGroups,
 		dayStatus,
 		dropAssociation,
 		ownerRowKey,
@@ -68,7 +67,6 @@
 		rolledUpProjects,
 		rowAssociation,
 		type BlockGroup,
-		type CellGroup,
 		type GridRow,
 	} from "../../gridModel";
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
@@ -287,17 +285,11 @@
 		return !nextIsChild;
 	}
 
-	// A cell's own tasks plus, on a domain row, its rolled-up projects' groups.
-	// Grouped by block (the setting), block groups replace both.
-	function cellFor(
-		row: GridRow,
-		day: GridDay,
-	): { own: ResolvedTask[]; groups: CellGroup[]; blocks?: BlockGroup[] } {
-		if (!snapshot) return { own: [], groups: [] };
-		if (settings.gridGroupByBlock) {
-			return { own: [], groups: [], blocks: blockGroups(row, day.tasks, snapshot) };
-		}
-		return cellGroups(row, day.tasks, snapshot);
+	// A cell's blocks and tasks, grouped by block: every timed block in its own
+	// row, and each block's tasks in theirs.
+	function cellFor(row: GridRow, day: GridDay): { blocks: BlockGroup[] } {
+		if (!snapshot) return { blocks: [] };
+		return { blocks: blockGroups(row, day.tasks, snapshot, day.blocks) };
 	}
 
 	// The project chip on a rolled-up task's line (domain rows, when on).
@@ -327,12 +319,12 @@
 	// cell offers an empty one to drop into, so a task can always leave its block.
 	// Only the cell under the pointer grows, so the rest of the grid holds still.
 	function wantsUnscheduledSlot(
-		cell: { blocks?: BlockGroup[] },
+		cell: { blocks: BlockGroup[] },
 		inactive: boolean,
 		date: ISODate,
 		row: GridRow,
 	): boolean {
-		if (taskDrag === null || inactive || !cell.blocks) return false;
+		if (taskDrag === null || inactive) return false;
 		if (cell.blocks.some((g) => isUnscheduledBlock(g.block))) return false;
 		const overCell =
 			(taskDrop?.date === date && taskDrop.rowKey === row.key) ||
@@ -340,11 +332,6 @@
 		return overCell;
 	}
 
-	function setGroupByBlock(on: boolean) {
-		updateSettings((s) => {
-			s.gridGroupByBlock = on;
-		});
-	}
 	function setHighlightAcrossViews(on: boolean) {
 		updateSettings((s) => {
 			s.highlightAcrossViews = on;
@@ -1246,12 +1233,8 @@
 						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
 					</label>
 					<label class="controls-field">
-						<span class="controls-label">Group by block</span>
-						<input type="checkbox" checked={settings.gridGroupByBlock} onchange={(e) => setGroupByBlock(e.currentTarget.checked)} />
-					</label>
-					<label class="controls-field">
 						<span class="controls-label">Show projects on rolled-up tasks</span>
-						<input type="checkbox" checked={settings.gridShowRollupProjects} disabled={!settings.gridGroupByBlock} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
+						<input type="checkbox" checked={settings.gridShowRollupProjects} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
 					</label>
 					<label class="controls-field">
 						<span class="controls-label">Highlight across views</span>
@@ -1369,8 +1352,6 @@
 						{#if day}
 							{@const cell = cellFor(row, day)}
 							<GridCell
-								tasks={cell.own}
-								groups={cell.groups}
 								{resolve}
 								color={"color" in row ? row.color : undefined}
 								allowCreate={row.kind !== "unassigned"}
@@ -1381,6 +1362,7 @@
 								onEditAssoc={openTaskAssoc}
 								{onNavigate}
 								{onReveal}
+								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
 								onCreate={() => void onCreate(row, date)}
