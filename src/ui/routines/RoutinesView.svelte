@@ -20,6 +20,8 @@
 	import { singleLine } from "../actions/autogrow";
 	import TaskRow from "../task/Task.svelte";
 	import RoutineGroupHeader from "./RoutineGroupHeader.svelte";
+	import BlockPicker from "../timeline/BlockPicker.svelte";
+	import type { BlockOption } from "../../blockOptions";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { RuleModal } from "./RuleModal";
 	import type { Readable } from "svelte/store";
@@ -37,6 +39,7 @@
 		addRoutine,
 		draftOf,
 		removeRoutine,
+		scheduleInNewBlock,
 		updateRoutine,
 		type RoutineDraft,
 	} from "../../routines/routinesWriter";
@@ -203,30 +206,71 @@
 		};
 	}
 
-	/** Move a task to another block of its rule group, or to Unscheduled. */
-	function openMoveMenu(t: TaskRoutine, routines: Routine[], rect: DOMRect) {
-		const menu = new Menu();
-		const homes = new Set<string>();
+	// ── Scheduling a task into a block ──
+	// The same block picker the Grid uses to change a task's block: the rule
+	// group's blocks (and homes), Unscheduled when the task is in a block, and
+	// a last row that makes a new block for it. A task with no block shows a
+	// visible "Schedule in a block" link under its text, so the way in is plain.
+
+	let schedule = $state<{ task: TaskRoutine; routines: Routine[]; anchor: DOMRect } | null>(null);
+	// The picker's options, and for each (by its stand-in block's line) the home
+	// it means; "" is Unscheduled.
+	const scheduleChoices = $derived.by(() => {
+		const map = new Map<number, string>();
+		if (!schedule) return { options: [] as BlockOption[], homes: map };
+		const { task, routines } = schedule;
+		const out: BlockOption[] = [];
+		const seen = new Set<string>();
+		const option = (title: string, home: string, time?: { start: number; end: number }): BlockOption => {
+			const key = -(map.size + 1);
+			map.set(key, home);
+			return {
+				block: { source: { path: store.filePath, line: key }, title, tasks: [], scheduled: time !== undefined, ...(time ? { time } : {}) },
+				title,
+				...(time ? { timeLabel: `${formatTime(time.start)}–${formatTime(time.end)}` } : {}),
+				start: time ? time.start : Number.MAX_SAFE_INTEGER,
+				untimed: time === undefined,
+			};
+		};
 		for (const r of routines) {
-			if (r.kind === "block") homes.add(r.title);
-			else if (r.home) homes.add(r.home);
+			if (r.kind !== "block" || seen.has(r.title) || r.title === task.home) continue;
+			seen.add(r.title);
+			out.push(option(r.title, r.title, r.time));
 		}
-		for (const home of homes) {
-			menu.addItem((i) =>
-				i
-					.setTitle(home)
-					.setChecked(t.home === home)
-					.onClick(() => setHome(t, home)),
-			);
+		for (const r of routines) {
+			if (r.kind !== "task" || !r.home || seen.has(r.home) || r.home === task.home) continue;
+			seen.add(r.home);
+			out.push(option(r.home, r.home));
 		}
-		menu.addSeparator();
-		menu.addItem((i) =>
-			i
-				.setTitle("Unscheduled")
-				.setChecked(t.home === undefined)
-				.onClick(() => setHome(t, "")),
-		);
-		menu.showAtPosition({ x: rect.left + 24, y: rect.bottom });
+		if (task.home !== undefined) out.push(option("Unscheduled", ""));
+		return { options: out.sort((a, b) => a.start - b.start), homes: map };
+	});
+
+	function openSchedule(t: TaskRoutine, routines: Routine[], anchor: DOMRect) {
+		schedule = { task: t, routines, anchor };
+	}
+
+	function pickSchedule(o: BlockOption) {
+		// Read the choice before closing: closing empties the options.
+		const s = schedule;
+		const home = scheduleChoices.homes.get(o.block.source.line);
+		schedule = null;
+		if (s && home !== undefined) setHome(s.task, home);
+	}
+
+	/**
+	 * Make a block for a task and put the task in it, in one edit: named by
+	 * what was typed, else the task's project or domain, else "New block", at
+	 * 09:00–10:00 to adjust from the block's header.
+	 */
+	function createBlockFor(title: string) {
+		const s = schedule;
+		schedule = null;
+		if (!s) return;
+		const t = s.task;
+		const assoc = t.assoc ?? t.inherited;
+		const name = title || (assoc ? resolve(assoc).displayName || assoc.id : "") || NEW_BLOCK;
+		void store.edit((md) => scheduleInNewBlock(md, t, name, { start: 540, end: 600 }));
 	}
 
 	function closeAssoc() {
@@ -254,6 +298,24 @@
 </script>
 
 {#snippet taskRow(t: TaskRoutine, groupRoutines: Routine[])}
+	{#snippet scheduleLink()}
+		<!-- A task with no block: the way to give it one, in plain sight. Uses
+		     the shared .kairos-meta classes, like the Grid's block badge. -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="kairos-meta is-linked"
+			title="Put it in a block, so it has a time"
+			onclick={(e) => {
+				e.stopPropagation();
+				const row = (e.currentTarget as HTMLElement).closest(".k-task") ?? (e.currentTarget as HTMLElement);
+				openSchedule(t, groupRoutines, row.getBoundingClientRect());
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+			<span class="kairos-meta-label">Schedule in a block</span>
+		</div>
+	{/snippet}
 	{@const assoc = t.assoc ?? t.inherited}
 	{@const ra = assoc ? resolve(assoc) : undefined}
 	{@const paused = isPaused(t)}
@@ -268,8 +330,9 @@
 			resolved={ra}
 			onNavigate={() => assoc && navigateToAssociation(app, resolve(assoc))}
 			onEditAssoc={(rect) => openAssoc(t, rect)}
-			onNest={(rect) => openMoveMenu(t, groupRoutines, rect)}
-			nestLabel="Move to another block"
+			onNest={(rect) => openSchedule(t, groupRoutines, rect)}
+			nestLabel={t.home === undefined ? "Schedule in a block" : "Move to another block"}
+			meta={t.home === undefined ? scheduleLink : undefined}
 			onRepeat={() => changeRule(t)}
 			repeatLabel="Change when it repeats"
 			trailing={paused ? "Paused" : undefined}
@@ -372,6 +435,17 @@
 		{/each}
 	</div>
 </div>
+
+{#if schedule}
+	<BlockPicker
+		options={scheduleChoices.options}
+		anchor={schedule.anchor}
+		placeholder="Schedule in a block…"
+		onPick={pickSchedule}
+		onCreate={createBlockFor}
+		onClose={() => (schedule = null)}
+	/>
+{/if}
 
 {#if pickerRoutine && pickerAnchor}
 	<AssociationPicker

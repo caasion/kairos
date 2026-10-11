@@ -33,6 +33,7 @@ import {
 	parseRoutines,
 	skipFrontmatter,
 	type Routine,
+	type TaskRoutine,
 } from "./routinesFile";
 import { parseRule, ruleKey, ruleText, type Rule } from "./rules";
 
@@ -98,6 +99,32 @@ export function addRoutine(markdown: string, draft: RoutineDraft): string {
 	const doc = open(markdown);
 	insertDraft(doc, draft);
 	return close(doc);
+}
+
+/**
+ * Give a task routine a block of its own: add a block routine on the task's
+ * rule and move the task into it, in one edit. The task keeps the association
+ * it showed (its own, or the one it inherited from its old home).
+ */
+export function scheduleInNewBlock(
+	markdown: string,
+	task: TaskRoutine,
+	title: string,
+	time: TimeRange,
+): string {
+	locate(markdown, task);
+	const withBlock = addRoutine(markdown, { kind: "block", rule: task.rule, title, time, checkable: false });
+	const moved = parseRoutines(withBlock).routines.find(
+		(r): r is TaskRoutine =>
+			r.kind === "task" &&
+			r.text === task.text &&
+			r.home === task.home &&
+			ruleKey(r.rule) === ruleKey(task.rule),
+	);
+	if (!moved) return withBlock;
+	const { home: _home, homeAssoc: _homeAssoc, ...rest } = draftOf(moved) as Extract<RoutineDraft, { kind: "task" }>;
+	const assoc = moved.assoc ?? moved.inherited;
+	return updateRoutine(withBlock, moved, { ...rest, ...(assoc ? { assoc } : {}), home: title });
 }
 
 export function removeRoutine(markdown: string, routine: Routine): string {

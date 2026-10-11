@@ -36,9 +36,15 @@
 		onPick: (option: BlockOption) => void;
 		// Dismissed without choosing (outside click / Escape).
 		onClose: () => void;
+		// Search placeholder (default "Nest under block…").
+		placeholder?: string;
+		// Offer a last row that makes a new block, named by the search text when
+		// there is any. Caller closes the popup.
+		onCreate?: (title: string) => void;
 	}
 
-	let { options, anchor, onPick, onClose }: Props = $props();
+	let { options, anchor, onPick, onClose, placeholder = "Nest under block…", onCreate }: Props =
+		$props();
 
 	let query = $state("");
 	let inputEl = $state<HTMLInputElement>();
@@ -73,6 +79,7 @@
 				event.preventDefault();
 				const pick = filtered[highlighted];
 				if (pick) choose(pick);
+				else onCreate?.(query.trim());
 				break;
 			}
 			case "Escape":
@@ -133,13 +140,13 @@
 	<input
 		class="block-search"
 		type="text"
-		placeholder="Nest under block…"
+		{placeholder}
 		bind:value={query}
 		bind:this={inputEl}
 	/>
 
 	<div class="block-list" role="listbox" aria-label="Blocks">
-		{#if filtered.length === 0}
+		{#if filtered.length === 0 && !onCreate}
 			<div class="block-empty">No blocks</div>
 		{:else}
 			{#each filtered as option, i (option.block.source.line)}
@@ -162,6 +169,14 @@
 					{/if}
 				</div>
 			{/each}
+			{#if onCreate}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_interactive_supports_focus -->
+				<div class="block-row block-create" role="option" aria-selected="false" onclick={() => onCreate(query.trim())}>
+					<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+					<span class="block-name">{query.trim() ? `New block “${query.trim()}”` : "New block"}</span>
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -209,6 +224,15 @@
 		font-size: 13px;
 		color: var(--text-normal);
 		cursor: pointer;
+	}
+
+	.block-row.block-create {
+		color: var(--text-muted);
+	}
+
+	.block-row.block-create:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
 	}
 
 	.block-row.highlighted {

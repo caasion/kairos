@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	scheduleInNewBlock,
 	RoutinesConflict,
 	addRoutine,
 	draftOf,
@@ -282,5 +283,23 @@ describe("addRoutine", () => {
 		const strip = (rs: Routine[]) =>
 			rs.map(({ line: _l, ...rest }) => rest).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 		expect(strip(routines(md))).toEqual(strip(routines(FILE)));
+	});
+});
+
+describe("scheduleInNewBlock", () => {
+	const md = "# Mon, Wed\n- [ ] Noteworthy Rehearsal [Learning]\n\n## Weekends\n- [ ] Brunch prep\n";
+
+	it("adds a block on the task's rule and moves the task into it", () => {
+		const task = parseRoutines(md).routines.find((r) => r.kind === "task" && r.text === "Noteworthy Rehearsal");
+		if (task?.kind !== "task") throw new Error("fixture");
+		const next = scheduleInNewBlock(md, task, "Rehearsal", { start: 1110, end: 1230 });
+		const after = parseRoutines(next).routines;
+		const block = after.find((r) => r.kind === "block");
+		const moved = after.find((r) => r.kind === "task" && r.text === "Noteworthy Rehearsal");
+		expect(block).toMatchObject({ title: "Rehearsal", time: { start: 1110, end: 1230 }, rule: task.rule });
+		expect(moved).toMatchObject({ home: "Rehearsal", assoc: { kind: "project", id: "Learning" } });
+		// The other rule's routine is untouched.
+		expect(next).toContain("- [ ] Brunch prep");
+		expect(parseRoutines(next).problems).toEqual([]);
 	});
 });
