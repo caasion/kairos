@@ -7,7 +7,7 @@
 	// untimed home is just its title; Unscheduled is italic.
 	//
 	// Unlike the Grid's header it edits the block it heads, since the list is
-	// where routines change (decision 92): select the time or title to edit it;
+	// where routines change: select the time or title to edit it;
 	// the corner action bar and the context menu change the rule, association,
 	// checkbox, or delete it. Purely presentational: the parent writes.
 
@@ -31,11 +31,7 @@
 		/** Accent for the checkbox and the hover link tint (a domain colour). */
 		color?: string;
 		paused?: boolean;
-		linked?: boolean;
-		flash?: boolean;
-		line?: number;
 		onAdd: () => void;
-		onHover?: (on: boolean) => void;
 		onRename?: (title: string) => void;
 		onSetTime?: (text: string) => void;
 		onChangeRule?: () => void;
@@ -54,11 +50,7 @@
 		assocColor,
 		color,
 		paused = false,
-		linked = false,
-		flash = false,
-		line,
 		onAdd,
-		onHover,
 		onRename,
 		onSetTime,
 		onChangeRule,
@@ -123,14 +115,8 @@
 	class:checkable={isBlock && checkable}
 	class:unscheduled={kind === "unscheduled"}
 	class:paused
-	class:linked
-	class:flash
-	style:--kairos-link-color={color}
-	data-routine-line={line}
 	bind:this={rowEl}
 	oncontextmenu={openMenu}
-	onpointerenter={() => onHover?.(true)}
-	onpointerleave={() => onHover?.(false)}
 	use:actionZone={{ layout: "stack" }}
 >
 	{#if isBlock}
@@ -303,17 +289,6 @@
 	.rg-header.paused .rg-assoc,
 	.rg-header.paused .rg-check {
 		opacity: 0.5;
-	}
-
-	/* Hover link (decision 93): the block, wherever it's pointed at. */
-	.rg-header.linked {
-		background: color-mix(in srgb, var(--kairos-link-color, var(--interactive-accent)) 12%, transparent);
-	}
-	.rg-header.linked .rg-row {
-		color: var(--text-normal);
-	}
-	.rg-header.flash {
-		background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
 	}
 
 	/* The group's "+", as in the Grid: shown on hover, at the line's end. */

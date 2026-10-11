@@ -33,8 +33,6 @@
 		type TaskRoutine,
 	} from "../../routines/routinesFile";
 	import { blockGroupsOf, groupRoutines, type RoutineGroup } from "../../routines/routinesModel";
-	import { routineLink } from "../../routines/templateWeek";
-	import TemplateWeek from "./TemplateWeek.svelte";
 	import {
 		addRoutine,
 		draftOf,
@@ -64,24 +62,6 @@
 	let parsed = $state<ParsedRoutines>({ routines: [], problems: [] });
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 	const groups = $derived<RoutineGroup[]>(groupRoutines(parsed.routines));
-
-	// ── The list beside the template week ──
-	// Pointing at a routine in either lights it in both: a block on every day it
-	// repeats, with the tasks homed in it (routineLink). Selecting one in the
-	// week scrolls the list to it, since the list is where routines are edited.
-	let hovered = $state<number | null>(null);
-	const link = $derived(routineLink(parsed.routines));
-	let listEl = $state<HTMLDivElement>();
-	let flashLine = $state<number | null>(null);
-	let flashTimer: number | undefined;
-	function revealInList(r: Routine) {
-		const row = listEl?.querySelector<HTMLElement>(`[data-routine-line="${r.line}"]`);
-		row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-		flashLine = r.line;
-		window.clearTimeout(flashTimer);
-		flashTimer = window.setTimeout(() => (flashLine = null), 1200);
-	}
-	$effect(() => () => window.clearTimeout(flashTimer));
 
 	const DAILY = parseRule("daily")!;
 	const NEW_TASK = "New routine";
@@ -277,12 +257,7 @@
 	{@const assoc = t.assoc ?? t.inherited}
 	{@const ra = assoc ? resolve(assoc) : undefined}
 	{@const paused = isPaused(t)}
-	<div
-		class="routine-task"
-		class:paused
-		class:flash={flashLine === t.line}
-		data-routine-line={t.line}
-	>
+	<div class="routine-task" class:paused>
 		<TaskRow
 			task={asTask(t)}
 			template
@@ -298,8 +273,6 @@
 			onRepeat={() => changeRule(t)}
 			repeatLabel="Change when it repeats"
 			trailing={paused ? "Paused" : undefined}
-			highlight={hovered !== null && link(t) === hovered ? "block" : null}
-			onHoverChange={(on) => (hovered = on ? link(t) : null)}
 			onSetStatus={() => {}}
 			onSetText={(_task, text) => setName(t, text)}
 			onDelete={() => void remove(t)}
@@ -321,8 +294,7 @@
 		</button>
 	</div>
 
-	<div class="routines-body">
-	<div class="routines-scroll" bind:this={listEl}>
+	<div class="routines-scroll">
 		{#if parsed.problems.length > 0}
 			<div class="routines-problems">
 				<div class="routines-problems-title">
@@ -375,11 +347,7 @@
 									assocColor={ba?.color}
 									color={ba?.color}
 									paused={isPaused(b)}
-									linked={hovered !== null && link(b) === hovered}
-									flash={flashLine === b.line}
-									line={b.line}
 									onAdd={() => void add(group.rule, "task", b.title)}
-									onHover={(on) => (hovered = on ? link(b) : null)}
 									onRename={(title) => setName(b, title)}
 									onSetTime={(text) => setTime(b, text)}
 									onChangeRule={() => changeRule(b)}
@@ -402,21 +370,6 @@
 				</div>
 			</section>
 		{/each}
-	</div>
-
-	<!-- The template week: what the routines add up to, read-only. Edit in the
-	     list; pointing at a routine in either lights it in both. -->
-	<div class="routines-week">
-		<TemplateWeek
-			routines={parsed.routines}
-			{resolve}
-			{hovered}
-			{link}
-			{isPaused}
-			onHover={(key) => (hovered = key)}
-			onSelect={revealInList}
-		/>
-	</div>
 	</div>
 </div>
 
@@ -468,41 +421,10 @@
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 	}
-	/* List and template week side by side; stacked when the view is narrow. */
-	.routines-view {
-		container-type: inline-size;
-	}
-	.routines-body {
-		flex: 1;
-		min-height: 0;
-		display: flex;
-	}
 	.routines-scroll {
-		flex: 1 1 0;
-		min-width: 0;
+		flex: 1;
 		overflow: auto;
 		padding: 0 12px 16px;
-	}
-	.routines-week {
-		flex: 1.3 1 0;
-		min-width: 0;
-		overflow: auto;
-		padding: 0 12px 16px 4px;
-	}
-	@container (max-width: 640px) {
-		.routines-body {
-			flex-direction: column;
-			overflow: auto;
-		}
-		.routines-scroll,
-		.routines-week {
-			flex: none;
-			overflow: visible;
-		}
-		.routines-week {
-			padding: 8px 12px 16px;
-			border-top: 1px solid var(--background-modifier-border);
-		}
 	}
 	.routines-problems {
 		margin: 0 4px 12px;
@@ -592,9 +514,5 @@
 	}
 	.routine-task.paused {
 		opacity: 0.5;
-	}
-	.routine-task.flash {
-		background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
-		transition: background 300ms ease;
 	}
 </style>
