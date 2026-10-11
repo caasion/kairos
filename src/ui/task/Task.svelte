@@ -98,6 +98,12 @@
 		// bar, in the corner, and in its menu.
 		onAddInside?: () => void;
 		addInsideLabel?: string;
+		// A routine template (the Routines view), not a task in a day: it looks
+		// like every other task, but its checkbox is inert and it has no status
+		// to set, since a template is never done.
+		template?: boolean;
+		// Menu/tooltip label for `onRepeat` ("Change when it repeats" on a routine).
+		repeatLabel?: string;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -130,6 +136,8 @@
 		trailing,
 		onAddInside,
 		addInsideLabel = "Add task to block",
+		template = false,
+		repeatLabel = "Repeat…",
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -366,32 +374,34 @@
 		if (onRepeat) {
 			menu.addItem((item) =>
 				item
-					.setTitle("Repeat…")
+					.setTitle(repeatLabel)
 					.setIcon("repeat")
 					.onClick(() => onRepeat()),
 			);
 		}
 
-		menu.addSeparator();
+		if (!template) {
+			menu.addSeparator();
 
-		menu.addItem((item) =>
-			item
-				.setTitle(done ? "Mark open" : "Mark done")
-				.setIcon("check")
-				.onClick(() => onSetStatus(task, done ? " " : "x")),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Mark half-done")
-				.setIcon("clock")
-				.onClick(() => onSetStatus(task, "/")),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Mark cancelled")
-				.setIcon("x")
-				.onClick(() => onSetStatus(task, "-")),
-		);
+			menu.addItem((item) =>
+				item
+					.setTitle(done ? "Mark open" : "Mark done")
+					.setIcon("check")
+					.onClick(() => onSetStatus(task, done ? " " : "x")),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Mark half-done")
+					.setIcon("clock")
+					.onClick(() => onSetStatus(task, "/")),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Mark cancelled")
+					.setIcon("x")
+					.onClick(() => onSetStatus(task, "-")),
+			);
+		}
 
 		if (!checkable) {
 			menu.addSeparator();
@@ -410,6 +420,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="k-task"
+	class:template
 	class:checkable
 	class:done
 	class:half
@@ -463,8 +474,8 @@
 		{#if onRepeat}
 			<button
 				class="k-task-action"
-				aria-label="Repeat…"
-				use:tooltip={"Repeat…"}
+				aria-label={repeatLabel}
+				use:tooltip={repeatLabel}
 				onclick={() => onRepeat()}
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
@@ -483,7 +494,12 @@
 	</div>
 
 	<div class="k-task-row" class:wrapped={lines > 1}>
-		<TaskCheckbox status={task.status} {color} onToggle={cycleStatus} onCancel={cancelStatus} />
+		<TaskCheckbox
+			status={task.status}
+			{color}
+			onToggle={template ? () => {} : cycleStatus}
+			onCancel={template ? () => {} : cancelStatus}
+		/>
 		<!-- Shown while editing too: the time is context, not part of the text. -->
 		{#if lead}<span class="k-task-lead">{lead}</span>{/if}
 
@@ -572,6 +588,12 @@
 
 <style>
 	/* Rectangular by design — no rounded corners anywhere in this component. */
+	/* A routine template: the checkbox is there for the look, not to tick. */
+	.k-task.template :global(.k-checkbox) {
+		pointer-events: none;
+		opacity: 0.55;
+	}
+
 	.k-task {
 		position: relative;
 		padding: 2px 4px;

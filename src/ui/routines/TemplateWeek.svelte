@@ -88,6 +88,7 @@
 {/snippet}
 
 <div class="tw">
+	<div class="tw-caption">Your week from these routines · add and edit them in the list</div>
 	<div class="tw-head">
 		<div class="tw-gutter"></div>
 		{#each week.days as d (d.day)}
@@ -152,6 +153,11 @@
 		flex-direction: column;
 		min-width: 0;
 		font-size: 11px;
+	}
+	.tw-caption {
+		padding: 2px 4px 4px 28px;
+		font-size: 10px;
+		color: var(--text-faint);
 	}
 	.tw-head {
 		display: flex;

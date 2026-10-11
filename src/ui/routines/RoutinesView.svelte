@@ -13,12 +13,13 @@
 
 	import { Menu, Notice, type App } from "obsidian";
 	import { onMount } from "svelte";
-	import type { Association } from "../../types";
+	import type { Association, Task } from "../../types";
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
-	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
-	import { autogrow, singleLine } from "../actions/autogrow";
+	import { singleLine } from "../actions/autogrow";
+	import TaskRow from "../task/Task.svelte";
+	import RoutineGroupHeader from "./RoutineGroupHeader.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { RuleModal } from "./RuleModal";
 	import type { Readable } from "svelte/store";
@@ -26,8 +27,12 @@
 	import type { OwnerActive } from "../../routines/owners";
 	import { routineAssoc } from "../../routines/apply";
 	import { todayISO } from "../../dayNote";
-	import { parseRoutines, type ParsedRoutines, type Routine } from "../../routines/routinesFile";
-	import { groupRoutines, type RoutineGroup } from "../../routines/routinesModel";
+	import {
+		type ParsedRoutines,
+		type Routine,
+		type TaskRoutine,
+	} from "../../routines/routinesFile";
+	import { blockGroupsOf, groupRoutines, type RoutineGroup } from "../../routines/routinesModel";
 	import { routineLink } from "../../routines/templateWeek";
 	import TemplateWeek from "./TemplateWeek.svelte";
 	import {
@@ -92,21 +97,16 @@
 		await store.edit((md) => removeRoutine(md, r));
 	}
 
-	/** Add a routine, then drop straight into editing its text. */
-	async function add(rule: Rule, kind: "task" | "block") {
+	/**
+	 * Add a routine; select its text to name it, as with a new task in the Grid.
+	 * A task added from a block's "+" goes in that block (`home`).
+	 */
+	async function add(rule: Rule, kind: "task" | "block", home?: string) {
 		const draft: RoutineDraft =
 			kind === "block"
 				? { kind, rule, title: NEW_BLOCK, time: { start: 540, end: 600 }, checkable: false }
-				: { kind, rule, text: NEW_TASK };
-		let written = "";
-		const ok = await store.edit((md) => (written = addRoutine(md, draft)));
-		if (!ok) return;
-		// The new routine is the last one with that name in its rule's group.
-		const name = kind === "block" ? NEW_BLOCK : NEW_TASK;
-		const added = parseRoutines(written)
-			.routines.filter((r) => ruleKey(r.rule) === ruleKey(rule) && nameOf(r) === name)
-			.pop();
-		if (added) editing = { line: added.line, field: "text" };
+				: { kind, rule, text: NEW_TASK, ...(home ? { home } : {}) };
+		await store.edit((md) => addRoutine(md, draft));
 	}
 
 	function openAddMenu(rule: Rule, event: MouseEvent) {
@@ -187,46 +187,10 @@
 		}).open();
 	}
 
-	// ── Inline editing ──
-
-	type Field = "text" | "time" | "home";
-	let editing = $state<{ line: number; field: Field } | null>(null);
-
-	function isEditing(r: Routine, field: Field): boolean {
-		return editing?.line === r.line && editing.field === field;
-	}
-
-	function startEdit(r: Routine, field: Field, event?: MouseEvent) {
-		event?.stopPropagation();
-		editing = { line: r.line, field };
-	}
-
-	function finishEdit(r: Routine, field: Field, value: string) {
-		if (!isEditing(r, field)) return;
-		editing = null;
-		if (field === "text") setName(r, value);
-		else if (field === "time") setTime(r, value);
-		else setHome(r, value);
-	}
-
-	function editKeys(event: KeyboardEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement }, original: string) {
-		if (event.key === "Enter") {
-			event.preventDefault();
-			event.currentTarget.blur();
-		} else if (event.key === "Escape") {
-			event.currentTarget.value = original;
-			event.currentTarget.blur();
-		}
-	}
-
 	function formatTime(minutes: number): string {
 		const h = Math.floor(minutes / 60);
 		const m = minutes % 60;
 		return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-	}
-
-	function homeOf(r: Routine): string {
-		return r.kind === "task" ? (r.home ?? "") : "";
 	}
 
 	function timeText(r: Routine): string {
@@ -242,10 +206,47 @@
 		return r.kind === "task" ? (r.assoc ?? r.inherited) : r.assoc;
 	}
 
-	function openAssoc(r: Routine, event: MouseEvent) {
-		event.stopPropagation();
+	function openAssoc(r: Routine, rect: DOMRect) {
 		pickerRoutine = r;
-		pickerAnchor = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		pickerAnchor = rect;
+	}
+
+	// ── Tasks, drawn with the shared task row ──
+
+	/** A task routine as the task row the other views draw (a template: no status). */
+	function asTask(t: TaskRoutine): Task {
+		return {
+			source: { path: store.filePath, line: t.line },
+			text: t.text,
+			status: " ",
+			...(t.assoc ? { assoc: t.assoc } : {}),
+		};
+	}
+
+	/** Move a task to another block of its rule group, or to Unscheduled. */
+	function openMoveMenu(t: TaskRoutine, routines: Routine[], rect: DOMRect) {
+		const menu = new Menu();
+		const homes = new Set<string>();
+		for (const r of routines) {
+			if (r.kind === "block") homes.add(r.title);
+			else if (r.home) homes.add(r.home);
+		}
+		for (const home of homes) {
+			menu.addItem((i) =>
+				i
+					.setTitle(home)
+					.setChecked(t.home === home)
+					.onClick(() => setHome(t, home)),
+			);
+		}
+		menu.addSeparator();
+		menu.addItem((i) =>
+			i
+				.setTitle("Unscheduled")
+				.setChecked(t.home === undefined)
+				.onClick(() => setHome(t, "")),
+		);
+		menu.showAtPosition({ x: rect.left + 24, y: rect.bottom });
 	}
 
 	function closeAssoc() {
@@ -261,11 +262,6 @@
 		void update(r, assoc ? { ...rest, assoc } : rest);
 	}
 
-	function onNavigate(assoc: Association, event: MouseEvent) {
-		if (!(event.ctrlKey || event.metaKey)) return;
-		event.stopPropagation();
-		navigateToAssociation(app, resolve(assoc));
-	}
 
 	onMount(() => {
 		const unsubParsed = store.parsed$.subscribe((p) => (parsed = p));
@@ -276,6 +272,40 @@
 		};
 	});
 </script>
+
+{#snippet taskRow(t: TaskRoutine, groupRoutines: Routine[])}
+	{@const assoc = t.assoc ?? t.inherited}
+	{@const ra = assoc ? resolve(assoc) : undefined}
+	{@const paused = isPaused(t)}
+	<div
+		class="routine-task"
+		class:paused
+		class:flash={flashLine === t.line}
+		data-routine-line={t.line}
+	>
+		<TaskRow
+			task={asTask(t)}
+			template
+			lines={2}
+			color={ra?.color}
+			association={assoc}
+			inherited={!t.assoc && t.inherited !== undefined}
+			resolved={ra}
+			onNavigate={() => assoc && navigateToAssociation(app, resolve(assoc))}
+			onEditAssoc={(rect) => openAssoc(t, rect)}
+			onNest={(rect) => openMoveMenu(t, groupRoutines, rect)}
+			nestLabel="Move to another block"
+			onRepeat={() => changeRule(t)}
+			repeatLabel="Change when it repeats"
+			trailing={paused ? "Paused" : undefined}
+			highlight={hovered !== null && link(t) === hovered ? "block" : null}
+			onHoverChange={(on) => (hovered = on ? link(t) : null)}
+			onSetStatus={() => {}}
+			onSetText={(_task, text) => setName(t, text)}
+			onDelete={() => void remove(t)}
+		/>
+	</div>
+{/snippet}
 
 <div class="routines-view">
 	<div class="routines-header">
@@ -326,132 +356,50 @@
 					</button>
 				</header>
 
-				<ul class="routine-list">
-					{#each group.routines as r (r.line)}
-						{@const assoc = shownAssoc(r)}
-						{@const ra = assoc ? resolve(assoc) : undefined}
-						{@const paused = isPaused(r)}
-						<li
-							class="routine-row"
-							class:is-homed={r.kind === "task" && r.home !== undefined}
-							class:paused
-							class:linked={hovered !== null && link(r) === hovered}
-							class:flash={flashLine === r.line}
-							data-routine-line={r.line}
-							onpointerenter={() => (hovered = link(r))}
-							onpointerleave={() => (hovered = null)}
-							use:actionZone={{ anchor: "right", layout: "stack" }}
-						>
-							<div class="routine-main">
-								<span class="routine-kind" title={r.kind === "block" ? (r.checkable ? "Checkable block" : "Block") : "Task"}>
-									{#if r.kind === "block"}
-										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-									{:else}
-										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="3"/></svg>
-									{/if}
-								</span>
-
-								{#if isEditing(r, "text")}
-									<!-- svelte-ignore a11y_autofocus -->
-									<textarea
-										class="routine-input kairos-inline-input"
-										rows="1"
-										value={nameOf(r)}
-										autofocus
-										use:autogrow
-										onfocus={(e) => e.currentTarget.select()}
-										onblur={(e) => finishEdit(r, "text", e.currentTarget.value)}
-										onkeydown={(e) => editKeys(e, nameOf(r))}
-									></textarea>
-								{:else}
-									<button class="routine-text" onclick={(e) => startEdit(r, "text", e)}>
-										<span class="routine-text-clamp">{nameOf(r)}</span>
-									</button>
-								{/if}
-								{#if paused}
-									<span class="routine-paused" use:tooltip={"Paused: its project or domain isn't active. It comes back when that's active again."}>Paused</span>
-								{/if}
-							</div>
-
-							<div class="routine-actions kairos-action-bar">
-								<button class="routine-action" aria-label="Change when it repeats" use:tooltip={"Change when it repeats"} onclick={(e) => { e.stopPropagation(); changeRule(r); }}>
-									<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
-								</button>
-								<button class="routine-action" aria-label={assoc ? "Change association" : "Associate with a project or domain"} use:tooltip={assoc ? "Change association" : "Associate with a project or domain"} onclick={(e) => openAssoc(r, e)}>
-									<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-								</button>
-								{#if r.kind === "block"}
-									<button class="routine-action" aria-label={r.checkable ? "Make it a plain block" : "Make it checkable"} use:tooltip={r.checkable ? "Make it a plain block" : "Make it checkable"} onclick={(e) => { e.stopPropagation(); toggleCheckable(r); }}>
-										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="3"/><path d="m9 12 2 2 4-4"/></svg>
-									</button>
-								{:else}
-									<button class="routine-action" aria-label="Choose its block" use:tooltip={"Choose its block"} onclick={(e) => startEdit(r, "home", e)}>
-										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 12H9"/><path d="m9 12 3-3"/><path d="m9 12 3 3"/></svg>
-									</button>
-								{/if}
-								<button class="routine-action routine-action-danger" aria-label="Delete routine" use:tooltip={"Delete routine"} onclick={(e) => { e.stopPropagation(); void remove(r); }}>
-									<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-								</button>
-							</div>
-
-							<div class="kairos-meta-row is-indented">
-								{#if r.kind === "block"}
-									{#if isEditing(r, "time")}
-										<!-- svelte-ignore a11y_autofocus -->
-										<input
-											class="routine-meta-input kairos-inline-input"
-											value={timeText(r)}
-											placeholder="HH:MM - HH:MM"
-											autofocus
-											onfocus={(e) => e.currentTarget.select()}
-											onblur={(e) => finishEdit(r, "time", e.currentTarget.value)}
-											onkeydown={(e) => editKeys(e, timeText(r))}
-										/>
-									{:else}
-										<button class="routine-meta kairos-meta is-linked" title="Change the time" onclick={(e) => startEdit(r, "time", e)}>
-											<span class="kairos-meta-label">{timeText(r)}</span>
-										</button>
-									{/if}
-									{#if r.checkable}
-										<span class="kairos-meta"><span class="kairos-meta-label">Checkable</span></span>
-									{/if}
-								{:else if isEditing(r, "home")}
-									<span class="kairos-meta"><span class="kairos-meta-label">In</span></span>
-									<!-- svelte-ignore a11y_autofocus -->
-									<input
-										class="routine-meta-input kairos-inline-input"
-										value={homeOf(r)}
-										placeholder="Block title, or empty for Unscheduled"
-										autofocus
-										onblur={(e) => finishEdit(r, "home", e.currentTarget.value)}
-										onkeydown={(e) => editKeys(e, homeOf(r))}
-									/>
-								{:else}
-									<button class="routine-meta kairos-meta is-linked" title="Choose which block it goes in" onclick={(e) => startEdit(r, "home", e)}>
-										<span class="kairos-meta-label">{r.home !== undefined ? `In ${r.home}` : "Unscheduled"}</span>
-									</button>
-								{/if}
-
-								{#if assoc}
-									<span class="kairos-meta-dot"></span>
-									<button
-										class="routine-meta kairos-meta"
-										class:is-inherited={r.kind === "task" && !r.assoc}
-										class:is-linked={ra?.resolved}
-										style={ra?.color ? `color: ${ra.color};` : undefined}
-										title="Change association (ctrl+click to open)"
-										onclick={(e) => {
-											onNavigate(assoc, e);
-											if (!(e.ctrlKey || e.metaKey)) openAssoc(r, e);
-										}}
-									>
-										<span class="kairos-meta-label">{ra?.displayName || assoc.id}</span>
-									</button>
-								{/if}
-							</div>
-						</li>
+				<!-- Laid out like a Grid cell grouped by block (decision 70): each
+				     block's header, its tasks under it, Unscheduled last. A header's
+				     "+" adds a task to that block. -->
+				<div class="routine-blocks">
+					{#each blockGroupsOf(group.routines) as bg (bg.key)}
+						<div class="routine-block-group">
+							{#if bg.block}
+								{@const b = bg.block}
+								{@const ba = b.assoc ? resolve(b.assoc) : undefined}
+								<RoutineGroupHeader
+									kind="block"
+									title={b.title}
+									start={formatTime(b.time.start)}
+									timeText={timeText(b)}
+									checkable={b.checkable}
+									assocLabel={b.assoc ? ba?.displayName || b.assoc.id : undefined}
+									assocColor={ba?.color}
+									color={ba?.color}
+									paused={isPaused(b)}
+									linked={hovered !== null && link(b) === hovered}
+									flash={flashLine === b.line}
+									line={b.line}
+									onAdd={() => void add(group.rule, "task", b.title)}
+									onHover={(on) => (hovered = on ? link(b) : null)}
+									onRename={(title) => setName(b, title)}
+									onSetTime={(text) => setTime(b, text)}
+									onChangeRule={() => changeRule(b)}
+									onEditAssoc={(rect) => openAssoc(b, rect)}
+									onToggleCheckable={() => toggleCheckable(b)}
+									onDelete={() => void remove(b)}
+								/>
+							{:else}
+								<RoutineGroupHeader
+									kind={bg.unscheduled ? "unscheduled" : "home"}
+									title={bg.home ?? "Unscheduled"}
+									onAdd={() => void add(group.rule, "task", bg.home)}
+								/>
+							{/if}
+							{#each bg.tasks as t (t.line)}
+								{@render taskRow(t, group.routines)}
+							{/each}
+						</div>
 					{/each}
-				</ul>
+				</div>
 			</section>
 		{/each}
 	</div>
@@ -625,150 +573,28 @@
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 	}
-	.routine-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
+	/* Block groups, spaced like the Grid's (GridCell .grid-cell-block-group). */
+	.routine-blocks {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 0 4px;
 	}
-	.routine-row {
+	.routine-block-group {
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
-		padding: 5px 8px;
-		border-radius: 7px;
-		position: relative;
-		--kairos-meta-indent: 21px;
+		min-width: 0;
 	}
-	/* A task homed in a block sits a step in, under its block. */
-	.routine-row.is-homed {
-		margin-left: 16px;
+	.routine-task {
+		min-width: 0;
+		border-radius: var(--radius-s);
 	}
-	.routine-row:hover,
-	.routine-row.linked {
-		background: var(--background-modifier-hover);
-	}
-	.routine-row.flash {
-		background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
-		transition: background 300ms ease;
-	}
-	.routine-row.paused .routine-kind,
-	.routine-row.paused .routine-text,
-	.routine-row.paused .routine-meta {
+	.routine-task.paused {
 		opacity: 0.5;
 	}
-	.routine-paused {
-		flex-shrink: 0;
-		margin-top: 2px;
-		padding: 0 6px;
-		border-radius: 8px;
-		font-size: 10px;
-		line-height: 16px;
-		color: var(--text-muted);
-		background: var(--background-modifier-hover);
-	}
-	.routine-main {
-		display: flex;
-		align-items: flex-start;
-		gap: 8px;
-		min-width: 0;
-	}
-	.routine-kind {
-		display: flex;
-		color: var(--text-faint);
-		flex-shrink: 0;
-		margin-top: 2px;
-	}
-	.routine-text {
-		display: block;
-		flex: 1;
-		min-width: 0;
-		font-size: 13px;
-		line-height: 1.4;
-		height: min-content;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		box-shadow: none;
-		padding: 0;
-		margin: 0;
-		cursor: text;
-		text-align: left;
-		white-space: normal;
-		overflow: hidden;
-	}
-	.routine-text-clamp {
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		overflow: hidden;
-		overflow-wrap: anywhere;
-	}
-	.routine-input {
-		flex: 1;
-		min-width: 0;
-		font-size: 13px;
-		line-height: 1.4;
-		font-family: inherit;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		padding: 0;
-		margin: 0;
-	}
-	.routine-meta {
-		align-self: flex-start;
-		padding: 0;
-		margin: 0;
-		border: none;
-		box-shadow: none;
-		background: transparent;
-		height: min-content;
-	}
-	.routine-meta-input {
-		font-size: var(--kairos-meta-font-size, 10px);
-		min-width: 0;
-		flex: 1;
-		padding: 0;
-		background: transparent;
-		border: none;
-	}
-	.routine-actions {
-		position: absolute;
-		top: 50%;
-		right: 8px;
-		transform: translateY(-50%);
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		flex-shrink: 0;
-		padding: 2px;
-		border-radius: 4px;
-		background: var(--background-primary);
-	}
-	.routine-action {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
-		padding: 0;
-		border: none;
-		border-radius: 4px;
-		box-shadow: none;
-		background: transparent;
-		color: var(--text-muted);
-		cursor: pointer;
-	}
-	.routine-action:hover {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-	}
-	/* Stack layout (styles.css): delete takes the corner cell. */
-	.routine-action-danger {
-		order: -1;
-	}
-	.routine-action-danger:hover {
-		color: var(--text-error, #e05555);
+	.routine-task.flash {
+		background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+		transition: background 300ms ease;
 	}
 </style>
