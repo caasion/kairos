@@ -15,6 +15,7 @@
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { navigateToAssociation } from "../../navigate";
 	import type { KairosIndex, Resolver } from "../../index";
+	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		dateFromISO,
 		ensureNoteForDate,
@@ -59,9 +60,31 @@
 		settings$: Readable<KairosSettings>;
 		// The one write path back to the plugin; it persists and republishes.
 		updateSettings: (mutate: (s: KairosSettings) => void) => void;
+		// The Grid ↔ timeline bridge (viewLinks.ts), handed on to each column.
+		links: ViewLinks;
 	}
 
-	let { app, index, settings$, updateSettings }: Props = $props();
+	let { app, index, settings$, updateSettings, links }: Props = $props();
+
+	// The hovered item, for the unscheduled strip this view renders itself
+	// (subscribed on mount, like the resolver).
+	let hovered = $state<HoverTarget | null>(null);
+	// The live task drag from any view: the Unscheduled strip shows (even when
+	// empty) and lights the day a drop would land in.
+	let dragPreview = $state<DragPreview | null>(null);
+	function inboxDropDate(): ISODate | null {
+		const drop = dragPreview?.drop;
+		return drop?.kind === "unscheduled" ? drop.date : null;
+	}
+	function stripHover(task: Task, on: boolean) {
+		const target: HoverTarget = { kind: "task", path: task.source.path, line: task.source.line };
+		if (on) links.setHover(target);
+		else links.clearHover(target);
+	}
+	function stripLinked(task: Task): boolean {
+		const h = hovered;
+		return h?.kind === "task" && h.path === task.source.path && h.line === task.source.line;
+	}
 
 	// Local reactive view of the settings. `$store` auto-subscribes, so every
 	// derived below recomputes the instant the plugin republishes.
@@ -105,6 +128,26 @@
 
 	function goToday() {
 		pinnedAnchor = null;
+		closeAssocPicker();
+		closeBlockPicker();
+	}
+
+	// ── Follow the Grid ──
+	// With "Follow the grid" on, a day you act on in the Grid that's outside
+	// this window brings the window to it, placed where today sits in the
+	// default window. A day already in view leaves the window alone. A request
+	// already waiting when the view opened is skipped, and never mid-drag.
+	let lastFocusNonce: number | null = null;
+	function handleFocus(req: FocusRequest | null) {
+		const initial = lastFocusNonce === null;
+		if (!req || req.nonce === lastFocusNonce) {
+			lastFocusNonce ??= 0;
+			return;
+		}
+		lastFocusNonce = req.nonce;
+		if (initial || !settings.followGrid || dragFromDate !== null) return;
+		if (dates.includes(req.date)) return;
+		pinnedAnchor = anchorFor(req.date, before);
 		closeAssocPicker();
 		closeBlockPicker();
 	}
@@ -534,6 +577,13 @@
 		const unsubscribeBacklog = index.backlog().subscribe((e) => {
 			backlogEntries = e;
 		});
+		const unsubscribeHover = links.hover$.subscribe((h) => {
+			hovered = h;
+		});
+		const unsubscribeDrag = links.drag$.subscribe((p) => {
+			dragPreview = p;
+		});
+		const unsubscribeFocus = links.focus$.subscribe((req) => handleFocus(req));
 		const move = (e: PointerEvent) => onWindowPointerMove(e);
 		const up = (e: PointerEvent) => void onWindowPointerUp(e);
 		window.addEventListener("pointermove", move);
@@ -541,6 +591,9 @@
 		return () => {
 			unsubscribeResolver();
 			unsubscribeBacklog();
+			unsubscribeHover();
+			unsubscribeDrag();
+			unsubscribeFocus();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
 		};
@@ -663,7 +716,9 @@
 		{/each}
 	</div>
 
-	{#if hasAnyUnscheduled}
+	<!-- Shown during any task drag too, even when empty: dropping on a day's
+	     column takes a task out of its block. -->
+	{#if hasAnyUnscheduled || dragPreview}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="week-unscheduled">
@@ -678,14 +733,23 @@
 					<span class="us-count">{totalUnscheduled}</span>
 				</div>
 				{#each dates as date (date)}
-					<div class="week-us-head-cell"></div>
+					<div
+						class="week-us-head-cell"
+						class:drop-target={inboxDropDate() === date}
+						data-unscheduled-date={date}
+					></div>
 				{/each}
 			</div>
 			{#if unscheduledOpen}
 				<div class="week-us-body">
 					<div class="week-us-gutter-spacer"></div>
 					{#each dates as date (date)}
-						<div class="week-us-col" class:today={isToday(date)}>
+						<div
+							class="week-us-col"
+							class:today={isToday(date)}
+							class:drop-target={inboxDropDate() === date}
+							data-unscheduled-date={date}
+						>
 							{#each unscheduledByDate[date] ?? [] as { block, task } (task.source.line)}
 								{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}
 								<TaskRow
@@ -703,6 +767,8 @@
 									onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
 									onDelete={(_t) => columns[date]?.deleteTask(block, task)}
 									onGrab={(e) => columns[date]?.grabTask(block, task, e)}
+									highlight={stripLinked(task) ? "task" : null}
+									onHoverChange={(on: boolean) => stripHover(task, on)}
 								/>
 							{/each}
 						</div>
@@ -797,8 +863,10 @@
 							backlogPath={settings.backlogPath}
 							{onCrossDayGrab}
 							askAssocOnCreate={settings.askAssocOnBlockCreate}
+							dropBlockTitle={settings.dropBlockTitle}
 							showUnscheduled={false}
 							{onUnscheduledChange}
+							{links}
 						/>
 					</div>
 				{/each}
@@ -1234,6 +1302,8 @@
 	.week-us-col {
 		flex: 1;
 		min-width: 0;
+		/* An empty column keeps a little height, so a drag can still hit it. */
+		min-height: 20px;
 		border-left: 1px solid var(--background-modifier-border);
 	}
 
@@ -1243,6 +1313,13 @@
 
 	.week-us-col.today {
 		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
+	}
+
+	/* A live task drag would drop into this day's Unscheduled, out of its block. */
+	.week-us-col.drop-target,
+	.week-us-head-cell.drop-target {
+		box-shadow: inset 0 0 0 2px var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
 	}
 
 	/* ── Resurfacing (backlog nudges due in the window) ── */

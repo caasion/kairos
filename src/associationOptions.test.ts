@@ -98,3 +98,14 @@ describe("filterOptions", () => {
 		expect(filterOptions(opts, "HEALTH").map((o) => o.name)).toEqual(["Health"]);
 	});
 });
+
+describe("associationOptions: a domain bounds its projects", () => {
+	it("offers an active project under an inactive domain as inactive", () => {
+		const d = domain("Life", { history: hist(["2000-01-01", "inactive"]) });
+		const p = project("Groceries", { domain: "d-Life" });
+		const solo = project("Solo");
+		const opts = associationOptions(pmap(p, solo), dmap(d));
+		expect(opts.find((o) => o.name === "Groceries")?.status).toBe("inactive");
+		expect(opts.find((o) => o.name === "Solo")?.status).toBe("active");
+	});
+});

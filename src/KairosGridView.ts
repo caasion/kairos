@@ -54,6 +54,8 @@ export class KairosGridView extends ItemView {
 					void this.plugin.dayPreparer.insertRoutine(date, routine),
 				applyRoutines: (date: ISODate) =>
 					void this.plugin.dayPreparer.applyToDate(date),
+				links: this.plugin.links,
+				showDay: (date: string) => void this.plugin.showInDayView(date),
 			},
 		});
 	}

@@ -127,6 +127,10 @@ textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
    the styles load in. Touch never gets this layout. */
 body .kairos-action-bar.kairos-action-stack {
 	position: fixed;
+	/* Above anything positioned in the rows it floats over (a cell's "+", a
+	   neighbouring row's own bits), so the pointer stays on the stack all the
+	   way along it, up or down. */
+	z-index: var(--layer-popover);
 	left: var(--kairos-action-stack-left, 0);
 	top: var(--kairos-action-stack-top, 0);
 	right: auto;
@@ -329,4 +333,42 @@ body {
 
 .kairos-meta.is-due {
 	color: var(--color-orange, var(--interactive-accent));
+}
+
+/* ── Drop preview on a timeline (Day view, Week columns) ──
+   Where a task released over empty time would land: a new block of the default
+   length. Shared because the Day view and each Week column draw it, for drags
+   from any view (viewLinks.ts). Never a hit-test target. */
+.kairos-drop-preview {
+	position: absolute;
+	left: 2px;
+	width: calc(92% - 4px);
+	box-sizing: border-box;
+	padding: 2px 6px;
+	border: 1.5px dashed var(--interactive-accent);
+	border-left-width: 3px;
+	border-left-style: solid;
+	border-radius: 5px;
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	pointer-events: none;
+	z-index: 5;
+	overflow: hidden;
+}
+/* Option/Alt: time-box — the task itself becomes a checkable block. */
+.kairos-drop-preview.timebox {
+	border-color: var(--color-purple);
+	background: color-mix(in srgb, var(--color-purple) 12%, transparent);
+}
+/* Ctrl/Cmd: a copy, matching the drag ghost's green. */
+.kairos-drop-preview.duplicate {
+	border-color: var(--color-green);
+}
+.kairos-drop-preview-label {
+	display: block;
+	font-size: var(--font-ui-smaller);
+	font-weight: 600;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }

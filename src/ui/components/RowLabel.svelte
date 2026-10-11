@@ -58,8 +58,13 @@
 	const statusLabel = $derived(
 		info.status.charAt(0).toUpperCase() + info.status.slice(1),
 	);
+	const rolledUp = $derived(info.rolledUp ?? []);
+	const rolledUpText = $derived(rolledUp.join(", "));
 	const hasCardBody = $derived(
-		info.description.trim() !== "" || info.note.trim() !== "" || info.since !== null,
+		info.description.trim() !== "" ||
+			info.note.trim() !== "" ||
+			info.since !== null ||
+			rolledUp.length > 0,
 	);
 </script>
 
@@ -75,6 +80,12 @@
 		<span class="row-label-name" title={info.name}>{info.name}</span>
 		{#if info.note.trim() !== ""}
 			<span class="row-label-note" title={info.note}>{info.note}</span>
+		{/if}
+		{#if rolledUp.length > 0}
+			<!-- Projects shown on this domain's row (#11): they have no row of
+			     their own, so the label keeps them visible. Truncates; the hover
+			     card lists them in full. -->
+			<span class="row-label-note row-label-rollup">+ {rolledUpText}</span>
 		{/if}
 	</div>
 	{#if info.isDomain}
@@ -118,6 +129,9 @@
 					<span class="rlc-status-note">{info.note}</span>
 				{/if}
 			</div>
+			{#if rolledUp.length > 0}
+				<div class="rlc-rollup">Also shown here: {rolledUpText}</div>
+			{/if}
 			{#if info.since !== null}
 				<div class="rlc-span">
 					{statusLabel} since {fmtDate(info.since)}
@@ -174,6 +188,10 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	.row-label-rollup {
+		color: var(--text-faint);
 	}
 
 	.row-label-icon {
@@ -260,6 +278,11 @@
 	:global(.row-label-card) .rlc-status-note {
 		font-size: var(--font-ui-smaller);
 		color: var(--text-normal);
+	}
+	:global(.row-label-card) .rlc-rollup {
+		font-size: var(--font-ui-smaller);
+		color: var(--text-muted);
+		line-height: var(--line-height-tight);
 	}
 	:global(.row-label-card) .rlc-span {
 		font-size: var(--font-ui-smaller);

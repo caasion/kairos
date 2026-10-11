@@ -47,14 +47,17 @@ export class KairosView extends ItemView {
 				reveal$: this.plugin.reveal$,
 				updateSettings: (mutate: (s: KairosSettings) => void) =>
 					void this.plugin.updateSettings(mutate),
+				links: this.plugin.links,
 				onDateChange: (date: ISODate) => {
 					this.date = date;
+					this.plugin.links.setDayDate(date);
 				},
 			},
 		});
 	}
 
 	async onClose() {
+		this.plugin.links.setDayDate(null);
 		if (this.component) {
 			void unmount(this.component);
 			this.component = undefined;

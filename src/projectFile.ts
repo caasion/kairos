@@ -64,6 +64,7 @@ interface RawFrontmatter {
 	aliases?: unknown;
 	description?: unknown;
 	domain_id?: unknown;
+	rollup?: unknown;
 	order?: unknown;
 	color?: unknown;
 	status?: unknown;
@@ -274,6 +275,32 @@ export function effectiveStatus(
 	return "active";
 }
 
+const STATUS_RANK: Record<LifecycleState, number> = {
+	active: 0,
+	inactive: 1,
+	archived: 2,
+};
+
+/**
+ * A project's lifecycle state on `asOf` once its domain is taken into account:
+ * a domain that isn't active makes its whole subtree not active. The result is
+ * the "least active" of the two (archived > inactive > active), so an active
+ * project under an inactive domain reads inactive, while an archived project
+ * stays archived whatever its domain is doing. A project with no domain (or
+ * whose domain doesn't resolve) is just its own status. This is the one rule
+ * every caller that gates work on a project's availability should use.
+ */
+export function projectStatusOn(
+	project: Project,
+	domain: Domain | undefined,
+	asOf: ISODate = localTodayISO(),
+): LifecycleState {
+	const own = effectiveStatus(project.history, asOf);
+	if (!domain) return own;
+	const parent = effectiveStatus(domain.history, asOf);
+	return STATUS_RANK[parent] > STATUS_RANK[own] ? parent : own;
+}
+
 /**
  * The lifecycle record in effect as of `asOf`, plus the bounds of the current
  * span. Same "most recent record on-or-before asOf" rule as `effectiveStatus`,
@@ -362,6 +389,8 @@ export function parseProject(content: string, path: string): Project | null {
 		aliases: asStringList(fm.aliases),
 		description: asString(fm.description) ?? "",
 		...(domain ? { domain } : {}),
+		// Only a literal YAML `true` counts; anything else reads as absent.
+		...(fm.rollup === true ? { rollup: true } : {}),
 		history,
 		...(anomalies.length > 0 ? { anomalies } : {}),
 		archived: deriveArchived(history),
@@ -455,6 +484,9 @@ export function serializeProjectFrontmatter(project: Project): string {
 		aliases: project.aliases,
 		description: project.description,
 		domain_id: project.domain ?? null,
+		// Written only when on: clearing the flag deletes the key rather than
+		// leaving `rollup: false` in a file that never had it.
+		...(project.rollup ? { rollup: true } : {}),
 		status: statusMap(project.history, project.anomalies),
 	};
 	return fence(fm);
@@ -789,4 +821,15 @@ export function setDomain(project: Project, domainId: string | undefined): Proje
 		return rest;
 	}
 	return { ...project, domain: domainId };
+}
+
+/**
+ * Turn a project's "show on its domain's row" flag on or off (#11). Off removes
+ * the key entirely, so the file goes back to exactly what it was before the flag
+ * was set rather than carrying `rollup: false`.
+ */
+export function setRollup(project: Project, rollup: boolean): Project {
+	if (rollup) return { ...project, rollup: true };
+	const { rollup: _drop, ...rest } = project;
+	return rest;
 }
