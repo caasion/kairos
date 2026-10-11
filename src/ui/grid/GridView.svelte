@@ -67,23 +67,15 @@
 		rolledUpProjectOf,
 		rolledUpProjects,
 		rowAssociation,
-		rowKeyForAssoc,
-		withUnassignedRow,
 		type BlockGroup,
 		type CellGroup,
 		type GridRow,
 	} from "../../gridModel";
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
-	import type { ParsedRoutines, Routine } from "../../routines/routinesFile";
-	import type { RoutineMarks } from "../../routines/routinesFeed";
-	import {
-		UNASSIGNED_ROW,
-		bucketByRow,
-		previewRoutines,
-		routineKey,
-	} from "../../routines/preview";
-	import { activeRoutines, ownerActive } from "../../routines/owners";
-	import RoutineNudge from "../routines/RoutineNudge.svelte";
+	import type { RoutineActions } from "../../routines/routinesFeed";
+	import { routinesToOffer, type RoutineList } from "../../routines/preview";
+	import { dayLabel } from "../../routines/plan";
+	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
@@ -119,12 +111,8 @@
 		links: ViewLinks;
 		// Open the Day view on a date (a column header click).
 		showDay: (date: ISODate) => void;
-		// The parsed routines file and each day's recorded routines hash.
-		routines$: Readable<ParsedRoutines>;
-		marks$: Readable<RoutineMarks>;
-		// Add one routine to a day (no hash), or every missing one (records it).
-		insertRoutine: (date: ISODate, routine: Routine) => void;
-		applyRoutines: (date: ISODate) => void;
+		// Each day's missing routines, behind a pill on its date header.
+		routineActions: RoutineActions;
 	}
 
 	let {
@@ -135,10 +123,7 @@
 		reveal,
 		links,
 		showDay,
-		routines$,
-		marks$,
-		insertRoutine,
-		applyRoutines,
+		routineActions,
 	}: Props = $props();
 
 	// ── Bridge to the timelines (viewLinks.ts) ──
@@ -256,65 +241,39 @@
 
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
-	// ── Routine previews ──
-	// A routine due on a visible day and missing from it shows as a nudge in its
-	// association's row (preview.ts decides which days show previews at all).
-	// Unfiled routines — or ones whose project/domain has no row this window —
-	// land in the Unassigned row, which then appears even with no tasks in it.
+	// ── Routines ──
+	// A day's missing routines sit behind a pill on its date header, opened on
+	// hover (RoutinesAlert). preview.ts decides what each day offers; routines
+	// whose project or domain isn't active that day are paused (owners.ts).
+	// The stores are fixed for the view's lifetime, so reading them once is right.
+	// svelte-ignore state_referenced_locally
+	const { routines$, marks$, active$ } = routineActions;
 	const routines = $derived($routines$);
 	const marks = $derived($marks$);
+	const active = $derived($active$);
 
-	const baseRows = $derived<GridRow[]>(
-		snapshot ? buildRows(snapshot, todayISO()) : [],
-	);
+	const rows = $derived<GridRow[]>(snapshot ? buildRows(snapshot, todayISO()) : []);
 
-	// date → missing routines for that day (empty when the day shows none).
-	const previewsByDate = $derived.by(() => {
+	// date → what that day's routines alert offers.
+	const routinesByDate = $derived.by(() => {
 		const today = todayISO();
-		const out = new Map<ISODate, Routine[]>();
-		// A routine whose project or domain isn't active that day is paused.
-		const active = snapshot ? ownerActive(snapshot.projects, snapshot.domains) : undefined;
+		const out = new Map<ISODate, RoutineList>();
 		for (const date of dates) {
 			const recorded = marks(date);
 			out.set(
 				date,
-				previewRoutines({
+				routinesToOffer({
 					date,
 					today,
 					...(recorded !== undefined ? { recorded } : {}),
-					routines: activeRoutines(routines.routines, date, active),
+					routines: routines.routines,
 					blocks: dayOf(date)?.blocks ?? [],
+					active,
 				}),
 			);
 		}
 		return out;
 	});
-
-	// date → row key → routine nudges for that cell.
-	const routineCells = $derived.by(() => {
-		const out = new Map<ISODate, Map<string, Routine[]>>();
-		const snap = snapshot;
-		if (!snap) return out;
-		for (const [date, previews] of previewsByDate) {
-			out.set(date, bucketByRow(previews, (a) => rowKeyForAssoc(baseRows, a, snap)));
-		}
-		return out;
-	});
-
-	const rows = $derived.by<GridRow[]>(() => {
-		const needsUnassigned = [...routineCells.values()].some(
-			(byRow) => (byRow.get(UNASSIGNED_ROW)?.length ?? 0) > 0,
-		);
-		return needsUnassigned ? withUnassignedRow(baseRows) : baseRows;
-	});
-
-	function routineNudgesFor(row: GridRow, date: ISODate): Routine[] {
-		return routineCells.get(date)?.get(row.key) ?? [];
-	}
-
-	function missingCount(date: ISODate): number {
-		return previewsByDate.get(date)?.length ?? 0;
-	}
 
 	// Whether a row is the last of its domain group — a domain header and its child
 	// project rows share one accent color and read as one block, so the divider
@@ -1309,7 +1268,7 @@
 	<div class="grid-head" style={`grid-template-columns: ${gridTemplate};`}>
 		<div class="grid-corner grid-corner-head"></div>
 		{#each dates as date (date)}
-			{@const missing = missingCount(date)}
+			{@const offered = routinesByDate.get(date)}
 			<div class="grid-colhead-wrap">
 				<button
 					class="grid-colhead date-card"
@@ -1335,21 +1294,25 @@
 						<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
 					{/if}
 				</button>
-				{#if missing > 0}
-					<!-- Bottom-right of the date cell: pull in every missing routine
-					     for this day at once (and record that the day is set up). -->
-					<button
-						class="grid-add-routines"
-						aria-label="Add routines"
-						title={`Add ${missing} routine${missing === 1 ? "" : "s"} to this day`}
-						onclick={(e) => {
-							e.stopPropagation();
-							applyRoutines(date);
-						}}
-					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
-						<span class="grid-add-routines-count">{missing}</span>
-					</button>
+				{#if offered && offered.count > 0}
+					<!-- Bottom-right of the date cell: the day's missing routines,
+					     listed on hover, each addable, plus "Add all". -->
+					<div class="grid-routines">
+						<RoutinesAlert
+							list={offered}
+							variant="pill"
+							label={dayLabel(date)}
+							showAddAll={!settings.autoApplyRoutines}
+							onAdd={(rs) => {
+								focusDay(date);
+								routineActions.insert(date, rs);
+							}}
+							onAddAll={() => {
+								focusDay(date);
+								routineActions.addAll(date);
+							}}
+						/>
+					</div>
 				{/if}
 			</div>
 		{/each}
@@ -1382,7 +1345,6 @@
 				{#each dates as date (date)}
 					{@const day = dayOf(date)}
 					{@const nudges = nudgesFor(row, date)}
-					{@const routineNudges = routineNudgesFor(row, date)}
 					{@const inactive = isCellInactive(row, date)}
 					<div
 						class="grid-datacell"
@@ -1400,17 +1362,6 @@
 										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
 										onResurfaceAt={onNudgeResurfaceAt}
 										{onNavigate}
-									/>
-								{/each}
-							</div>
-						{/if}
-						{#if routineNudges.length > 0}
-							<div class="grid-nudges">
-								{#each routineNudges as routine (routineKey(routine))}
-									<RoutineNudge
-										{routine}
-										color={"color" in row ? row.color : undefined}
-										onInsert={(r: Routine) => insertRoutine(date, r)}
 									/>
 								{/each}
 							</div>
@@ -1449,7 +1400,7 @@
 								{isBlockLinked}
 								{onBlockHover}
 							/>
-						{:else if nudges.length === 0 && routineNudges.length === 0}
+						{:else if nudges.length === 0}
 							<div class="grid-datacell-empty"></div>
 						{/if}
 					</div>
@@ -1738,32 +1689,10 @@
 		flex: 1;
 		min-width: 0;
 	}
-	.grid-add-routines {
+	.grid-routines {
 		position: absolute;
 		right: 6px;
 		bottom: 6px;
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		height: 20px;
-		padding: 0 6px;
-		border-radius: 10px;
-		border: 1px dashed color-mix(in srgb, var(--interactive-accent) 50%, transparent);
-		background: var(--background-primary);
-		color: var(--interactive-accent);
-		font-size: 11px;
-		font-variant-numeric: tabular-nums;
-		box-shadow: none;
-		cursor: pointer;
-	}
-	.grid-add-routines:hover {
-		background: var(--interactive-accent);
-		color: var(--text-on-accent);
-		border-style: solid;
-		box-shadow: none;
-	}
-	.grid-add-routines-count {
-		line-height: 1;
 	}
 	.grid-colhead .dow-label {
 		font-size: 11px;

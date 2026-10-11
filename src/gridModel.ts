@@ -459,27 +459,6 @@ export function dayStatus(
 	return projectStatusOn(project, domain, date);
 }
 
-/**
- * The key of the row an association files under, or undefined when the window
- * has no such row. Files it the way a task with that owner files
- * (`ownerRowKey`): aliases resolve, and a rolled-up project lands on its
- * domain's row.
- */
-export function rowKeyForAssoc(
-	rows: GridRow[],
-	assoc: Association,
-	snap: GridSnapshot,
-): RowKey | undefined {
-	const key = ownerRowKey(assoc, snap);
-	return key !== "unassigned" && rows.some((r) => r.key === key) ? key : undefined;
-}
-
-/** `rows` with the Unassigned row appended when it isn't there already. */
-export function withUnassignedRow(rows: GridRow[]): GridRow[] {
-	if (rows.some((r) => r.kind === "unassigned")) return rows;
-	return [...rows, { kind: "unassigned", key: "unassigned", name: "Unassigned", depth: 0 }];
-}
-
 /** The association a create-in-cell applies for this row. */
 export function rowAssociation(row: GridRow): RowAssociation {
 	switch (row.kind) {

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-	UNASSIGNED_ROW,
-	bucketByRow,
+	listRoutines,
 	missingRoutines,
 	previewRoutines,
 	routineKey,
@@ -10,7 +9,6 @@ import {
 import { applyRoutines, routinesHash } from "./apply";
 import { parseRoutines, type Routine } from "./routinesFile";
 import { parseSchedule } from "../parser";
-import type { Association } from "../types";
 
 // 2026-10-07 Wed · 10-08 Thu · 10-12 Mon.
 const WED = "2026-10-07";
@@ -98,26 +96,37 @@ describe("showsPreviews: the visibility table", () => {
 	});
 });
 
-describe("bucketByRow", () => {
-	const rowKeyFor = (a: Association) =>
-		a.kind === "domain" && a.id === "Health" ? "domain:Health" : undefined;
-
-	it("files tasks by their own or inherited association, blocks by theirs", () => {
-		const buckets = bucketByRow(missingRoutines([], routines, MON), rowKeyFor);
-		expect(names(buckets.get("domain:Health") ?? [])).toEqual([
-			"Morning Routine",
-			"Take meds",
-			"Journal",
-		]);
+describe("listRoutines", () => {
+	const titles = (list: ReturnType<typeof listRoutines>) => ({
+		items: list.items.map((i) => [i.block?.title ?? null, ...i.tasks.map((t) => t.text)]),
+		loose: list.loose.map((i) => i.tasks.map((t) => t.text)),
 	});
 
-	it("puts untagged routines and ones with no row in Unassigned", () => {
-		const buckets = bucketByRow(missingRoutines([], routines, MON), rowKeyFor);
-		// [Learning] has no row in this window; Water the plants has no tag.
-		expect(names(buckets.get(UNASSIGNED_ROW) ?? [])).toEqual([
-			"Noteworthy Rehearsal",
-			"Water the plants",
-		]);
+	it("nests a block's tasks under it and adds them together; loose tasks go last", () => {
+		const list = listRoutines(missingRoutines([], routines, MON));
+		expect(titles(list)).toEqual({
+			items: [
+				["Morning Routine", "Take meds"],
+				[null, "Journal"],
+			],
+			loose: [["Noteworthy Rehearsal"], ["Water the plants"]],
+		});
+		expect(list.items[0]!.routines.map((r) => r.kind)).toEqual(["block", "task"]);
+		expect(list.count).toBe(5);
+	});
+
+	it("lists a task on its own when its block is already in the day", () => {
+		const day = blocksOf("- 09:00 - 09:30 Morning Routine [D:Health]");
+		const list = listRoutines(missingRoutines(day, routines, MON));
+		expect(list.items[0]!.block).toBeUndefined();
+		expect(list.items[0]!.tasks.map((t) => t.text)).toEqual(["Take meds"]);
+	});
+
+	it("orders blocks by start time, not file order", () => {
+		const { routines: rs } = parseRoutines(
+			"## Daily\n- 18:00 - 19:00 Gym\n- 07:00 - 07:30 Wake up\n",
+		);
+		expect(listRoutines(rs).items.map((i) => i.block?.title)).toEqual(["Wake up", "Gym"]);
 	});
 
 	it("gives every routine a distinct key", () => {

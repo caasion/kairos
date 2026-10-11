@@ -14,7 +14,7 @@
 	import { moveBlockAcrossDays } from "../../writer";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { navigateToAssociation } from "../../navigate";
-	import type { KairosIndex, Resolver } from "../../index";
+	import type { GridDay, KairosIndex, Resolver } from "../../index";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		dateFromISO,
@@ -35,6 +35,10 @@
 	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
 	import { requestRepeat } from "../../routines/repeat";
+	import type { RoutineActions } from "../../routines/routinesFeed";
+	import { routinesToOffer, type RoutineList } from "../../routines/preview";
+	import { dayLabel } from "../../routines/plan";
+	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -62,9 +66,11 @@
 		updateSettings: (mutate: (s: KairosSettings) => void) => void;
 		// The Grid ↔ timeline bridge (viewLinks.ts), handed on to each column.
 		links: ViewLinks;
+		// Each day's missing routines, behind a pill on its column header.
+		routineActions: RoutineActions;
 	}
 
-	let { app, index, settings$, updateSettings, links }: Props = $props();
+	let { app, index, settings$, updateSettings, links, routineActions }: Props = $props();
 
 	// The hovered item, for the unscheduled strip this view renders itself
 	// (subscribed on mount, like the resolver).
@@ -117,6 +123,39 @@
 	const anchor = $derived(pinnedAnchor ?? anchorFor(todayISO(), before));
 
 	const dates = $derived(windowDates(anchor, windowSize));
+
+	// ── Routines ──
+	// A day's missing routines sit behind a pill on its column header, opened on
+	// hover (RoutinesAlert), the same as in the Grid. The day blocks come from
+	// the index's grid feed for the window.
+	// The stores are fixed for the view's lifetime, so reading them once is right.
+	// svelte-ignore state_referenced_locally
+	const { routines$, marks$, active$ } = routineActions;
+	let weekDays = $state<GridDay[]>([]);
+	$effect(() => {
+		return index.grid(dates).subscribe((snap) => {
+			weekDays = snap.days;
+		});
+	});
+	const routinesByDate = $derived.by(() => {
+		const today = todayISO();
+		const out = new Map<ISODate, RoutineList>();
+		for (const day of weekDays) {
+			const recorded = $marks$(day.date);
+			out.set(
+				day.date,
+				routinesToOffer({
+					date: day.date,
+					today,
+					...(recorded !== undefined ? { recorded } : {}),
+					routines: $routines$.routines,
+					blocks: day.blocks,
+					active: $active$,
+				}),
+			);
+		}
+		return out;
+	});
 
 	// `steps` counts whole windows, so the next window starts the day after this
 	// one ends: nothing is skipped and nothing is shown twice.
@@ -698,21 +737,36 @@
 	<div class="week-colheads">
 		<div class="week-gutter-spacer"></div>
 		{#each dates as date (date)}
-			<button
-				class="col-head date-card"
-				class:today={isToday(date)}
-				title="Ctrl+click to open the daily note"
-				onclick={(e) => {
-					e.stopPropagation();
-					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
-				}}
-			>
-				<span class="dow-label">{dowLabel(date)}</span>
-				<span class="date-number">{dayNumber(date)}</span>
-				{#if isToday(date)}
-					<span class="today-indicator"></span>
+			{@const offered = routinesByDate.get(date)}
+			<div class="col-head-wrap">
+				<button
+					class="col-head date-card"
+					class:today={isToday(date)}
+					title="Ctrl+click to open the daily note"
+					onclick={(e) => {
+						e.stopPropagation();
+						if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
+					}}
+				>
+					<span class="dow-label">{dowLabel(date)}</span>
+					<span class="date-number">{dayNumber(date)}</span>
+					{#if isToday(date)}
+						<span class="today-indicator"></span>
+					{/if}
+				</button>
+				{#if offered && offered.count > 0}
+					<div class="col-routines">
+						<RoutinesAlert
+							list={offered}
+							variant="pill"
+							label={dayLabel(date)}
+							showAddAll={!settings.autoApplyRoutines}
+							onAdd={(rs) => routineActions.insert(date, rs)}
+							onAddAll={() => routineActions.addAll(date)}
+						/>
+					</div>
 				{/if}
-			</button>
+			</div>
 		{/each}
 	</div>
 
@@ -1088,6 +1142,19 @@
 	   The two text lines flow normally in the button; the today underline is
 	   absolutely positioned in the reserved bottom strip (padding-bottom) so it
 	   never overlaps the number. */
+	.col-head-wrap {
+		position: relative;
+		flex: 1;
+		min-width: 0;
+		display: flex;
+	}
+	/* Bottom-right of the date card, as in the Grid. */
+	.col-routines {
+		position: absolute;
+		right: 6px;
+		bottom: 6px;
+	}
+
 	.col-head.date-card {
 		position: relative;
 		flex: 1;

@@ -11,8 +11,6 @@ import {
 	rolledUpProjects,
 	rolledUpProjectOf,
 	rowAssociation,
-	rowKeyForAssoc,
-	withUnassignedRow,
 } from "./gridModel";
 import type { GridDay, GridSnapshot } from "./index";
 import type {
@@ -296,42 +294,6 @@ describe("rowAssociation", () => {
 		expect(byKind["project"]).toEqual({ kind: "project", id: "Alpha" });
 		expect(byKind["domain"]).toEqual({ kind: "domain", id: "Health" });
 		expect(byKind["unassigned"]).toBeUndefined();
-	});
-});
-
-describe("rowKeyForAssoc / withUnassignedRow (routine previews)", () => {
-	const s = snap(
-		[project({ name: "Alpha", aliases: ["A"] })],
-		[domain()],
-		[],
-	);
-	const rows = buildRows(s, AS_OF);
-
-	it("finds the row for a project or domain", () => {
-		expect(rowKeyForAssoc(rows, proj("Alpha"), s)).toBe("project:Alpha");
-		expect(rowKeyForAssoc(rows, dom("Health"), s)).toBe("domain:Health");
-	});
-
-	it("resolves an alias to its entity's row", () => {
-		expect(rowKeyForAssoc(rows, proj("A"), s)).toBe("project:Alpha");
-	});
-
-	it("returns undefined when the window has no such row", () => {
-		expect(rowKeyForAssoc(rows, proj("Nowhere"), s)).toBeUndefined();
-		expect(rowKeyForAssoc(rows, dom("Alpha"), s)).toBeUndefined();
-	});
-
-	it("files a rolled-up project on its domain's row", () => {
-		const life = domain({ id: "d-life", name: "Life" });
-		const groceries = project({ name: "Groceries", domain: "d-life", rollup: true });
-		const rs = snap([groceries], [life], []);
-		expect(rowKeyForAssoc(buildRows(rs, AS_OF), proj("Groceries"), rs)).toBe("domain:Life");
-	});
-
-	it("appends the Unassigned row once", () => {
-		const withRow = withUnassignedRow(rows);
-		expect(withRow.at(-1)).toMatchObject({ kind: "unassigned", key: "unassigned" });
-		expect(withUnassignedRow(withRow)).toBe(withRow);
 	});
 });
 

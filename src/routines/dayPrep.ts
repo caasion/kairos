@@ -105,15 +105,16 @@ export class DayPreparer {
 	}
 
 	/**
-	 * Add one routine to `date` (creating its note if needed), without recording
-	 * the hash — pulling in a single routine doesn't mark the day as set up.
-	 * Additive like every apply: a routine already in the day adds nothing.
+	 * Add some routines to `date` (creating its note if needed): one item from a
+	 * routines alert, a block with its tasks or a single task. Doesn't record the
+	 * hash — pulling in part of a day's routines doesn't mark it as set up.
+	 * Additive like every apply: what's already in the day adds nothing.
 	 */
-	async insertRoutine(date: ISODate, routine: Routine): Promise<void> {
+	async insertRoutines(date: ISODate, routines: Routine[]): Promise<void> {
 		const file = await this.noteFor(date);
 		if (!file) return;
 		const blocks = await this.currentBlocks(file, date);
-		const r = applyRoutines(blocks, [routine], date, file.path);
+		const r = applyRoutines(blocks, routines, date, file.path);
 		if (r.added > 0) this.plugin.indexAdapter.index.applyDayEdit(date, file.path, r.blocks);
 	}
 

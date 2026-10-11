@@ -7,21 +7,36 @@
 //     daily note records, or undefined. It republishes (debounced) whenever a
 //     daily note's metadata changes or a note is deleted, so a view re-derives
 //     its routine previews the moment a day is set up.
+//   • `active$` yields whether a routine's project or domain is active on a
+//     date (owners.ts), fresh whenever the project/domain files change, so a
+//     paused routine drops out of every view as soon as its owner goes inactive.
 // Obsidian glue only; the decisions live in preview.ts and plan.ts.
 
 import { TFile, moment } from "obsidian";
 import type { TAbstractFile } from "obsidian";
-import { writable } from "svelte/store";
+import { derived, writable } from "svelte/store";
 import type { Readable } from "svelte/store";
 import { getAllDailyNotes, getDailyNote, getDateFromPath } from "obsidian-daily-notes-interface";
 import type Kairos from "../main";
 import type { ISODate } from "../types";
 import { ROUTINES_KEY } from "./apply";
-import type { ParsedRoutines } from "./routinesFile";
+import { ownerActive, type OwnerActive } from "./owners";
+import type { ParsedRoutines, Routine } from "./routinesFile";
 import type { RoutinesStore } from "./routinesStore";
 
 /** The recorded routines hash for a date, or undefined. */
 export type RoutineMarks = (date: ISODate) => string | undefined;
+
+/** What a view needs to show a day's routines alert and act on it. */
+export interface RoutineActions {
+	routines$: Readable<ParsedRoutines>;
+	marks$: Readable<RoutineMarks>;
+	active$: Readable<OwnerActive>;
+	/** Add one item (a block with its tasks, or a task); doesn't record the day. */
+	insert: (date: ISODate, routines: Routine[]) => void;
+	/** Add everything missing and record the day as set up. */
+	addAll: (date: ISODate) => void;
+}
 
 const DEBOUNCE_MS = 250;
 
@@ -32,12 +47,32 @@ export class RoutinesFeed {
 	/** The parsed routines file — the RoutinesStore's copy, shared, not re-read. */
 	readonly routines$: Readable<ParsedRoutines>;
 	readonly marks$: Readable<RoutineMarks> = { subscribe: this.marksStore.subscribe };
+	readonly active$: Readable<OwnerActive>;
 
 	constructor(
 		private plugin: Kairos,
 		routines: RoutinesStore,
 	) {
 		this.routines$ = routines.parsed$;
+		// The index's resolver store republishes whenever a project or domain
+		// changes, which is exactly when owner status can change.
+		const index = plugin.indexAdapter.index;
+		this.active$ = derived(index.resolver(), () => {
+			const { projects, domains } = index.snapshot();
+			return ownerActive(projects, domains);
+		});
+	}
+
+	/** The routines alert's data and actions, for a view's props. */
+	actions(): RoutineActions {
+		const preparer = () => this.plugin.dayPreparer;
+		return {
+			routines$: this.routines$,
+			marks$: this.marks$,
+			active$: this.active$,
+			insert: (date, routines) => void preparer().insertRoutines(date, routines),
+			addAll: (date) => void preparer().applyToDate(date),
+		};
 	}
 
 	/** Subscribe to daily-note metadata events. Call when the layout is ready. */

@@ -21,7 +21,11 @@
 	import { autogrow, singleLine } from "../actions/autogrow";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { RuleModal } from "./RuleModal";
+	import type { Readable } from "svelte/store";
 	import type { RoutinesStore } from "../../routines/routinesStore";
+	import type { OwnerActive } from "../../routines/owners";
+	import { routineAssoc } from "../../routines/apply";
+	import { todayISO } from "../../dayNote";
 	import { parseRoutines, type ParsedRoutines, type Routine } from "../../routines/routinesFile";
 	import { groupRoutines, type RoutineGroup } from "../../routines/routinesModel";
 	import {
@@ -37,9 +41,18 @@
 		app: App;
 		index: KairosIndex;
 		store: RoutinesStore;
+		/** Whether a routine's project or domain is active on a date (owners.ts). */
+		active$: Readable<OwnerActive>;
 	}
 
-	let { app, index, store }: Props = $props();
+	let { app, index, store, active$ }: Props = $props();
+
+	// A routine whose project or domain isn't active today is paused (decision
+	// 87): greyed here, and offered nowhere until its owner is active again.
+	function isPaused(r: Routine): boolean {
+		const assoc = routineAssoc(r);
+		return assoc !== undefined && !$active$(assoc, todayISO());
+	}
 
 	let parsed = $state<ParsedRoutines>({ routines: [], problems: [] });
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
@@ -296,7 +309,8 @@
 					{#each group.routines as r (r.line)}
 						{@const assoc = shownAssoc(r)}
 						{@const ra = assoc ? resolve(assoc) : undefined}
-						<li class="routine-row" class:is-homed={r.kind === "task" && r.home !== undefined} use:actionZone={{ anchor: "right", layout: "stack" }}>
+						{@const paused = isPaused(r)}
+						<li class="routine-row" class:is-homed={r.kind === "task" && r.home !== undefined} class:paused use:actionZone={{ anchor: "right", layout: "stack" }}>
 							<div class="routine-main">
 								<span class="routine-kind" title={r.kind === "block" ? (r.checkable ? "Checkable block" : "Block") : "Task"}>
 									{#if r.kind === "block"}
@@ -322,6 +336,9 @@
 									<button class="routine-text" onclick={(e) => startEdit(r, "text", e)}>
 										<span class="routine-text-clamp">{nameOf(r)}</span>
 									</button>
+								{/if}
+								{#if paused}
+									<span class="routine-paused" use:tooltip={"Paused: its project or domain isn't active. It comes back when that's active again."}>Paused</span>
 								{/if}
 							</div>
 
@@ -550,6 +567,21 @@
 		margin-left: 16px;
 	}
 	.routine-row:hover {
+		background: var(--background-modifier-hover);
+	}
+	.routine-row.paused .routine-kind,
+	.routine-row.paused .routine-text,
+	.routine-row.paused .routine-meta {
+		opacity: 0.5;
+	}
+	.routine-paused {
+		flex-shrink: 0;
+		margin-top: 2px;
+		padding: 0 6px;
+		border-radius: 8px;
+		font-size: 10px;
+		line-height: 16px;
+		color: var(--text-muted);
 		background: var(--background-modifier-hover);
 	}
 	.routine-main {
