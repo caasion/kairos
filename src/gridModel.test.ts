@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveAssociation } from "./association";
 import {
+	blockGroups,
 	buildRows,
 	cellGroups,
 	cellTasks,
@@ -8,6 +9,7 @@ import {
 	dropAssociation,
 	ownerRowKey,
 	rolledUpProjects,
+	rolledUpProjectOf,
 	rowAssociation,
 } from "./gridModel";
 import type { GridDay, GridSnapshot } from "./index";
@@ -489,5 +491,91 @@ describe("domain row label names its rolled-up projects", () => {
 		const s = snap([project({ name: "Alpha", domain: "d-health" })], [domain()], []);
 		const row = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
 		expect(row.kind === "domain" && row.info.rolledUp).toBeUndefined();
+	});
+});
+
+// ─── block groups ──────────────────────────────────────────────
+
+describe("blockGroups", () => {
+	const path = "2026-08-01.md";
+	const deepWork = {
+		source: { path, line: 10 },
+		title: "Deep work",
+		assoc: dom("Health"),
+		tasks: [],
+		scheduled: true,
+		time: { start: 600, end: 720 },
+	};
+	const gym = {
+		source: { path, line: 4 },
+		title: "Gym",
+		status: " " as const,
+		assoc: dom("Health"),
+		tasks: [],
+		scheduled: true,
+		time: { start: 420, end: 480 },
+	};
+	const inbox = {
+		source: { path, line: 20 },
+		title: "Unscheduled",
+		tasks: [],
+		scheduled: false,
+	};
+
+	it("orders groups by start time with Unscheduled last, the checkable block heading its own", () => {
+		const tasks = [
+			task({ text: "Draft", block: deepWork, owner: dom("Health"), scheduled: true }),
+			task({ text: "Edit", block: deepWork, owner: dom("Health"), scheduled: true }),
+			task({ source: gym.source, text: "Gym", block: gym, owner: dom("Health"), scheduled: true, colocated: true }),
+			task({ text: "Stretch", block: gym, owner: dom("Health"), scheduled: true }),
+			task({ text: "Book physio", block: inbox, owner: dom("Health") }),
+		];
+		const s = snap([], [domain()], tasks);
+		const row = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
+		const groups = blockGroups(row, tasks, s);
+		expect(groups.map((g) => g.block.title)).toEqual(["Gym", "Deep work", "Unscheduled"]);
+		expect(groups[0]!.head?.text).toBe("Gym");
+		expect(groups[0]!.tasks.map((t) => t.text)).toEqual(["Stretch"]);
+		expect(groups[1]!.head).toBeUndefined();
+		expect(groups[1]!.tasks.map((t) => t.text)).toEqual(["Draft", "Edit"]);
+		expect(groups[2]!.tasks.map((t) => t.text)).toEqual(["Book physio"]);
+	});
+
+	it("shows a block in every row it has tasks in, with the checkbox only in its own", () => {
+		const school = domain({ id: "d-school", name: "School" });
+		const syde = project({ id: "p-syde", name: "SYDE 223", domain: "d-school" });
+		const lecture = { ...gym, title: "Lecture", assoc: dom("School") };
+		const tasks = [
+			task({ source: lecture.source, text: "Lecture", block: lecture, owner: dom("School"), scheduled: true, colocated: true }),
+			task({ text: "Take notes", block: lecture, owner: dom("School"), scheduled: true }),
+			task({ text: "Problem set", block: lecture, assoc: proj("SYDE 223"), owner: proj("SYDE 223"), scheduled: true }),
+		];
+		const s = snap([syde], [school], tasks);
+		const rows = buildRows(s, AS_OF);
+		const schoolRow = rows.find((r) => r.name === "School")!;
+		const sydeRow = rows.find((r) => r.name === "SYDE 223")!;
+
+		const inSchool = blockGroups(schoolRow, tasks, s);
+		expect(inSchool).toHaveLength(1);
+		expect(inSchool[0]!.head?.text).toBe("Lecture");
+		expect(inSchool[0]!.tasks.map((t) => t.text)).toEqual(["Take notes"]);
+
+		const inSyde = blockGroups(sydeRow, tasks, s);
+		expect(inSyde).toHaveLength(1);
+		expect(inSyde[0]!.key).toBe(inSchool[0]!.key);
+		expect(inSyde[0]!.head).toBeUndefined();
+		expect(inSyde[0]!.tasks.map((t) => t.text)).toEqual(["Problem set"]);
+	});
+
+	it("names a rolled-up task's project for the chip, and nothing else", () => {
+		const groceries = project({ id: "p-groc", name: "Groceries", domain: "d-health", rollup: true });
+		const own = task({ text: "Walk", owner: dom("Health") });
+		const rolled = task({ text: "Buy oats", assoc: proj("Groceries"), owner: proj("Groceries") });
+		const s = snap([groceries], [domain()], [own, rolled]);
+		const row = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
+		expect(rolledUpProjectOf(row, rolled, s)).toBe("Groceries");
+		expect(rolledUpProjectOf(row, own, s)).toBeUndefined();
+		// Grouped by block, the rolled-up task shares the domain's Unscheduled group.
+		expect(blockGroups(row, [own, rolled], s)[0]!.tasks).toHaveLength(2);
 	});
 });

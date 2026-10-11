@@ -21,6 +21,7 @@
 // fallback. Append is signalled with a large index the caller's insert clamps.
 
 import type { Block, ResolvedTask, Task } from "../../types";
+import type { TimelineDrop } from "../../taskDrop";
 
 /** A flat item surfaced from DayColumn to WeekView for unscheduled rendering. */
 export interface UnscheduledItem {
@@ -116,6 +117,36 @@ export function hitTestDropSlot(
   }
 
   return null;
+}
+
+/** A drop on a Grid block group: where it lands, and the row it's in. */
+export interface GridGroupDrop {
+  drop: TimelineDrop;
+  rowKey: string;
+}
+
+/**
+ * With block grouping on, each block group in a Grid cell (its header and its
+ * tasks) is a drop target: dropping a task there nests it in that block, on
+ * that day and in that row. The Unscheduled group, and the empty Unscheduled
+ * slot a cell shows during a drag, take the task out of its block instead.
+ *
+ * A group carries `data-grid-drop-date`, plus `data-grid-drop-block` (the
+ * block's line) unless it's Unscheduled; the row comes from the cell's
+ * `data-grid-row-key`. The drop appends to the block's tasks.
+ */
+export function hitTestGridGroup(event: PointerEvent): GridGroupDrop | null {
+  const el = document.elementFromPoint(event.clientX, event.clientY);
+  const group = el?.closest<HTMLElement>("[data-grid-drop-date]");
+  if (!group) return null;
+  const date = group.dataset.gridDropDate;
+  const rowKey = group.closest<HTMLElement>("[data-grid-row-key]")?.dataset.gridRowKey;
+  if (!date || !rowKey) return null;
+  const line = group.dataset.gridDropBlock;
+  if (line === undefined) return { drop: { kind: "unscheduled", date }, rowKey };
+  const blockLine = Number(line);
+  if (Number.isNaN(blockLine)) return null;
+  return { drop: { kind: "block", date, blockLine, index: APPEND_INDEX }, rowKey };
 }
 
 // A slot index past any real list length: the caller's insert clamps it to an

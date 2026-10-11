@@ -122,6 +122,20 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'gridGroupByBlock': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.gridGroupByBlock = on;
+				});
+				return;
+			}
+			case 'gridShowRollupProjects': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.gridShowRollupProjects = on;
+				});
+				return;
+			}
 			case 'askAssocOnBacklogCreate': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {

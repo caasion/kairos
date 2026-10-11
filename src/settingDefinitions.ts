@@ -58,6 +58,19 @@ export interface KairosSettings {
 	 * domain group answers the question by where you created it.
 	 */
 	askAssocOnBacklogCreate: boolean;
+
+	/**
+	 * Group each Grid cell's tasks under the block they sit in, in start-time
+	 * order with Unscheduled last (decision 70). On by default: it's what ties
+	 * the Grid to the timelines. A setting because some workflows want the flat
+	 * list instead.
+	 */
+	gridGroupByBlock: boolean;
+	/**
+	 * With block groups on, show a rolled-up task's project as a muted label at
+	 * the end of its line on its domain's row (decision 74). Off by default.
+	 */
+	gridShowRollupProjects: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -72,6 +85,8 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	scheduleHeading: '## Schedule',
 	askAssocOnBlockCreate: false,
 	askAssocOnBacklogCreate: false,
+	gridGroupByBlock: true,
+	gridShowRollupProjects: false,
 };
 
 /** Every control key is a settings property, so the default value resolver works. */
@@ -144,6 +159,35 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					max: 7,
 					step: 1,
 					defaultValue: DEFAULT_SETTINGS.weekDaysAfter,
+				},
+			},
+		],
+	},
+	{
+		type: 'group',
+		heading: 'Grid view',
+		items: [
+			{
+				name: 'Group by block',
+				desc:
+					'Group the tasks in each grid cell under the block they sit in, ' +
+					'in time order, with unscheduled tasks last.',
+				control: {
+					type: 'toggle',
+					key: 'gridGroupByBlock',
+					defaultValue: DEFAULT_SETTINGS.gridGroupByBlock,
+				},
+			},
+			{
+				name: 'Show projects on rolled-up tasks',
+				desc:
+					'On a domain row that includes rolled-up projects, show each ' +
+					"task's project at the end of its line. Applies when grouping " +
+					'by block.',
+				control: {
+					type: 'toggle',
+					key: 'gridShowRollupProjects',
+					defaultValue: DEFAULT_SETTINGS.gridShowRollupProjects,
 				},
 			},
 		],

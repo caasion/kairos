@@ -301,6 +301,29 @@ export function addTaskToUnscheduled(
 }
 
 /**
+ * Append a new task to `block` (the Grid's "+" on a block group). Like
+ * `addTaskToUnscheduled`, the row's association is written onto the task, so
+ * it stays in the row it was added from even when the block belongs to another.
+ * Unchanged when the block isn't in `blocks`.
+ */
+export function addTaskToBlock(
+  blocks: Block[],
+  block: Block,
+  text: string,
+  assoc: Association | undefined,
+  line = nextDraftLine(),
+): Block[] {
+  if (!blocks.some((b) => isOwner(b, block))) return blocks;
+  const task: Task = {
+    source: { path: block.source.path, line },
+    text,
+    status: " ",
+    ...(assoc ? { assoc } : {}),
+  };
+  return blocks.map((b) => (isOwner(b, block) ? { ...b, tasks: [...b.tasks, task] } : b));
+}
+
+/**
  * Append `task` to the day's Unscheduled block, creating that block if absent.
  * Shared by `addTaskToUnscheduled` (new task) and `unnestTask` (moved task).
  *
@@ -334,6 +357,18 @@ function insertIntoUnscheduled(
 }
 
 /**
+ * The association a task carries once it leaves `source`. By default its own,
+ * else the one it was inheriting from `source` (materialize-on-move, §4.3), so
+ * moving never changes its owner. `assoc` overrides that when the move is also a
+ * re-filing (a drop in another Grid row): an association, or null for none.
+ */
+function pinAssoc(nested: Task, source: Block, assoc?: Association | null): Task {
+  const next = assoc !== undefined ? assoc ?? undefined : nested.assoc ?? source.assoc;
+  const { assoc: _old, ...rest } = nested;
+  return next ? { ...rest, assoc: next } : rest;
+}
+
+/**
  * Unnest a task: move it out of its (timed) block into the day's Unscheduled
  * block. This is the Grid view's one time-dimension write — you *schedule*
  * blocks, not tasks, so a task loses its time by leaving the block, never by a
@@ -355,6 +390,7 @@ export function unnestTask(
   owner: Block,
   target: Task,
   path: string,
+  assoc?: Association | null,
 ): Block[] {
   const source = blocks.find((b) => isOwner(b, owner));
   if (!source) return blocks;
@@ -364,9 +400,9 @@ export function unnestTask(
   const nested = source.tasks.find((t) => sameSource(t.source, target.source));
   if (!nested) return blocks;
 
-  // Materialize: keep an explicit assoc; otherwise inherit the block's onto it.
-  const assoc = nested.assoc ?? source.assoc;
-  const moved: Task = { ...nested, ...(assoc ? { assoc } : {}) };
+  // Materialize: keep an explicit assoc; otherwise inherit the block's onto it
+  // (unless the caller re-files it).
+  const moved = pinAssoc(nested, source, assoc);
 
   // Remove from the source block, then insert into Unscheduled.
   const without = blocks.map((b) =>
@@ -417,6 +453,7 @@ export function nestTaskUnderBlock(
   target: Task,
   destination: Block,
   index = Number.MAX_SAFE_INTEGER,
+  assoc?: Association | null,
 ): Block[] {
   const source = blocks.find((b) => isOwner(b, sourceOwner));
   const dest = blocks.find((b) => isOwner(b, destination));
@@ -432,9 +469,9 @@ export function nestTaskUnderBlock(
   if (!nested) return blocks;
 
   // Materialize: keep an explicit assoc, else inherit the *source* block's onto
-  // the task so its owner doesn't change by moving under a different block.
-  const assoc = nested.assoc ?? source.assoc;
-  const moved: Task = { ...nested, ...(assoc ? { assoc } : {}) };
+  // the task so its owner doesn't change by moving under a different block
+  // (unless the caller re-files it).
+  const moved = pinAssoc(nested, source, assoc);
 
   const sameBlock = isOwner(source, dest);
 
@@ -663,13 +700,15 @@ function cloneTask(
   assoc?: Association | null,
 ): Task {
   const nextAssoc = assoc !== undefined ? assoc ?? undefined : task.assoc;
-  const copy: Task = {
-    ...task,
+  // Only the Task fields: callers may pass a ResolvedTask (the Grid does), whose
+  // derived fields (block, date, owner…) don't belong in a day's blocks.
+  return {
     source: { path: toPath, line },
+    text: task.text,
+    status: task.status,
     ...(nextAssoc ? { assoc: nextAssoc } : {}),
+    ...(task.metadata !== undefined ? { metadata: task.metadata } : {}),
   };
-  if (!nextAssoc) delete (copy as Partial<Task>).assoc;
-  return copy;
 }
 
 /**
@@ -750,6 +789,212 @@ export function copyBlockIntoDay(
   };
   if (!assoc) delete (copy as Partial<Block>).assoc;
   return [...toBlocks, copy];
+}
+
+// ─── schedule a task across views ──────────────────────────────
+//
+// CORE LOGIC — flagged for review. A task dragged out of the Grid (or another
+// Week column) can land on a block on a *different* day, or on empty time on
+// any day. The same-day "drop on a block" case is `nestTaskUnderBlock`; these
+// cover the rest. All of them lift the task the same way the nest does —
+// materializing the association it had (explicit, else inherited from its old
+// owner) so moving never changes which project or domain it belongs to.
+//
+// Dropping on empty time creates a block at that time. Two shapes:
+//   • "container" (the default): a block named after the task's association,
+//     carrying that association, with the task nested inside. The task stays a
+//     task, so it still carries to tomorrow if it's not done (decision 17).
+//   • "timebox" (Option/Alt): the task becomes a checkable block — its text,
+//     status, association and metadata move onto the block line (decision 11).
+//     A checkable block's own checkbox does not carry over, which is why this
+//     is the alternate and not the default.
+
+/** What a drop on empty time turns the task into. */
+export type NewBlockMode = "container" | "timebox";
+
+/** A nested task, lifted out of its block with its association materialized. */
+interface Lifted {
+  without: Block[];
+  task: Task;
+}
+
+/**
+ * Remove `target` from `owner` in `blocks`, returning the remainder and the
+ * task with its association pinned (`assoc` overrides it, see `pinAssoc`). Null when the owner or task can't be found,
+ * or when the target is a colocated task (a block's own checkbox line, which
+ * can't leave that line).
+ */
+function liftTask(
+  blocks: Block[],
+  owner: Block,
+  target: Task,
+  assoc?: Association | null,
+): Lifted | null {
+  const source = blocks.find((b) => isOwner(b, owner));
+  if (!source) return null;
+  if (source.status !== undefined && sameSource(source.source, target.source)) {
+    return null;
+  }
+  const nested = source.tasks.find((t) => sameSource(t.source, target.source));
+  if (!nested) return null;
+
+  const task = pinAssoc(nested, source, assoc);
+  const without = blocks.map((b) =>
+    isOwner(b, source)
+      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      : b,
+  );
+  return { without, task };
+}
+
+/** Insert `task` into `destination` at `index` (clamped). Unchanged if absent. */
+function insertIntoBlock(
+  blocks: Block[],
+  destination: Block,
+  task: Task,
+  index: number,
+): Block[] {
+  if (!blocks.some((b) => isOwner(b, destination))) return blocks;
+  return blocks.map((b) => {
+    if (!isOwner(b, destination)) return b;
+    const at = Math.max(0, Math.min(index, b.tasks.length));
+    return { ...b, tasks: [...b.tasks.slice(0, at), task, ...b.tasks.slice(at)] };
+  });
+}
+
+/**
+ * Build the block a drop on empty time creates for `task` (association already
+ * materialized onto it). The block's line is drawn before the task's so the
+ * draft lines keep the order the real ones will have after the reparse.
+ */
+export function blockForTask(
+  task: Task,
+  time: TimeRange,
+  path: string,
+  mode: NewBlockMode,
+): Block {
+  const source: SourceRef = { path, line: nextDraftLine() };
+  if (mode === "timebox") {
+    return {
+      source,
+      title: task.text,
+      status: task.status,
+      ...(task.assoc ? { assoc: task.assoc } : {}),
+      ...(task.metadata ? { metadata: task.metadata } : {}),
+      tasks: [],
+      scheduled: true,
+      time,
+    };
+  }
+  return {
+    source,
+    title: task.assoc ? task.assoc.id : DEFAULT_BLOCK_TITLE,
+    ...(task.assoc ? { assoc: task.assoc } : {}),
+    tasks: [{ ...task, source: { path, line: nextDraftLine() } }],
+    scheduled: true,
+    time,
+  };
+}
+
+/**
+ * Move a task into `destination`, a block on another day, at `index` (append by
+ * default). Returns both days' arrays; the caller persists them together via
+ * `applyCrossDayMove`. Unchanged arrays when the task can't be lifted or the
+ * destination isn't on the target day.
+ */
+export function moveTaskIntoBlockAcrossDays(
+  fromBlocks: Block[],
+  toBlocks: Block[],
+  sourceOwner: Block,
+  target: Task,
+  destination: Block,
+  toPath: string,
+  index = Number.MAX_SAFE_INTEGER,
+  assoc?: Association | null,
+): CrossDayTaskMove {
+  const lifted = liftTask(fromBlocks, sourceOwner, target, assoc);
+  if (!lifted || !toBlocks.some((b) => isOwner(b, destination))) {
+    return { from: fromBlocks, to: toBlocks };
+  }
+  const moved: Task = {
+    ...lifted.task,
+    source: { path: toPath, line: nextDraftLine() },
+  };
+  return {
+    from: lifted.without,
+    to: insertIntoBlock(toBlocks, destination, moved, index),
+  };
+}
+
+/**
+ * Same-day drop on empty time: take the task out of its block and give it a new
+ * block at `time` (see `NewBlockMode`). Unchanged when the task can't be lifted.
+ */
+export function scheduleTaskInNewBlock(
+  blocks: Block[],
+  owner: Block,
+  target: Task,
+  time: TimeRange,
+  mode: NewBlockMode,
+  assoc?: Association | null,
+): Block[] {
+  const lifted = liftTask(blocks, owner, target, assoc);
+  if (!lifted) return blocks;
+  const path = owner.source.path;
+  return [...lifted.without, blockForTask(lifted.task, time, path, mode)];
+}
+
+/**
+ * Cross-day drop on empty time: the task leaves its day and becomes (or lands
+ * in) a new block at `time` on the target day.
+ */
+export function scheduleTaskInNewBlockAcrossDays(
+  fromBlocks: Block[],
+  toBlocks: Block[],
+  sourceOwner: Block,
+  target: Task,
+  toPath: string,
+  time: TimeRange,
+  mode: NewBlockMode,
+  assoc?: Association | null,
+): CrossDayTaskMove {
+  const lifted = liftTask(fromBlocks, sourceOwner, target, assoc);
+  if (!lifted) return { from: fromBlocks, to: toBlocks };
+  return {
+    from: lifted.without,
+    to: [...toBlocks, blockForTask(lifted.task, time, toPath, mode)],
+  };
+}
+
+/**
+ * Ctrl/Cmd-drop a copy of `task` into `destination` on `toBlocks` (which may be
+ * another day). `assoc` is the association the copy carries — the caller's
+ * materialized owner — or null for none.
+ */
+export function copyTaskIntoBlock(
+  toBlocks: Block[],
+  task: Task,
+  assoc: Association | null,
+  destination: Block,
+  index = Number.MAX_SAFE_INTEGER,
+): Block[] {
+  const dest = toBlocks.find((b) => isOwner(b, destination));
+  if (!dest) return toBlocks;
+  const copy = cloneTask(task, dest.source.path, nextDraftLine(), assoc);
+  return insertIntoBlock(toBlocks, dest, copy, index);
+}
+
+/** Ctrl/Cmd-drop a copy of `task` on empty time: a new block, source untouched. */
+export function copyTaskIntoNewBlock(
+  toBlocks: Block[],
+  task: Task,
+  assoc: Association | null,
+  toPath: string,
+  time: TimeRange,
+  mode: NewBlockMode,
+): Block[] {
+  const copy = cloneTask(task, toPath, task.source.line, assoc);
+  return [...toBlocks, blockForTask(copy, time, toPath, mode)];
 }
 
 /** Return a copy of `blocks` with every block in `targets` removed. */

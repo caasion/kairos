@@ -28,6 +28,7 @@
 		TaskStatus,
 	} from "../../types";
 	import {
+		addTaskToBlock,
 		addTaskToUnscheduled,
 		copyBlockIntoDay,
 		copyTaskIntoDay,
@@ -42,16 +43,21 @@
 	} from "../../writer";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import type { GridDay, GridSnapshot, KairosIndex, Resolver } from "../../index";
-	import { hitTestGridCell, type BlockDragState, type GridDropSlot, type TaskDragState } from "../timeline/taskDrag";
+	import { hitTestGridCell, hitTestGridGroup, type BlockDragState, type GridDropSlot, type GridGroupDrop, type TaskDragState } from "../timeline/taskDrag";
+	import { dropTaskOnTimeline } from "../timeline/dropTask";
 	import { navigateToAssociation } from "../../navigate";
 	import {
+		blockGroups,
+		isUnscheduledBlock,
 		buildRows,
 		cellGroups,
 		dayStatus,
 		dropAssociation,
 		ownerRowKey,
+		rolledUpProjectOf,
 		rolledUpProjects,
 		rowAssociation,
+		type BlockGroup,
 		type CellGroup,
 		type GridRow,
 	} from "../../gridModel";
@@ -89,6 +95,7 @@
 	}
 
 	let { app, index, settings$, updateSettings, reveal }: Props = $props();
+
 
 	const settings = $derived($settings$);
 
@@ -183,13 +190,59 @@
 	}
 
 	// A cell's own tasks plus, on a domain row, its rolled-up projects' groups.
+	// Grouped by block (the setting), block groups replace both.
 	function cellFor(
 		row: GridRow,
 		day: GridDay,
-	): { own: ResolvedTask[]; groups: CellGroup[] } {
-		return snapshot
-			? cellGroups(row, day.tasks, snapshot)
-			: { own: [], groups: [] };
+	): { own: ResolvedTask[]; groups: CellGroup[]; blocks?: BlockGroup[] } {
+		if (!snapshot) return { own: [], groups: [] };
+		if (settings.gridGroupByBlock) {
+			return { own: [], groups: [], blocks: blockGroups(row, day.tasks, snapshot) };
+		}
+		return cellGroups(row, day.tasks, snapshot);
+	}
+
+	// The project chip on a rolled-up task's line (domain rows, when on).
+	function chipFor(row: GridRow): ((task: ResolvedTask) => string | undefined) | undefined {
+		if (!settings.gridShowRollupProjects || !snapshot) return undefined;
+		const snap = snapshot;
+		return (task) => rolledUpProjectOf(row, task, snap);
+	}
+
+	// The block group a live task drag would land in, for this cell (date, row).
+	function dropGroupOn(date: ISODate, row: GridRow): number | "unscheduled" | undefined {
+		const g = groupDrop;
+		if (!g || g.rowKey !== row.key || g.drop.date !== date) return undefined;
+		if (g.drop.kind === "unscheduled") return "unscheduled";
+		return g.drop.kind === "block" ? g.drop.blockLine : undefined;
+	}
+
+	// While a task is dragged over a grouped cell with no Unscheduled group, the
+	// cell offers an empty one to drop into, so a task can always leave its block.
+	// Only the cell under the pointer grows, so the rest of the grid holds still.
+	function wantsUnscheduledSlot(
+		cell: { blocks?: BlockGroup[] },
+		inactive: boolean,
+		date: ISODate,
+		row: GridRow,
+	): boolean {
+		if (taskDrag === null || inactive || !cell.blocks) return false;
+		if (cell.blocks.some((g) => isUnscheduledBlock(g.block))) return false;
+		const overCell =
+			(taskDrop?.date === date && taskDrop.rowKey === row.key) ||
+			(groupDrop?.drop.date === date && groupDrop.rowKey === row.key);
+		return overCell;
+	}
+
+	function setGroupByBlock(on: boolean) {
+		updateSettings((s) => {
+			s.gridGroupByBlock = on;
+		});
+	}
+	function setShowRollupProjects(on: boolean) {
+		updateSettings((s) => {
+			s.gridShowRollupProjects = on;
+		});
 	}
 
 	// The row's entity was inactive/archived on this day — the cell is read-only
@@ -368,6 +421,22 @@
 		);
 	}
 
+	// A group's "+" (grouping on): a new task in that block, filed under the row
+	// it was added from. Unscheduled's adds to Unscheduled, like the cell's "+".
+	async function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
+		if (isUnscheduledBlock(block)) {
+			await onCreate(row, date);
+			return;
+		}
+		const day = dayOf(date);
+		if (!day || day.path === null) return;
+		commit(
+			date,
+			day.path,
+			addTaskToBlock(day.blocks, block, "New task", rowAssociation(row), nextDraftLine()),
+		);
+	}
+
 	// ── Task drag-to-reschedule (grid DnD) ──
 	// Long-press on a task body starts a drag. The ghost follows the pointer; the
 	// hovered cell's (date, rowKey) is tracked as the live drop target. On release:
@@ -379,6 +448,10 @@
 	type GridTaskDrag = Omit<TaskDragState, "task"> & { task: ResolvedTask };
 	let taskDrag = $state<GridTaskDrag | null>(null);
 	let taskDrop = $state<GridDropSlot | null>(null);
+	// The block group under the pointer (grouping on): a drop there nests the
+	// task in that block, or takes it out of its block on Unscheduled. Takes
+	// precedence over the cell the group sits in.
+	let groupDrop = $state<GridGroupDrop | null>(null);
 	// Last pointer coordinates, updated on every pointermove during a drag.
 	// Re-hit-tested at pointerup to get the freshest drop slot.
 	let lastPointerX = 0;
@@ -395,7 +468,7 @@
 			label: task.text,
 			duplicate: event.ctrlKey || event.metaKey,
 		};
-		taskDrop = hitTestGridCell(event);
+		hitTestDrag(event);
 	}
 
 	function onTaskDragMove(event: PointerEvent) {
@@ -408,7 +481,19 @@
 			ghostY: event.clientY,
 			duplicate: event.ctrlKey || event.metaKey,
 		};
-		taskDrop = hitTestGridCell(event);
+		hitTestDrag(event);
+	}
+
+	// What's under the pointer: a block group (grouping on), or else a cell.
+	function hitTestDrag(event: PointerEvent) {
+		groupDrop = hitTestGridGroup(event);
+		taskDrop = groupDrop ? null : hitTestGridCell(event);
+	}
+
+	function endTaskDrag() {
+		taskDrag = null;
+		taskDrop = null;
+		groupDrop = null;
 	}
 
 	async function onTaskDragUp() {
@@ -417,9 +502,14 @@
 		// Re-hit-test at the exact release coordinates for the freshest slot —
 		// taskDrop could be stale if no pointermove fired since entering this cell.
 		const synth = new MouseEvent("pointermove", { clientX: lastPointerX, clientY: lastPointerY }) as PointerEvent;
-		const drop = hitTestGridCell(synth) ?? taskDrop;
-		taskDrag = null;
-		taskDrop = null;
+		const onGroup = hitTestGridGroup(synth) ?? groupDrop;
+		const drop = onGroup ? null : (hitTestGridCell(synth) ?? taskDrop);
+		endTaskDrag();
+
+		if (onGroup) {
+			void dropOnGroup(drag, onGroup);
+			return;
+		}
 		if (!drop) return;
 
 		const sourceDay = dayOf(drag.task.date);
@@ -523,6 +613,35 @@
 		);
 	}
 
+	// Released on a block group: the task lands in that block (or Unscheduled),
+	// on that day and in that row. Where you drop says both when (the block) and
+	// what (the row): a different row re-files it like a cell drop does, the row
+	// it's already on keeps its association. Ctrl/Cmd drops a copy.
+	async function dropOnGroup(drag: GridTaskDrag, at: GridGroupDrop) {
+		const targetRow = rows.find((r) => r.key === at.rowKey);
+		if (!targetRow || !snapshot) return;
+		// Never drop into a read-only history cell (row inactive/archived that day).
+		if (isCellInactive(targetRow, at.drop.date)) return;
+		const target = dropAssociation(targetRow, drag.task.owner, snapshot);
+		const assoc = target && !target.sameRow ? target.assoc : undefined;
+		// Dropped back on its own group: nothing to do.
+		const sameDay = at.drop.date === drag.task.date;
+		const ownGroup =
+			at.drop.kind === "block"
+				? at.drop.blockLine === drag.owner.source.line
+				: at.drop.kind === "unscheduled" && isUnscheduledBlock(drag.owner);
+		if (sameDay && ownGroup && assoc === undefined && !drag.duplicate) return;
+		await dropTaskOnTimeline(
+			index,
+			drag.task.date,
+			drag.owner,
+			drag.task,
+			at.drop,
+			{ duplicate: drag.duplicate, timebox: false },
+			assoc,
+		);
+	}
+
 	// Set (or clear) a nested task's own association, wherever it currently sits.
 	// Walks the blocks to find the task by source line and updates its assoc field;
 	// everything else about the task — and its place in its block — is untouched.
@@ -539,8 +658,7 @@
 	}
 
 	function cancelTaskDrag() {
-		taskDrag = null;
-		taskDrop = null;
+		endTaskDrag();
 	}
 
 	// ── Block drag (grid block DnD) ──
@@ -928,6 +1046,14 @@
 						<span class="controls-label">Days after today</span>
 						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
 					</label>
+					<label class="controls-field">
+						<span class="controls-label">Group by block</span>
+						<input type="checkbox" checked={settings.gridGroupByBlock} onchange={(e) => setGroupByBlock(e.currentTarget.checked)} />
+					</label>
+					<label class="controls-field">
+						<span class="controls-label">Show projects on rolled-up tasks</span>
+						<input type="checkbox" checked={settings.gridShowRollupProjects} disabled={!settings.gridGroupByBlock} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
+					</label>
 				</div>
 			{/if}
 		</div>
@@ -1028,6 +1154,12 @@
 								dragTaskLine={taskDrag?.task.source.line}
 								dragBlockLine={blockDrag?.block.source.line}
 								isDropTarget={isDropTargetFor(date, row.key)}
+								blockGroups={cell.blocks}
+								chipFor={chipFor(row)}
+								{date}
+								dropGroup={dropGroupOn(date, row)}
+								unscheduledSlot={wantsUnscheduledSlot(cell, inactive, date, row)}
+								onCreateInBlock={(block: Block) => void onCreateInBlock(row, date, block)}
 							/>
 						{:else if nudges.length === 0}
 							<div class="grid-datacell-empty"></div>

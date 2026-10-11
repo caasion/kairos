@@ -76,6 +76,27 @@ export function clampToDay(minutes: Minutes, g: TimelineGeometry): Minutes {
 	return clamp(minutes, g.startHour * 60, g.endHour * 60);
 }
 
+// How long a block made by dropping a task on empty time starts out. It's then
+// resized like any other block.
+export const DROP_BLOCK_MINUTES = 30;
+
+/**
+ * The range a block dropped at `minutes` would take: snapped to the grid and
+ * kept inside the visible day, shifting earlier rather than running past the
+ * last hour. Shorter than `length` only when the whole day is.
+ */
+export function dropRange(
+	minutes: Minutes,
+	g: TimelineGeometry,
+	length: Minutes = DROP_BLOCK_MINUTES,
+): { start: Minutes; end: Minutes } {
+	const dayStart = g.startHour * 60;
+	const dayEnd = g.endHour * 60;
+	const span = Math.min(length, dayEnd - dayStart);
+	const start = clamp(snap(minutes), dayStart, dayEnd - span);
+	return { start, end: start + span };
+}
+
 /** A block's placement rectangle in the timeline body. */
 export interface Placement {
 	block: Block;
