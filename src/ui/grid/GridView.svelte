@@ -578,10 +578,15 @@
 			from: { date: drag.task.date, line: drag.task.source.line },
 			// A Grid block group lands in that block, so the timelines show it too.
 			drop: timelineDrop ?? groupDrop?.drop ?? null,
-			label: newBlockLabel(drag.task, drag.owner, drag),
+			label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
 			duplicate: drag.duplicate,
 			timebox: drag.timebox,
 		});
+	}
+
+	// What a drop applies: the drag's modifiers plus the block-name setting.
+	function dropMods(drag: GridTaskDrag) {
+		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: settings.dropBlockTitle };
 	}
 
 	// Holding a drag on a column header shows that day in the Day view, so one
@@ -639,7 +644,7 @@
 
 		// Released over a timeline: schedule it there.
 		if (onTimeline) {
-			void dropTaskOnTimeline(index, drag.task.date, drag.owner, drag.task, onTimeline, drag);
+			void dropTaskOnTimeline(index, drag.task.date, drag.owner, drag.task, onTimeline, dropMods(drag));
 			return;
 		}
 		if (onGroup) {

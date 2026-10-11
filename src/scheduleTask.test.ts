@@ -135,6 +135,16 @@ describe("blockForTask", () => {
 		expect(block.source.line).not.toBe(block.tasks[0]!.source.line);
 	});
 
+	it("uses a given title over the association", () => {
+		const block = blockForTask(task, TWO_PM, "thu.md", "container", "  Focus  ");
+		expect(block.title).toBe("Focus");
+		expect(block.assoc).toEqual({ kind: "project", id: "Kairos" });
+		// A blank title is no title.
+		expect(blockForTask(task, TWO_PM, "thu.md", "container", "  ").title).toBe("Kairos");
+		// A time-box is always named after its task.
+		expect(blockForTask(task, TWO_PM, "thu.md", "timebox", "Focus").title).toBe("Launch post");
+	});
+
 	it("falls back to the default title without an association", () => {
 		const { assoc: _a, ...bare } = task;
 		const block = blockForTask(bare, TWO_PM, "thu.md", "container");

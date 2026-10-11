@@ -74,6 +74,13 @@ describe("planTaskDrop", () => {
 		expect(created.tasks.map((t) => t.text)).toEqual(["Launch post"]);
 	});
 
+	it("names the new block from the setting", () => {
+		const day = wed();
+		const out = planTaskDrop(launchFrom(day), day, { kind: "time", date: day.date, time: { start: 840, end: 870 } }, { ...plain, blockTitle: "Focus" });
+		if (out?.kind !== "day") throw new Error("expected a same-day edit");
+		expect(out.day.blocks.at(-1)!.title).toBe("Focus");
+	});
+
 	it("time-boxes with Option held", () => {
 		const day = wed();
 		const out = planTaskDrop(launchFrom(day), day, { kind: "time", date: day.date, time: { start: 840, end: 870 } }, { duplicate: false, timebox: true });
@@ -113,6 +120,13 @@ describe("planTaskDrop", () => {
 });
 
 describe("newBlockLabel", () => {
+	it("prefers the block-name setting when set", () => {
+		const day = wed();
+		const owner = day.blocks[0]!;
+		expect(newBlockLabel(owner.tasks[0]!, owner, { ...plain, blockTitle: "Focus" })).toBe("Focus");
+		expect(newBlockLabel(owner.tasks[0]!, owner, { ...plain, blockTitle: " " })).toBe("Kairos");
+	});
+
 	it("names the block after the task's or block's association", () => {
 		const day = wed();
 		const owner = day.blocks[0]!;

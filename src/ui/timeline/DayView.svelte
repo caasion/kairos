@@ -975,6 +975,11 @@
 		publishDrag();
 	}
 
+	// What a drop applies: the drag's modifiers plus the block-name setting.
+	function dropMods(drag: TaskDragState) {
+		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: settings.dropBlockTitle };
+	}
+
 	function publishDrag() {
 		const drag = taskDrag;
 		links.setDrag(
@@ -982,7 +987,7 @@
 				? {
 						from: { date, line: drag.task.source.line },
 						drop: taskDrop,
-						label: newBlockLabel(drag.task, drag.owner, drag),
+						label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
 						duplicate: drag.duplicate,
 						timebox: drag.timebox,
 					}
@@ -999,7 +1004,7 @@
 		const drop = taskDrop;
 		cancelTaskDrag();
 		if (!drop) return; // released off any timeline — cancel
-		void dropTaskOnTimeline(index, date, drag.owner, drag.task, drop, drag);
+		void dropTaskOnTimeline(index, date, drag.owner, drag.task, drop, dropMods(drag));
 	}
 
 	function cancelTaskDrag() {

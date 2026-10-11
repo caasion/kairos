@@ -60,10 +60,11 @@ export interface KairosSettings {
 	askAssocOnBacklogCreate: boolean;
 
 	/**
-	 * The Day view follows the Grid: grabbing, adding or editing a task in the
-	 * Grid shows that day in the Day view. Moving the Day view by hand still
-	 * works; the next Grid action moves it again. (Selecting a Grid column header
-	 * shows its day whether or not this is on.)
+	 * The Day and Week views follow the Grid: grabbing, adding or editing a task
+	 * in the Grid shows that day in the Day view, and in the Week view when it's
+	 * outside the window shown. Moving either view by hand still works; the next
+	 * Grid action moves it again. (Selecting a Grid column header shows its day
+	 * in the Day view whether or not this is on.)
 	 */
 	followGrid: boolean;
 	/**
@@ -71,6 +72,12 @@ export interface KairosSettings {
 	 * a whole, and the task itself on top (viewLinks.ts). On by default.
 	 */
 	highlightAcrossViews: boolean;
+	/**
+	 * The title of a block made by dropping a task on empty time in the Day or
+	 * Week view. Empty: the task's project or domain name ("New block" without
+	 * one).
+	 */
+	dropBlockTitle: string;
 
 	/**
 	 * Group each Grid cell's tasks under the block they sit in, in start-time
@@ -100,6 +107,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	askAssocOnBacklogCreate: false,
 	followGrid: true,
 	highlightAcrossViews: true,
+	dropBlockTitle: '',
 	gridGroupByBlock: true,
 	gridShowRollupProjects: false,
 };
@@ -226,11 +234,25 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 				name: 'Follow the grid',
 				desc:
 					'Show the day you are working on in the grid. Grabbing, adding ' +
-					'or editing a task there moves the day view to that day.',
+					'or editing a task there moves the day view to that day, and ' +
+					'the week view when that day is out of sight.',
 				control: {
 					type: 'toggle',
 					key: 'followGrid',
 					defaultValue: DEFAULT_SETTINGS.followGrid,
+				},
+			},
+			{
+				name: 'Name for blocks made by a drop',
+				desc:
+					'Dropping a task on empty time in the day or week view makes a ' +
+					"block with the task inside. Leave empty to name it after the task's " +
+					'project or domain.',
+				control: {
+					type: 'text',
+					key: 'dropBlockTitle',
+					placeholder: "The task's project or domain",
+					defaultValue: DEFAULT_SETTINGS.dropBlockTitle,
 				},
 			},
 		],

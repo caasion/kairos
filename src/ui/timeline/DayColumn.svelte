@@ -99,6 +99,9 @@
 		onUnscheduledChange?: (date: ISODate, items: UnscheduledItem[]) => void;
 		// The Grid ↔ timeline bridge: shared drag preview and hover (viewLinks.ts).
 		links: ViewLinks;
+		// The title for a block made by dropping a task on empty time (a setting;
+		// empty: the task's project or domain).
+		dropBlockTitle?: string;
 	}
 
 	let {
@@ -116,6 +119,7 @@
 		showUnscheduled = true,
 		onUnscheduledChange,
 		links,
+		dropBlockTitle = "",
 	}: Props = $props();
 
 	// Mirrors of the cross-view stores (subscribed on mount, like the resolver):
@@ -576,6 +580,11 @@
 		publishDrag();
 	}
 
+	// What a drop applies: the drag's modifiers plus the block-name setting.
+	function dropMods(drag: TaskDragState) {
+		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: dropBlockTitle };
+	}
+
 	function publishDrag() {
 		const drag = taskDrag;
 		links.setDrag(
@@ -583,7 +592,7 @@
 				? {
 						from: { date, line: drag.task.source.line },
 						drop: taskDrop,
-						label: newBlockLabel(drag.task, drag.owner, drag),
+						label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
 						duplicate: drag.duplicate,
 						timebox: drag.timebox,
 					}
@@ -646,7 +655,7 @@
 			// Same day, another column, or the Day view: the planner decides what
 			// the drop writes, and the index publishes it back to every column.
 			if (drop) {
-				void dropTaskOnTimeline(index, date, drag.owner, drag.task, drop, drag);
+				void dropTaskOnTimeline(index, date, drag.owner, drag.task, drop, dropMods(drag));
 			}
 			return null;
 		}

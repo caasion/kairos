@@ -15,7 +15,7 @@
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { navigateToAssociation } from "../../navigate";
 	import type { KairosIndex, Resolver } from "../../index";
-	import type { DragPreview, HoverTarget, ViewLinks } from "../../viewLinks";
+	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		dateFromISO,
 		ensureNoteForDate,
@@ -127,6 +127,26 @@
 
 	function goToday() {
 		pinnedAnchor = null;
+		closeAssocPicker();
+		closeBlockPicker();
+	}
+
+	// ── Follow the Grid ──
+	// With "Follow the grid" on, a day you act on in the Grid that's outside
+	// this window brings the window to it, placed where today sits in the
+	// default window. A day already in view leaves the window alone. A request
+	// already waiting when the view opened is skipped, and never mid-drag.
+	let lastFocusNonce: number | null = null;
+	function handleFocus(req: FocusRequest | null) {
+		const initial = lastFocusNonce === null;
+		if (!req || req.nonce === lastFocusNonce) {
+			lastFocusNonce ??= 0;
+			return;
+		}
+		lastFocusNonce = req.nonce;
+		if (initial || !settings.followGrid || dragFromDate !== null) return;
+		if (dates.includes(req.date)) return;
+		pinnedAnchor = anchorFor(req.date, before);
 		closeAssocPicker();
 		closeBlockPicker();
 	}
@@ -562,6 +582,7 @@
 		const unsubscribeDrag = links.drag$.subscribe((p) => {
 			dragPreview = p;
 		});
+		const unsubscribeFocus = links.focus$.subscribe((req) => handleFocus(req));
 		const move = (e: PointerEvent) => onWindowPointerMove(e);
 		const up = (e: PointerEvent) => void onWindowPointerUp(e);
 		window.addEventListener("pointermove", move);
@@ -571,6 +592,7 @@
 			unsubscribeBacklog();
 			unsubscribeHover();
 			unsubscribeDrag();
+			unsubscribeFocus();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
 		};
@@ -839,6 +861,7 @@
 							backlogPath={settings.backlogPath}
 							{onCrossDayGrab}
 							askAssocOnCreate={settings.askAssocOnBlockCreate}
+							dropBlockTitle={settings.dropBlockTitle}
 							showUnscheduled={false}
 							{onUnscheduledChange}
 							{links}
