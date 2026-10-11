@@ -6,6 +6,7 @@
 
 import { Menu } from "obsidian";
 import type Kairos from "../../main";
+import { activateRoutinesView } from "../../routines/register";
 
 /** One entry of the menu: the view's icon, its name, how to open it. */
 export interface KairosViewEntry {
@@ -18,7 +19,7 @@ export interface KairosViewEntry {
 }
 
 /**
- * The six views, in the order the ribbon used to list them. Icons are kept in
+ * The views, in the order the ribbon used to list them, then Routines. Icons are kept in
  * step with each view's own `getIcon()` so an entry and the tab it opens carry
  * the same mark.
  */
@@ -30,6 +31,7 @@ export function kairosViews(plugin: Kairos): KairosViewEntry[] {
 		{ icon: "inbox", name: "Backlog", open: () => void plugin.activateBacklogView() },
 		{ icon: "folder-kanban", name: "Projects & domains", open: () => void plugin.activateProjectsView() },
 		{ icon: "gantt-chart", name: "Timeline", open: () => void plugin.activateGanttView() },
+		{ icon: "repeat", name: "Routines", open: () => void activateRoutinesView(plugin) },
 	];
 }
 

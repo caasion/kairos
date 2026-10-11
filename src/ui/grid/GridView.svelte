@@ -72,6 +72,10 @@
 		type GridRow,
 	} from "../../gridModel";
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
+	import type { RoutineActions } from "../../routines/routinesFeed";
+	import { routinesToOffer, type RoutineList } from "../../routines/preview";
+	import { dayLabel } from "../../routines/plan";
+	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
@@ -107,9 +111,20 @@
 		links: ViewLinks;
 		// Open the Day view on a date (a column header click).
 		showDay: (date: ISODate) => void;
+		// Each day's missing routines, behind a pill on its date header.
+		routineActions: RoutineActions;
 	}
 
-	let { app, index, settings$, updateSettings, reveal, links, showDay }: Props = $props();
+	let {
+		app,
+		index,
+		settings$,
+		updateSettings,
+		reveal,
+		links,
+		showDay,
+		routineActions,
+	}: Props = $props();
 
 	// ── Bridge to the timelines (viewLinks.ts) ──
 	// Acting on a day here (grab, add or edit a task) asks the Day view to show
@@ -226,9 +241,39 @@
 
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
-	const rows = $derived<GridRow[]>(
-		snapshot ? buildRows(snapshot, todayISO()) : [],
-	);
+	// ── Routines ──
+	// A day's missing routines sit behind a pill on its date header, opened on
+	// hover (RoutinesAlert). preview.ts decides what each day offers; routines
+	// whose project or domain isn't active that day are paused (owners.ts).
+	// The stores are fixed for the view's lifetime, so reading them once is right.
+	// svelte-ignore state_referenced_locally
+	const { routines$, marks$, active$ } = routineActions;
+	const routines = $derived($routines$);
+	const marks = $derived($marks$);
+	const active = $derived($active$);
+
+	const rows = $derived<GridRow[]>(snapshot ? buildRows(snapshot, todayISO()) : []);
+
+	// date → what that day's routines alert offers.
+	const routinesByDate = $derived.by(() => {
+		const today = todayISO();
+		const out = new Map<ISODate, RoutineList>();
+		for (const date of dates) {
+			const recorded = marks(date);
+			out.set(
+				date,
+				routinesToOffer({
+					date,
+					today,
+					...(recorded !== undefined ? { recorded } : {}),
+					routines: routines.routines,
+					blocks: dayOf(date)?.blocks ?? [],
+					active,
+				}),
+			);
+		}
+		return out;
+	});
 
 	// Whether a row is the last of its domain group — a domain header and its child
 	// project rows share one accent color and read as one block, so the divider
@@ -1223,30 +1268,53 @@
 	<div class="grid-head" style={`grid-template-columns: ${gridTemplate};`}>
 		<div class="grid-corner grid-corner-head"></div>
 		{#each dates as date (date)}
-			<button
-				class="grid-colhead date-card"
-				class:today={isToday(date)}
-				class:in-day={dayViewDate === date}
-				class:spring={springDate === date}
-				data-grid-head-date={date}
-				title={dayViewDate === date
-					? "Shown in the Day view · Ctrl+click to open the daily note"
-					: "Click to show in the Day view · Ctrl+click to open the daily note"}
-				onclick={(e) => {
-					e.stopPropagation();
-					if (e.ctrlKey || e.metaKey) void openDayNote(date);
-					else showDay(date);
-				}}
-			>
-				<span class="dow-label">{dowLabel(date)}</span>
-				<span class="date-number">{dayNumber(date)}</span>
-				{#if isToday(date)}
-					<span class="today-indicator"></span>
+			{@const offered = routinesByDate.get(date)}
+			<div class="grid-colhead-wrap">
+				<button
+					class="grid-colhead date-card"
+					class:today={isToday(date)}
+					class:in-day={dayViewDate === date}
+					class:spring={springDate === date}
+					data-grid-head-date={date}
+					title={dayViewDate === date
+						? "Shown in the Day view · Ctrl+click to open the daily note"
+						: "Click to show in the Day view · Ctrl+click to open the daily note"}
+					onclick={(e) => {
+						e.stopPropagation();
+						if (e.ctrlKey || e.metaKey) void openDayNote(date);
+						else showDay(date);
+					}}
+				>
+					<span class="dow-label">{dowLabel(date)}</span>
+					<span class="date-number">{dayNumber(date)}</span>
+					{#if isToday(date)}
+						<span class="today-indicator"></span>
+					{/if}
+					{#if dayViewDate === date}
+						<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
+					{/if}
+				</button>
+				{#if offered && offered.count > 0}
+					<!-- Bottom-right of the date cell: the day's missing routines,
+					     listed on hover, each addable, plus "Add all". -->
+					<div class="grid-routines">
+						<RoutinesAlert
+							list={offered}
+							variant="pill"
+							label={dayLabel(date)}
+							showAddAll={!settings.autoApplyRoutines}
+							onAdd={(rs) => {
+								focusDay(date);
+								routineActions.insert(date, rs);
+							}}
+							onAddAll={() => {
+								focusDay(date);
+								routineActions.addAll(date);
+							}}
+						/>
+					</div>
 				{/if}
-				{#if dayViewDate === date}
-					<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
-				{/if}
-			</button>
+			</div>
 		{/each}
 	</div>
 
@@ -1609,6 +1677,22 @@
 	}
 	.grid-colhead.date-card:hover {
 		filter: brightness(1.15);
+	}
+	/* The date card's grid cell: holds the card plus the add-routines button,
+	   which sits over the card's bottom-right corner. */
+	.grid-colhead-wrap {
+		position: relative;
+		display: flex;
+		min-width: 0;
+	}
+	.grid-colhead-wrap > .grid-colhead {
+		flex: 1;
+		min-width: 0;
+	}
+	.grid-routines {
+		position: absolute;
+		right: 6px;
+		bottom: 6px;
 	}
 	.grid-colhead .dow-label {
 		font-size: 11px;

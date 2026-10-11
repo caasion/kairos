@@ -15,7 +15,8 @@
 //        · the domain row itself holds tasks tagged [D:Domain] directly, plus
 //          the tasks of every *rolled-up* project under it (see below)
 //        · a child row per project under the domain that isn't rolled up
-//   3. unassigned row     — tasks with no owner (always last, only if non-empty)
+//   3. unassigned row     — tasks with no owner, or an owner with no row
+//                           (always last, only if non-empty)
 //
 // Rollup (#11): a project with `rollup: true` and a domain is "not worth its
 // own row". It contributes no row; its tasks render on its domain's row, in a
@@ -119,8 +120,10 @@ export function rolledUpProjects(domain: Domain, snap: GridSnapshot): Project[] 
 
 /**
  * The key of the row an owner's tasks render on: its own project/domain row, its
- * domain's row when the project is rolled up, or the unassigned row. A key with
- * no matching row (a dangling project tag) simply renders nowhere, as before.
+ * domain's row when the project is rolled up, or the unassigned row. A tag that
+ * names no project or domain (a typo, a deleted file, `[Name]` written for a
+ * domain), or a project filed under a domain that doesn't exist, has no row of
+ * its own, so its tasks render on the unassigned row rather than nowhere.
  */
 export function ownerRowKey(
 	owner: Association | undefined,
@@ -128,9 +131,13 @@ export function ownerRowKey(
 ): RowKey {
 	if (!owner) return "unassigned";
 	const name = snap.resolve(owner).displayName || owner.id;
-	if (owner.kind === "domain") return `domain:${name}`;
+	if (owner.kind === "domain") {
+		return snap.domains.has(name) ? `domain:${name}` : "unassigned";
+	}
 	const project = snap.projects.get(name);
-	const domain = project ? rollupDomain(project, snap) : undefined;
+	if (!project) return "unassigned";
+	if (project.domain && !domainById(snap, project.domain)) return "unassigned";
+	const domain = rollupDomain(project, snap);
 	return domain ? `domain:${domain.name}` : `project:${name}`;
 }
 
@@ -266,9 +273,10 @@ export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 		}
 	}
 
-	// 3. Unassigned row, only if some day has an unowned task.
+	// 3. Unassigned row, only if some day has a task with no row of its own:
+	//    untagged, or tagged with something that has no row (`ownerRowKey`).
 	const hasUnassigned = snap.days.some((day) =>
-		day.tasks.some((t) => !t.owner),
+		day.tasks.some((t) => ownerRowKey(t.owner, snap) === "unassigned"),
 	);
 	if (hasUnassigned) {
 		rows.push({

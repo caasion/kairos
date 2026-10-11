@@ -45,6 +45,7 @@ export class KairosWeekView extends ItemView {
 				updateSettings: (mutate: (s: KairosSettings) => void) =>
 					void this.plugin.updateSettings(mutate),
 				links: this.plugin.links,
+				routineActions: this.plugin.routinesFeed.actions(),
 			},
 		});
 	}

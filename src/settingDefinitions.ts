@@ -37,6 +37,8 @@ export interface KairosSettings {
 	domainsFolder: string;
 	/** Vault path to the single global backlog file. */
 	backlogPath: string;
+	/** Vault path to the single routines file (recurring blocks and tasks). */
+	routinesPath: string;
 
 	/**
 	 * The daily-note section heading Kairos reads and writes, given verbatim with
@@ -59,6 +61,12 @@ export interface KairosSettings {
 	 */
 	askAssocOnBacklogCreate: boolean;
 
+	/**
+	 * Add the day's routines as soon as a new daily note is created. Off by
+	 * default: routines are pulled in deliberately from the Grid (one at a time,
+	 * or all at once from the date row) or with "Apply routines to this day".
+	 */
+	autoApplyRoutines: boolean;
 	/**
 	 * The Day and Week views follow the Grid: grabbing, adding or editing a task
 	 * in the Grid shows that day in the Day view, and in the Week view when it's
@@ -102,9 +110,11 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	projectsFolder: 'Projects',
 	domainsFolder: 'Domains',
 	backlogPath: 'Backlog.md',
+	routinesPath: 'Routines.md',
 	scheduleHeading: '## Schedule',
 	askAssocOnBlockCreate: false,
 	askAssocOnBacklogCreate: false,
+	autoApplyRoutines: false,
 	followGrid: true,
 	highlightAcrossViews: true,
 	dropBlockTitle: '',
@@ -306,6 +316,24 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 	},
 	{
 		type: 'group',
+		heading: 'Routines',
+		items: [
+			{
+				name: 'Add routines to new daily notes',
+				desc:
+					'Add the routines due on a day as soon as its daily note is ' +
+					'created. When off, add them from the Grid or with the ' +
+					'"Apply routines to this day" command.',
+				control: {
+					type: 'toggle',
+					key: 'autoApplyRoutines',
+					defaultValue: DEFAULT_SETTINGS.autoApplyRoutines,
+				},
+			},
+		],
+	},
+	{
+		type: 'group',
 		heading: 'Folders',
 		items: [
 			{
@@ -336,6 +364,16 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					key: 'backlogPath',
 					placeholder: DEFAULT_SETTINGS.backlogPath,
 					defaultValue: DEFAULT_SETTINGS.backlogPath,
+				},
+			},
+			{
+				name: 'Routines file',
+				desc: 'Vault path to the file that lists your recurring blocks and tasks.',
+				control: {
+					type: 'text',
+					key: 'routinesPath',
+					placeholder: DEFAULT_SETTINGS.routinesPath,
+					defaultValue: DEFAULT_SETTINGS.routinesPath,
 				},
 			},
 		],

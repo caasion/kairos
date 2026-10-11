@@ -23,6 +23,7 @@
 	import { isUnscheduledBlock, type BlockGroup, type CellGroup } from "../../gridModel";
 	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
+	import { requestRepeat } from "../../routines/repeat";
 
 	interface Props {
 		/** The row's own tasks (headerless, first). */
@@ -274,6 +275,7 @@
 				onMoveToBacklog={task.colocated
 					? undefined
 					: () => onMoveToBacklog(task)}
+				onRepeat={() => requestRepeat(task, task.block)}
 				meta={grouped ? undefined : task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
 				{lead}
 				onAddInside={addInside}

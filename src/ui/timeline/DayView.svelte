@@ -43,6 +43,11 @@
 	import { nextDraftLine } from "../../draftLine";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import TaskRow from "../task/Task.svelte";
+	import { requestRepeat } from "../../routines/repeat";
+	import type { RoutineActions } from "../../routines/routinesFeed";
+	import { routinesToOffer } from "../../routines/preview";
+	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
+	import { dayLabel } from "../../routines/plan";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -91,9 +96,12 @@
 		// Reports the shown date, so commands like "Apply routines to this day"
 		// can act on the day the view is showing.
 		onDateChange?: (date: ISODate) => void;
+		// The shown day's missing routines, folded into a bar at the top.
+		routineActions: RoutineActions;
 	}
 
-	let { app, index, settings$, reveal$, updateSettings, links, onDateChange }: Props = $props();
+	let { app, index, settings$, reveal$, updateSettings, links, onDateChange, routineActions }: Props =
+		$props();
 
 	// Mirrors of the cross-view stores (subscribed on mount, like the resolver):
 	// the live task drag from any view, and the item under the pointer.
@@ -219,6 +227,21 @@
 	});
 	// Backlog nudges surfacing on the shown day (declared here, after `date`).
 	const surfaced = $derived(surfacedOn(backlogEntries, date, todayISO()));
+	// The shown day's missing routines (preview.ts), behind the routines bar.
+	// The stores are fixed for the view's lifetime, so reading them once is right.
+	// svelte-ignore state_referenced_locally
+	const { routines$, marks$, active$ } = routineActions;
+	const offeredRoutines = $derived.by(() => {
+		const recorded = $marks$(date);
+		return routinesToOffer({
+			date,
+			today: todayISO(),
+			...(recorded !== undefined ? { recorded } : {}),
+			routines: $routines$.routines,
+			blocks,
+			active: $active$,
+		});
+	});
 	// The daily note backing `date`, or null when that day has no note yet. An
 	// empty day still renders (an empty timeline) — the note is created lazily on
 	// the first write (see `notePathForWrite`).
@@ -1271,6 +1294,21 @@
 		</div>
 	</div>
 
+	<!-- Routines missing from this day: one line that opens into the list on
+	     hover. Unscheduled and Resurfacing stay in full; routines fold away. -->
+	{#if offeredRoutines.count > 0}
+		<div class="day-routines">
+			<RoutinesAlert
+				list={offeredRoutines}
+				variant="bar"
+				label={dayLabel(date)}
+				showAddAll={!settings.autoApplyRoutines}
+				onAdd={(rs) => routineActions.insert(date, rs)}
+				onAddAll={() => routineActions.addAll(date)}
+			/>
+		</div>
+	{/if}
+
 	<!-- The timeline always renders, even for a day with no note yet: creating a
 	     block on an empty day lazily creates the daily note (see writeToDisk). -->
 	<div class="day-scroll" bind:this={scrollEl}>
@@ -1309,6 +1347,7 @@
 								onNest={(rect) => openBlockPicker(block, task, rect)}
 								onMoveToBacklog={() =>
 									void handleMoveTaskToBacklog(block, task)}
+								onRepeat={() => requestRepeat(task, block)}
 								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
 								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
 								onDelete={(_t) => handleDeleteTask(block, task)}
@@ -1834,6 +1873,12 @@
 		font-weight: 400;
 		color: var(--text-faint);
 		margin-left: 2px;
+	}
+
+	/* ── Routines (the shown day's missing routines, folded) ── */
+	.day-routines {
+		flex-shrink: 0;
+		padding: 4px 8px 0;
 	}
 
 	/* ── Resurfacing (backlog nudges due today) ── */

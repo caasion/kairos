@@ -115,6 +115,13 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'routinesPath': {
+				const path = normalizePath(String(value));
+				await this.plugin.updateSettings((s) => {
+					s.routinesPath = path;
+				});
+				return;
+			}
 			case 'askAssocOnBlockCreate': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {
@@ -161,6 +168,13 @@ export class KairosSettingTab extends PluginSettingTab {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {
 					s.askAssocOnBacklogCreate = on;
+				});
+				return;
+			}
+			case 'autoApplyRoutines': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.autoApplyRoutines = on;
 				});
 				return;
 			}
