@@ -84,6 +84,11 @@
 		// tight, so the task text keeps its room.
 		lead?: string;
 		trailing?: string;
+		// This row is a checkable block's own task, standing for the block (the
+		// Grid's block groups): offer "add a task to this block" in its action
+		// bar, in the corner, and in its menu.
+		onAddInside?: () => void;
+		addInsideLabel?: string;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -111,6 +116,8 @@
 		lines = 1,
 		lead,
 		trailing,
+		onAddInside,
+		addInsideLabel = "Add task to block",
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -313,6 +320,15 @@
 			);
 		}
 
+		if (onAddInside) {
+			menu.addItem((item) =>
+				item
+					.setTitle(addInsideLabel)
+					.setIcon("plus")
+					.onClick(() => onAddInside()),
+			);
+		}
+
 		if (onMoveToBacklog) {
 			menu.addItem((item) =>
 				item
@@ -377,6 +393,16 @@
 	     DOM (= tab) order is unchanged; CSS `order` sets the visual order.
 	     Tooltips open to the left of the stack (actions/tooltip.ts). -->
 	<div class="k-task-actions kairos-action-bar">
+		{#if onAddInside}
+			<button
+				class="k-task-action k-task-action-add"
+				aria-label={addInsideLabel}
+				use:tooltip={addInsideLabel}
+				onclick={() => onAddInside()}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+			</button>
+		{/if}
 		<button
 			class="k-task-action"
 			aria-label={assocAction}
@@ -532,6 +558,11 @@
 	   delete, so association takes the corner. */
 	.k-task-actions:global(.kairos-action-stack) .k-task-action-danger {
 		order: -1;
+	}
+	/* "Add task to block" takes the corner when present: on a block's own row
+	   it's the action you reach for, in the same spot as a group header's "+". */
+	.k-task-actions:global(.kairos-action-stack) .k-task-action-add {
+		order: -2;
 	}
 
 	.k-task-action {

@@ -74,6 +74,8 @@
 		date?: ISODate;
 		dropGroup?: number | "unscheduled";
 		unscheduledSlot?: boolean;
+		// Grouped by block: add a new task to a group's block (its "+").
+		onCreateInBlock?: (block: Block) => void;
 	}
 
 	let {
@@ -102,7 +104,16 @@
 		date,
 		dropGroup,
 		unscheduledSlot = false,
+		onCreateInBlock,
 	}: Props = $props();
+
+	const canCreate = $derived(allowCreate && !inactive);
+	// Grouped, each group carries its own "+", and an Unscheduled group's adds
+	// to Unscheduled; the cell's corner "+" stays only for a cell without one.
+	const showCellAdd = $derived(
+		canCreate &&
+			!(blockGroups?.some((g) => isUnscheduledBlock(g.block)) ?? false),
+	);
 
 	// The value `dropGroup` takes when a drag is over this group.
 	function dropKey(group: BlockGroup): number | "unscheduled" {
@@ -204,7 +215,7 @@
 		     dim/hatch reads the column as past context, not a place to add work. -->
 		<div class="grid-cell-inactive-badge" title="Not active on this day"></div>
 	{/if}
-	{#snippet taskItem(task: ResolvedTask, i: number, lead?: string)}
+	{#snippet taskItem(task: ResolvedTask, i: number, lead?: string, addInside?: () => void, addLabel?: string)}
 		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
@@ -231,6 +242,8 @@
 					: () => onMoveToBacklog(task)}
 				meta={grouped ? undefined : task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
 				{lead}
+				onAddInside={addInside}
+				addInsideLabel={addLabel}
 				trailing={grouped ? chipFor?.(task) : undefined}
 				onGrab={task.colocated
 					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined
@@ -293,7 +306,15 @@
 				{#if group.head}
 					<!-- A checkable block heads its own group: its task row, with the
 					     start time before the title. -->
-					{@render taskItem(group.head, at, group.block.time ? fmtTime(group.block.time.start) : undefined)}
+					<!-- Its "+" lives in the row's own action bar, in the top-right
+					     corner, so it doesn't fight the row's corner zone. -->
+					{@render taskItem(
+						group.head,
+						at,
+						group.block.time ? fmtTime(group.block.time.start) : undefined,
+						canCreate && onCreateInBlock ? () => onCreateInBlock(group.block) : undefined,
+						`Add task to ${group.block.title}`,
+					)}
 				{:else}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -309,6 +330,17 @@
 				{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
 					{@render taskItem(task, at + (group.head ? 1 : 0) + j)}
 				{/each}
+				{#if canCreate && onCreateInBlock && !group.head}
+					<!-- A plain header's "+", at the right end of the header line. -->
+					<button
+						class="grid-cell-group-add"
+						title={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
+						aria-label={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
+						onclick={() => onCreateInBlock(group.block)}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+					</button>
+				{/if}
 			</div>
 		{/each}
 		{#if unscheduledSlot}
@@ -347,7 +379,7 @@
 		{/each}
 	{/each}
 
-	{#if allowCreate && !inactive}
+	{#if showCellAdd}
 		<button class="grid-cell-add" title="Add task" aria-label="Add task" onclick={onCreate}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
 		</button>
@@ -427,6 +459,8 @@
 		   checkbox and its gap), so its time lines up with a checkable block's
 		   time and with the task text under it. */
 		padding-left: calc(4px + var(--kairos-meta-indent));
+		/* Room at the right end for the group's "+", so it never covers the title. */
+		padding-right: 24px;
 		/* The same type as a checkable block's time and the task text. */
 		font-size: 12px;
 		line-height: 1.4;
@@ -437,6 +471,8 @@
 	}
 	/* One block's header and tasks: a column, and one drop target. */
 	.grid-cell-block-group {
+		/* Anchors the group's "+" (see .grid-cell-group-add). */
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
@@ -515,10 +551,57 @@
 		pointer-events: none;
 	}
 
+	/* A block group's "+", in the group's top-right corner on its header line. It
+	   shows while the pointer is on that group, and stands down while a task's
+	   action bar is awake. (A checkable block's group has no header line; its
+	   "+" is in its own row's action bar instead.) */
+	.grid-cell-group-add {
+		position: absolute;
+		top: 0;
+		right: 4px;
+		z-index: 3;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: var(--radius-s);
+		color: var(--text-muted);
+		background: var(--background-primary);
+		box-shadow: none;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 0.1s;
+	}
+	.grid-cell-block-group:hover > .grid-cell-group-add {
+		opacity: 0.75;
+	}
+	.grid-cell-group-add:hover {
+		opacity: 1;
+		color: var(--text-normal);
+		background: var(--background-modifier-hover);
+	}
+	.grid-cell-block-group:has(:global(.kairos-actions-awake)) > .grid-cell-group-add {
+		opacity: 0;
+		pointer-events: none;
+	}
+	/* Over a group, the group's "+" is the one to use. */
+	.grid-cell:has(.grid-cell-block-group:hover) .grid-cell-add {
+		opacity: 0;
+		pointer-events: none;
+	}
+
 	/* Touch screens have no hover, so keep it faintly visible there. */
 	@media (hover: none) {
-		.grid-cell-add {
+		.grid-cell-add,
+		.grid-cell-group-add {
 			opacity: 0.45;
+		}
+		.grid-cell-block-group:has(:global(.k-task:hover)) > .grid-cell-group-add {
+			opacity: 0;
+			pointer-events: none;
 		}
 
 		/* Touch has no corner zone: a tapped task shows its bar on its (sticky)

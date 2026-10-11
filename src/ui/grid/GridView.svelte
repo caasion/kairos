@@ -28,6 +28,7 @@
 		TaskStatus,
 	} from "../../types";
 	import {
+		addTaskToBlock,
 		addTaskToUnscheduled,
 		copyBlockIntoDay,
 		copyTaskIntoDay,
@@ -417,6 +418,22 @@
 			date,
 			path,
 			addTaskToUnscheduled(blocks, path, "New task", assoc, nextDraftLine()),
+		);
+	}
+
+	// A group's "+" (grouping on): a new task in that block, filed under the row
+	// it was added from. Unscheduled's adds to Unscheduled, like the cell's "+".
+	async function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
+		if (isUnscheduledBlock(block)) {
+			await onCreate(row, date);
+			return;
+		}
+		const day = dayOf(date);
+		if (!day || day.path === null) return;
+		commit(
+			date,
+			day.path,
+			addTaskToBlock(day.blocks, block, "New task", rowAssociation(row), nextDraftLine()),
 		);
 	}
 
@@ -1142,6 +1159,7 @@
 								{date}
 								dropGroup={dropGroupOn(date, row)}
 								unscheduledSlot={wantsUnscheduledSlot(cell, inactive, date, row)}
+								onCreateInBlock={(block: Block) => void onCreateInBlock(row, date, block)}
 							/>
 						{:else if nudges.length === 0}
 							<div class="grid-datacell-empty"></div>

@@ -301,6 +301,29 @@ export function addTaskToUnscheduled(
 }
 
 /**
+ * Append a new task to `block` (the Grid's "+" on a block group). Like
+ * `addTaskToUnscheduled`, the row's association is written onto the task, so
+ * it stays in the row it was added from even when the block belongs to another.
+ * Unchanged when the block isn't in `blocks`.
+ */
+export function addTaskToBlock(
+  blocks: Block[],
+  block: Block,
+  text: string,
+  assoc: Association | undefined,
+  line = nextDraftLine(),
+): Block[] {
+  if (!blocks.some((b) => isOwner(b, block))) return blocks;
+  const task: Task = {
+    source: { path: block.source.path, line },
+    text,
+    status: " ",
+    ...(assoc ? { assoc } : {}),
+  };
+  return blocks.map((b) => (isOwner(b, block) ? { ...b, tasks: [...b.tasks, task] } : b));
+}
+
+/**
  * Append `task` to the day's Unscheduled block, creating that block if absent.
  * Shared by `addTaskToUnscheduled` (new task) and `unnestTask` (moved task).
  *

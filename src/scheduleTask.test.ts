@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	addTaskToBlock,
 	blockForTask,
 	copyTaskIntoBlock,
 	copyTaskIntoNewBlock,
@@ -212,5 +213,24 @@ describe("copies", () => {
 		const created = next.at(-1)!;
 		expect(created.title).toBe("Kairos");
 		expect(created.tasks[0]!.assoc).toEqual({ kind: "project", id: "Kairos" });
+	});
+});
+
+describe("addTaskToBlock", () => {
+	it("appends a new task to the block with the row's association", () => {
+		const wed = wednesday();
+		const next = addTaskToBlock(wed, wed[0]!, "New task", { kind: "domain", id: "Writing" }, -50);
+		expect(next[0]!.tasks.map((t) => t.text)).toEqual(["Fix carry bug", "New task"]);
+		expect(next[0]!.tasks[1]).toEqual({
+			source: { path: "wed.md", line: -50 },
+			text: "New task",
+			status: " ",
+			assoc: { kind: "domain", id: "Writing" },
+		});
+	});
+
+	it("is a no-op for a block that isn't there", () => {
+		const wed = wednesday();
+		expect(addTaskToBlock(wed, thursday()[0]!, "x", undefined)).toBe(wed);
 	});
 });
