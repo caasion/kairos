@@ -74,6 +74,23 @@ describe("parseRoutines", () => {
 		expect(problems.map((p) => p.message)).toEqual(['"Orphan line" has no repeat rule']);
 	});
 
+	it("reads a block routine that ends at midnight", () => {
+		const r = parseRoutines("## Daily\n- 22:00 - 24:00 Wind down\n- 23:00 - 00:00 Sleep\n");
+		expect(r.problems).toEqual([]);
+		expect(r.routines).toMatchObject([
+			{ kind: "block", title: "Wind down", time: { start: 1320, end: 1440 } },
+			{ kind: "block", title: "Sleep", time: { start: 1380, end: 1440 } },
+		]);
+	});
+
+	it("reports a time range it can't read instead of dropping the line", () => {
+		const r = parseRoutines("## Daily\n- 10:00 - 09:00 Backwards\n\t- [ ] Inside\n");
+		expect(r.routines.some((x) => x.kind === "block")).toBe(false);
+		expect(r.problems.map((p) => p.message)).toEqual([
+			'"10:00 - 09:00 Backwards" has an invalid time range',
+		]);
+	});
+
 	it("reports an unknown 🔁 rule", () => {
 		const r = parseRoutines("- [ ] Thing 🔁 every 3 days\n");
 		expect(r.routines).toEqual([]);

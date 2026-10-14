@@ -73,6 +73,8 @@ export const LIST_ITEM = /^([ \t]*)[-*+]\s+(?:\[(.)\]\s+)?(.*)$/;
 export const HEADING = /^#{1,6}\s+(.*)$/;
 // `🔁 rule` up to the next `[` or `(` (an association or note) or the end.
 export const REPEAT = /\s*🔁\s*([^[(]*?)\s*(?=[[(]|$)/u;
+// A leading "HH:MM - HH:MM", valid or not.
+const LOOKS_TIMED = /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s/;
 
 interface Parent {
 	indent: number;
@@ -151,6 +153,15 @@ export function parseRoutines(markdown: string): ParsedRoutines {
 				...(metadata ? { metadata } : {}),
 				line: i,
 			});
+			continue;
+		}
+
+		// A time range that doesn't parse ("25:00 - 26:00", "10:00 - 09:00") makes
+		// no block; report it rather than let the routine silently vanish. Lines
+		// under it stay homed by its text, as under any untimed line.
+		if (LOOKS_TIMED.test(title)) {
+			parent = { indent, rule, home: title, ...(assoc ? { assoc } : {}) };
+			problems.push({ line: i, message: `"${title}" has an invalid time range` });
 			continue;
 		}
 

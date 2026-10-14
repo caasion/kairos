@@ -29,6 +29,7 @@
 	import type { OwnerActive } from "../../routines/owners";
 	import { routineAssoc } from "../../routines/apply";
 	import { todayISO } from "../../dayNote";
+	import { parseEndClock, parseStartClock } from "../../parser";
 	import {
 		type ParsedRoutines,
 		type Routine,
@@ -129,9 +130,10 @@
 	function setTime(r: Routine, value: string) {
 		if (r.kind !== "block") return;
 		const m = TIME.exec(value.trim());
-		const start = m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
-		const end = m ? Number(m[3]) * 60 + Number(m[4]) : NaN;
-		if (!m || !(start >= 0 && end <= 24 * 60 && end > start) || Number(m[2]) > 59 || Number(m[4]) > 59) {
+		// Same rules as the note grammar, so an end at midnight ("24:00" or "00:00") works.
+		const start = m ? parseStartClock(`${m[1]}:${m[2]}`) : undefined;
+		const end = m && start !== undefined ? parseEndClock(`${m[3]}:${m[4]}`, start) : undefined;
+		if (start === undefined || end === undefined || end <= start) {
 			new Notice("Write the time like 09:00 - 10:00, ending after it starts.");
 			return;
 		}

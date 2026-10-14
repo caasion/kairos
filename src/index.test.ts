@@ -473,6 +473,31 @@ describe("KairosIndex", () => {
 		expect(notifications).toBe(baseline); // no extra notification
 	});
 
+	it("keeps a block ending at midnight timed when its write echoes back", async () => {
+		const idx = new KairosIndex(deps);
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.seed([]);
+		const store = idx.day(date);
+
+		idx.applyDayEdit(date, path, [makeBlock({ start: 1380, end: 1440 }, path, "Sleep")]);
+		await vi.advanceTimersByTimeAsync(500);
+		const written = writes[0]?.content ?? "";
+		expect(written).toContain("- 23:00 - 24:00 Sleep");
+
+		let notifications = 0;
+		store.subscribe(() => notifications++);
+		const baseline = notifications;
+
+		idx.onFileChanged(path, written, 2000);
+		expect(notifications).toBe(baseline); // an echo, not an external change
+		expect(get(store)?.blocks[0]).toMatchObject({
+			title: "Sleep",
+			scheduled: true,
+			time: { start: 1380, end: 1440 },
+		});
+	});
+
 	it("notifies on a real external change", () => {
 		const idx = new KairosIndex(deps);
 		const path = dayPath("2026-07-31");

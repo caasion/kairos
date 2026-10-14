@@ -25,6 +25,24 @@ describe("serialize / parseSchedule round-trip", () => {
 		expect(back[0]?.time).toEqual({ start: 540, end: 600 });
 	});
 
+	it("round-trips a block that ends at midnight", () => {
+		const block: Block = {
+			source: { path: "x", line: -1 },
+			title: "Sleep",
+			scheduled: true,
+			time: { start: 1380, end: 1440 },
+			tasks: [],
+		};
+		const md = serialize([block]);
+		expect(md).toContain("- 23:00 - 24:00 Sleep");
+
+		const back = parseSchedule(md, "x");
+		expect(back).toHaveLength(1);
+		expect(back[0]?.scheduled).toBe(true);
+		expect(back[0]?.title).toBe("Sleep");
+		expect(back[0]?.time).toEqual({ start: 1380, end: 1440 });
+	});
+
 	it("round-trips a checkable block that also has child tasks", () => {
 		const block: Block = {
 			source: { path: "x", line: -1 },

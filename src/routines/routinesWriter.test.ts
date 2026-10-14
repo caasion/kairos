@@ -114,6 +114,15 @@ describe("updateRoutine in place", () => {
 		});
 	});
 
+	it("retimes a block to end at midnight and reads it back", () => {
+		const morning = find(FILE, "Morning Routine");
+		const draft = draftOf(morning);
+		if (draft.kind !== "block") throw new Error();
+		const next = updateRoutine(FILE, morning, { ...draft, time: { start: 1380, end: 1440 } });
+		expect(changed(FILE, next).added).toEqual(["- 23:00 - 24:00 Morning Routine"]);
+		expect(find(next, "Morning Routine")).toMatchObject({ time: { start: 1380, end: 1440 } });
+	});
+
 	it("sets and clears an association", () => {
 		const water = find(FILE, "Water the plants");
 		const { assoc: _drop, ...bare } = draftOf(water) as Extract<RoutineDraft, { kind: "task" }>;

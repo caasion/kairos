@@ -8,6 +8,7 @@
     TimeRange,
   } from "../../types";
   import { isCheckable } from "../../types";
+  import { parseEndClock, parseStartClock } from "../../parser";
   import {
     blockLit,
     hoverBlockTarget,
@@ -320,24 +321,16 @@
   function beginTimeEdit() {
     if (!block.time || editingTime) return;
     startDraft = fmt(block.time.start);
-    endDraft = fmt(block.time.end);
+    // A native time input can't hold "24:00"; midnight shows as "00:00" and
+    // parseEndClock reads it back as the end of the day.
+    endDraft = block.time.end >= 24 * 60 ? "00:00" : fmt(block.time.end);
     editingTime = true;
-  }
-
-  // Parse an "HH:MM" value from a native time input to minutes-since-midnight.
-  function parseHHMM(value: string): number | undefined {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(value);
-    if (!m) return undefined;
-    const hh = Number(m[1]);
-    const mm = Number(m[2]);
-    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return undefined;
-    return hh * 60 + mm;
   }
 
   function commitTimeEdit() {
     if (!editingTime) return;
-    const start = parseHHMM(startDraft);
-    const end = parseHHMM(endDraft);
+    const start = parseStartClock(startDraft);
+    const end = start === undefined ? undefined : parseEndClock(endDraft, start);
     // Only persist a valid range; a block can't have zero/negative minutes
     // (spec §2.1). An invalid entry just closes the editor unchanged.
     if (start !== undefined && end !== undefined && end > start) {

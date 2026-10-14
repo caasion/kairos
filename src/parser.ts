@@ -42,6 +42,13 @@ const LIST_ITEM = /^([ \t]*)[-*+]\s+(?:\[(.)\]\s+)?(.*)$/;
 // Leading "HH:MM - HH:MM " time range.
 const TIME_RANGE = /^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s+(.*)$/;
 
+// Midnight at the end of the day. The timeline runs to 24:00 by default, so a
+// block may end here; the serializer writes it as "24:00".
+const MIDNIGHT = 24 * 60;
+
+// A bare "HH:MM" clock value, as a native time input gives it.
+const CLOCK = /^(\d{1,2}):(\d{2})$/;
+
 // Trailing "[...]" association tag (matched repeatedly, right to left).
 const TRAILING_ASSOC = /\s*\[([^\]]+)\]\s*$/;
 
@@ -105,7 +112,7 @@ function parseSchedule(
   return blocks;
 }
 
-export { parseSchedule };
+export { parseSchedule, parseStartClock, parseEndClock };
 
 // exported for unit testing of the pieces
 export {
@@ -246,10 +253,26 @@ function parseTime(text: string): ParsedTime | undefined {
   if (!m) return undefined;
 
   const start = toMinutes(m[1], m[2]);
-  const end = toMinutes(m[3], m[4]);
-  if (start === undefined || end === undefined || end <= start) return undefined;
+  if (start === undefined) return undefined;
+  const end = toEndMinutes(m[3], m[4], start);
+  if (end === undefined || end <= start) return undefined;
 
   return { range: { start, end }, title: (m[5] ?? "").trim() };
+}
+
+/** A bare "HH:MM" start time → minutes since midnight; undefined if invalid. */
+function parseStartClock(value: string): number | undefined {
+  const m = CLOCK.exec(value.trim());
+  return m ? toMinutes(m[1], m[2]) : undefined;
+}
+
+/**
+ * A bare "HH:MM" end time for a range starting at `start` → minutes since
+ * midnight; undefined if invalid. Midnight reads as either "24:00" or "00:00".
+ */
+function parseEndClock(value: string, start: number): number | undefined {
+  const m = CLOCK.exec(value.trim());
+  return m ? toEndMinutes(m[1], m[2], start) : undefined;
 }
 
 function toMinutes(h: string | undefined, min: string | undefined): number | undefined {
@@ -258,6 +281,18 @@ function toMinutes(h: string | undefined, min: string | undefined): number | und
   if (!Number.isInteger(hh) || !Number.isInteger(mm)) return undefined;
   if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return undefined;
   return hh * 60 + mm;
+}
+
+// An end time may also be midnight: "24:00", or "00:00" after a later start
+// ("23:00 - 00:00"). Both read as minute 1440 so the range stays ordered.
+function toEndMinutes(
+  h: string | undefined,
+  min: string | undefined,
+  start: number,
+): number | undefined {
+  if (Number(h) === 24 && Number(min) === 0) return MIDNIGHT;
+  const end = toMinutes(h, min);
+  return end === 0 && start > 0 ? MIDNIGHT : end;
 }
 
 // ─── helpers ───────────────────────────────────────────────────
