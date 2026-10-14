@@ -133,6 +133,25 @@ export function setBlockStatus(
   });
 }
 
+/**
+ * Give a block a checkbox ("Convert to task", it starts open) or take it away
+ * ("Convert to block", which drops the checkbox's status and metadata — the
+ * block's title, time, association and tasks stay). A no-op when the block is
+ * already that way.
+ */
+export function setBlockCheckable(
+  blocks: Block[],
+  target: Block,
+  checkable: boolean,
+): Block[] {
+  return blocks.map((b) => {
+    if (!isOwner(b, target) || (b.status !== undefined) === checkable) return b;
+    if (checkable) return { ...b, status: " " };
+    const { status: _s, metadata: _m, ...rest } = b;
+    return rest;
+  });
+}
+
 // ─── task operations ───────────────────────────────────────────
 //
 // A task is either a block's colocated checkbox (its `source` is the block's

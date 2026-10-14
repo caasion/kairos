@@ -32,11 +32,15 @@
 		addTaskToUnscheduled,
 		copyBlockIntoDay,
 		copyTaskIntoDay,
+		deleteBlock,
 		deleteTask,
 		moveBlockAcrossDays,
 		moveTaskAcrossDays,
 		nestTaskUnderBlock,
 		setBlockAssoc,
+		setBlockCheckable,
+		setBlockStatus,
+		setBlockTitle,
 		setTaskStatus,
 		setTaskText,
 		unnestTask,
@@ -449,6 +453,29 @@
 		commit(task.date, day.path, deleteTask(day.blocks, task.block, task));
 	}
 
+	// ── Block edits (a block group's header, and a checkable block's own row) ──
+	// The same actions as a timeline block's menu and action bar (blockMenu.ts),
+	// each a pure writer transform on the block's day, committed like a task's.
+
+	function editBlock(date: ISODate, edit: (blocks: Block[]) => Block[]) {
+		focusDay(date);
+		const day = dayOf(date);
+		if (!day || day.path === null) return;
+		commit(date, day.path, edit(day.blocks));
+	}
+	function onDeleteBlock(date: ISODate, block: Block) {
+		editBlock(date, (blocks) => deleteBlock(blocks, block));
+	}
+	function onToggleBlockCheckable(date: ISODate, block: Block) {
+		editBlock(date, (blocks) => setBlockCheckable(blocks, block, block.status === undefined));
+	}
+	function onSetBlockStatus(date: ISODate, block: Block, status: TaskStatus) {
+		editBlock(date, (blocks) => setBlockStatus(blocks, block, status));
+	}
+	function onSetBlockTitle(date: ISODate, block: Block, title: string) {
+		editBlock(date, (blocks) => setBlockTitle(blocks, block, title));
+	}
+
 	// Send a task back to the backlog (task context menu). Only offered on genuine
 	// nested tasks — a colocated task is a block, which can't leave its line. The
 	// shared helper lifts the task's text + materialized association into a fresh
@@ -835,23 +862,23 @@
 	}
 
 	// ── Block drag (grid block DnD) ──
-	// Long-press on a colocated task (checkable block) lifts the whole block —
-	// its time, title, and all child tasks — and drops it onto a new (date, row).
+	// Long-press on a block's header (or a checkable block's own row) lifts the
+	// whole block — its time, title, and all child tasks — and drops it onto a
+	// new (date, row).
 	// Same-day drop: association-only change via setBlockAssoc.
 	// Cross-day drop: full block move via moveBlockAcrossDays + applyCrossDayMove.
 	let blockDrag = $state<BlockDragState | null>(null);
 	let blockDrop = $state<GridDropSlot | null>(null);
 
-	function onBlockGrab(task: ResolvedTask, event: PointerEvent) {
+	function onBlockGrab(block: Block, date: ISODate, event: PointerEvent) {
 		lastPointerX = event.clientX;
 		lastPointerY = event.clientY;
-		const block = task.block;
 		const childCount = block.tasks.length;
 		const label = childCount > 0 ? `${block.title} (+${childCount})` : block.title;
 		// Stash the source date on the drag state so onBlockDragUp can find the day.
 		blockDrag = {
 			block,
-			sourceDate: task.date,
+			sourceDate: date,
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			label,
@@ -964,22 +991,41 @@
 	}
 
 	// ── Association picker (parent-owned so it isn't clipped by a cell) ──
-	let pickerTask = $state<ResolvedTask | null>(null);
+	// It edits a task's association, or a block's (from its header), like the
+	// Day and Week views' pickers.
+	type PickerTarget =
+		| { kind: "task"; task: ResolvedTask }
+		| { kind: "block"; date: ISODate; block: Block };
+	let pickerTarget = $state<PickerTarget | null>(null);
 	let pickerAnchor = $state<DOMRect | null>(null);
+	const pickerCurrent = $derived(
+		pickerTarget?.kind === "block" ? pickerTarget.block.assoc : pickerTarget?.task.assoc,
+	);
 
 	function openTaskAssoc(task: ResolvedTask, anchor: DOMRect) {
 		focusDay(task.date);
-		pickerTask = task;
+		pickerTarget = { kind: "task", task };
+		pickerAnchor = anchor;
+	}
+	function openBlockAssoc(date: ISODate, block: Block, anchor: DOMRect) {
+		focusDay(date);
+		pickerTarget = { kind: "block", date, block };
 		pickerAnchor = anchor;
 	}
 	function closeAssocPicker() {
-		pickerTask = null;
+		pickerTarget = null;
 		pickerAnchor = null;
 	}
 	function onPickAssoc(assoc: Association | null) {
-		const task = pickerTask;
+		const target = pickerTarget;
 		closeAssocPicker();
-		if (!task) return;
+		if (!target) return;
+		if (target.kind === "block") {
+			const { block } = target;
+			editBlock(target.date, (blocks) => setBlockAssoc(blocks, block, assoc));
+			return;
+		}
+		const { task } = target;
 		const day = dayOf(task.date);
 		if (!day || day.path === null) return;
 		// Reassociation is a per-task field edit: rebuild the day's blocks with the
@@ -1366,7 +1412,12 @@
 								{onMoveToBacklog}
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
-								onBlockGrab={onBlockGrab}
+								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, e)}
+								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}
+								onDeleteBlock={(block: Block) => onDeleteBlock(date, block)}
+								onToggleBlockCheckable={(block: Block) => onToggleBlockCheckable(date, block)}
+								onSetBlockStatus={(block: Block, status: TaskStatus) => onSetBlockStatus(date, block, status)}
+								onSetBlockTitle={(block: Block, title: string) => onSetBlockTitle(date, block, title)}
 								dragTaskLine={taskDrag?.task.source.line}
 								dragBlockLine={blockDrag?.block.source.line}
 								isDropTarget={isDropTargetFor(date, row.key)}
@@ -1397,10 +1448,10 @@
 	</div>
 </div>
 
-{#if pickerTask && pickerAnchor}
+{#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		current={pickerTask.assoc}
+		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}

@@ -104,6 +104,12 @@
 		template?: boolean;
 		// Menu/tooltip label for `onRepeat` ("Change when it repeats" on a routine).
 		repeatLabel?: string;
+		// Menu/tooltip label for delete. The Grid's checkable block row passes
+		// "Delete block": that row stands for the block, so delete removes it.
+		deleteLabel?: string;
+		// More items for the context menu, before the status items: the Grid's
+		// checkable block row adds its block's own (convert, open in Day view).
+		extraMenuItems?: (menu: Menu) => void;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -138,6 +144,8 @@
 		addInsideLabel = "Add task to block",
 		template = false,
 		repeatLabel = "Repeat…",
+		deleteLabel,
+		extraMenuItems,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -380,6 +388,8 @@
 			);
 		}
 
+		extraMenuItems?.(menu);
+
 		if (!template) {
 			menu.addSeparator();
 
@@ -407,7 +417,7 @@
 			menu.addSeparator();
 			menu.addItem((item) =>
 				item
-					.setTitle("Delete")
+					.setTitle(deleteLabel ?? "Delete")
 					.setIcon("trash")
 					.onClick(() => del()),
 			);
@@ -484,8 +494,8 @@
 		{#if !checkable}
 			<button
 				class="k-task-action k-task-action-danger"
-				aria-label="Delete task"
-				use:tooltip={"Delete task"}
+				aria-label={deleteLabel ?? "Delete task"}
+				use:tooltip={deleteLabel ?? "Delete task"}
 				onclick={del}
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>

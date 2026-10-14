@@ -9,6 +9,7 @@ import {
 	moveBlockAcrossDays,
 	nestTaskUnderBlock,
 	retimeBlock,
+	setBlockCheckable,
 	setBlockTitle,
 	unnestTask,
 } from "./writer";
@@ -621,5 +622,45 @@ describe("notes", () => {
 	it("leaves notes behind when a block is copied to another day", () => {
 		const [copy] = copyBlockIntoDay([], block, "tue.md");
 		expect(copy?.notes).toBeUndefined();
+	});
+});
+
+describe("setBlockCheckable", () => {
+	it("gives a plain block an open checkbox, keeping everything else", () => {
+		const block = sampleBlock("mon.md");
+		const [next] = setBlockCheckable([block], { ...block }, true);
+		expect(next).toEqual({ ...block, status: " " });
+	});
+
+	it("takes a checkable block's checkbox and its metadata away", () => {
+		const block: Block = {
+			...sampleBlock("mon.md"),
+			status: "x",
+			metadata: "!high",
+		};
+		const [next] = setBlockCheckable([block], { ...block }, false);
+		expect(next).not.toHaveProperty("status");
+		expect(next).not.toHaveProperty("metadata");
+		expect(next!.title).toBe("Deep work");
+		expect(next!.time).toEqual({ start: 540, end: 600 });
+		expect(next!.assoc).toEqual({ kind: "project", id: "Kairos" });
+		expect(next!.tasks).toHaveLength(2);
+	});
+
+	it("matches the block by source, not identity, and leaves others alone", () => {
+		const target = sampleBlock("mon.md");
+		const other: Block = { ...sampleBlock("mon.md"), source: { path: "mon.md", line: 9 } };
+		const blocks = [target, other];
+		const next = setBlockCheckable(blocks, { ...target }, true);
+		expect(next).not.toBe(blocks);
+		expect(next[0]!.status).toBe(" ");
+		expect(next[1]).toBe(other);
+	});
+
+	it("is a no-op when the block is already that way", () => {
+		const plain = sampleBlock("mon.md");
+		const done: Block = { ...sampleBlock("tue.md"), status: "x" };
+		expect(setBlockCheckable([plain], plain, false)[0]).toBe(plain);
+		expect(setBlockCheckable([done], done, true)[0]).toBe(done);
 	});
 });

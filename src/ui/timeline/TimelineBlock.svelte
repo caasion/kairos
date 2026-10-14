@@ -20,7 +20,8 @@
   import { peek } from "../actions/peek";
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
-  import { blockLineTask, requestRepeat } from "../../routines/repeat";
+  import { requestRepeat } from "../../routines/repeat";
+  import { addBlockMenuItems } from "../blockMenu";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
@@ -506,78 +507,14 @@
   function openContextMenu(event: MouseEvent) {
     event.preventDefault();
     const menu = new Menu();
-
-    menu.addItem((item) =>
-      item
-        .setTitle("Add task")
-        .setIcon("list-plus")
-        .onClick(() => onAddTask(block)),
-    );
-
-    menu.addItem((item) =>
-      item
-        .setTitle("Add note")
-        .setIcon("sticky-note")
-        .onClick(() => beginNoteAdd()),
-    );
-
-    menu.addItem((item) =>
-      item
-        .setTitle(block.assoc ? "Edit association" : "Add association")
-        .setIcon("folder-symlink")
-        .onClick(() => requestEditAssoc()),
-    );
-
-    if (block.time) {
-      menu.addItem((item) =>
-        item
-          .setTitle("Repeat…")
-          .setIcon("repeat")
-          .onClick(() => requestRepeat(blockLineTask(block), block)),
-      );
-    }
-
-    menu.addSeparator();
-
-    // Convert the block to/from a checkable task. When it's already checkable,
-    // offer the same status changes a task's context menu does.
-    menu.addItem((item) =>
-      item
-        .setTitle(checkable ? "Convert to block" : "Convert to task")
-        .setIcon(checkable ? "square" : "check-square")
-        .onClick(() => onToggleCheckable(block)),
-    );
-
-    if (checkable) {
-      menu.addItem((item) =>
-        item
-          .setTitle(blockChecked ? "Mark open" : "Mark done")
-          .setIcon("check")
-          .onClick(() => onSetBlockStatus(block, blockChecked ? " " : "x")),
-      );
-      menu.addItem((item) =>
-        item
-          .setTitle("Mark half-done")
-          .setIcon("clock")
-          .onClick(() => onSetBlockStatus(block, "/")),
-      );
-      menu.addItem((item) =>
-        item
-          .setTitle("Mark cancelled")
-          .setIcon("x")
-          .onClick(() => onSetBlockStatus(block, "-")),
-      );
-    }
-
-    menu.addSeparator();
-
-    menu.addItem((item) =>
-      item
-        .setTitle("Delete block")
-        .setIcon("trash")
-        .onClick(() => onDelete(block)),
-    );
-
+    addBlockMenuItems(menu, block, {
+      onAddTask: () => onAddTask(block),
+      onAddNote: () => beginNoteAdd(),
+      onEditAssoc: () => requestEditAssoc(),
+      onToggleCheckable: () => onToggleCheckable(block),
+      onSetStatus: (status) => onSetBlockStatus(block, status),
+      onDelete: () => onDelete(block),
+    });
     menu.showAtMouseEvent(event);
   }
 </script>
