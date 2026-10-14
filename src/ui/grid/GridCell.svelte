@@ -24,8 +24,6 @@
 		resolve: Resolver;
 		/** Row tint, applied to task checkboxes for a domain-colored accent. */
 		color?: string;
-		/** True on the Unassigned row, where "+" would have no association. */
-		allowCreate: boolean;
 		/**
 		 * The row's entity was inactive/archived on this day: the cell is history,
 		 * shown dimmed and read-only (existing tasks visible, no "+" to add work to
@@ -84,7 +82,6 @@
 	let {
 		resolve,
 		color,
-		allowCreate,
 		inactive = false,
 		onSetStatus,
 		onSetText,
@@ -113,7 +110,7 @@
 		onBlockHover,
 	}: Props = $props();
 
-	const canCreate = $derived(allowCreate && !inactive);
+	const canCreate = $derived(!inactive);
 	// Grouped, each group carries its own "+", and an Unscheduled group's adds
 	// to Unscheduled; the cell's corner "+" stays only for a cell without one.
 	const showCellAdd = $derived(
@@ -311,9 +308,22 @@
 		</div>
 	{/if}
 
-	{#if showCellAdd}
-		<button class="grid-cell-add" title="Add task" aria-label="Add task" onclick={onCreate}>
-			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+	{#if showCellAdd && !unscheduledSlot}
+		<!-- No Unscheduled group here yet, so the cell's "+" wears the header that
+		     group would have: it says where a new task goes. Shown on hover only.
+		     In an empty cell it sits where the group would; under other groups
+		     it floats over the cell's bottom edge, so it takes no room. -->
+		<button
+			class="grid-cell-add"
+			class:floating={blockGroups.length > 0}
+			title="Add task to Unscheduled"
+			aria-label="Add task to Unscheduled"
+			onclick={onCreate}
+		>
+			<span class="grid-cell-add-label">Unscheduled</span>
+			<span class="grid-cell-add-icon">
+				<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+			</span>
 		</button>
 	{/if}
 </div>
@@ -453,29 +463,30 @@
 		opacity: 0.35;
 	}
 
-	/* The add affordance floats in the cell's bottom-right corner, so it takes
-	   no room in the layout: a cell is only as tall as its tasks. It stays
-	   hidden until the cell is hovered, so a dense grid doesn't read as a wall
-	   of buttons. Tasks carry their own action bar at their top-right, so the
-	   "+" stands down (hidden and click-through) while any task's bar in the
-	   cell is awake — the two never compete for the same spot, and hovering the
-	   body of a task leaves the "+" alone. */
+	/* The cell's "+", dressed as the Unscheduled header it adds to: the same
+	   italic label in the same place, with the "+" at the right end where a
+	   group's "+" sits. It stays hidden until the cell is hovered, so a dense
+	   grid doesn't read as a wall of buttons. Tasks carry their own action bar
+	   at their top-right, so it stands down (hidden and click-through) while
+	   any task's bar in the cell is awake. */
 	.grid-cell-add {
-		position: absolute;
-		bottom: 2px;
-		right: 4px;
-		z-index: 3;
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		width: 18px;
-		height: 18px;
-		padding: 0;
+		gap: 4px;
+		width: 100%;
+		height: auto;
+		min-height: 18px;
+		/* Lined up with a real group header (see .grid-cell-block-header). */
+		padding: 0 4px 0 calc(4px + var(--kairos-meta-indent));
 		border: none;
 		border-radius: var(--radius-s);
 		color: var(--text-muted);
-		background: var(--background-primary);
+		background: transparent;
 		box-shadow: none;
+		font-size: 12px;
+		line-height: 1.4;
+		font-weight: normal;
+		text-align: left;
 		cursor: pointer;
 		opacity: 0;
 		/* Hidden means inert: an invisible "+" must not catch the pointer. It sits
@@ -484,15 +495,54 @@
 		pointer-events: none;
 		transition: opacity 0.1s;
 	}
+	/* Under other groups: over the cell's bottom edge, out of the layout, so a
+	   cell is only as tall as its tasks. Opaque, since it can cover the end of
+	   the last task — it only shows while the pointer is off every group. */
+	.grid-cell-add.floating {
+		position: absolute;
+		left: 4px;
+		right: 4px;
+		bottom: 2px;
+		width: auto;
+		z-index: 3;
+		background: var(--background-primary);
+	}
+	:global(.grid-datacell.today) .grid-cell-add.floating {
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 5%,
+			var(--background-primary)
+		);
+	}
+	.grid-cell-add-label {
+		flex: 1;
+		min-width: 0;
+		font-style: italic;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.grid-cell-add-icon {
+		flex: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border-radius: var(--radius-s);
+		opacity: 0.75;
+	}
 
 	.grid-cell:hover .grid-cell-add {
-		opacity: 0.75;
+		opacity: 1;
 		pointer-events: auto;
 	}
 
 	.grid-cell-add:hover {
-		opacity: 1;
 		color: var(--text-normal);
+	}
+	.grid-cell-add:hover .grid-cell-add-icon {
+		opacity: 1;
 		background: var(--background-modifier-hover);
 	}
 
@@ -554,6 +604,18 @@
 		.grid-cell-group-add {
 			opacity: 0.45;
 			pointer-events: auto;
+		}
+		/* Just the "+" on touch, in the corner: a label always showing in every
+		   cell would be noise. */
+		.grid-cell-add {
+			justify-content: flex-end;
+			padding: 0;
+		}
+		.grid-cell-add-label {
+			display: none;
+		}
+		.grid-cell-add.floating {
+			left: auto;
 		}
 		.grid-cell-block-group:has(:global(.k-task:hover)) > .grid-cell-group-add {
 			opacity: 0;

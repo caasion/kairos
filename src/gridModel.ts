@@ -16,7 +16,8 @@
 //          the tasks of every *rolled-up* project under it (see below)
 //        · a child row per project under the domain that isn't rolled up
 //   3. unassigned row     — tasks and timed blocks with no owner, or an owner
-//                           with no row (always last, only if non-empty)
+//                           with no row (always present, always last), so
+//                           there is always somewhere to add a loose task
 //
 // Rollup (#11): a project with `rollup: true` and a domain is "not worth its
 // own row". It contributes no row; its tasks render on its domain's row, in a
@@ -266,22 +267,16 @@ export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 		}
 	}
 
-	// 3. Unassigned row, only if some day has a task or timed block with no row
-	//    of its own: untagged, or tagged with something that has no row
-	//    (`ownerRowKey`).
-	const hasUnassigned = snap.days.some(
-		(day) =>
-			day.tasks.some((t) => ownerRowKey(t.owner, snap) === "unassigned") ||
-			day.blocks.some((b) => b.time !== undefined && ownerRowKey(b.assoc, snap) === "unassigned"),
-	);
-	if (hasUnassigned) {
-		rows.push({
-			kind: "unassigned",
-			key: "unassigned",
-			name: "Unassigned",
-			depth: 0,
-		});
-	}
+	// 3. Unassigned row, always: it holds tasks and timed blocks with no row of
+	//    their own (untagged, or tagged with something that has no row —
+	//    `ownerRowKey`), and it is where a task with no project or domain is
+	//    added, so it can't wait for one to exist first.
+	rows.push({
+		kind: "unassigned",
+		key: "unassigned",
+		name: "Unassigned",
+		depth: 0,
+	});
 
 	return rows;
 }

@@ -1354,7 +1354,6 @@
 							<GridCell
 								{resolve}
 								color={"color" in row ? row.color : undefined}
-								allowCreate={row.kind !== "unassigned"}
 								{inactive}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
@@ -1389,9 +1388,9 @@
 				{/each}
 			{/each}
 
-			{#if rows.length === 0}
+			{#if rows.every((r) => r.kind === "unassigned")}
 				<div class="grid-empty" style={`grid-column: 1 / span ${windowSize + 1};`}>
-					No projects or domains yet. Create a project or domain file, or tag a task, to see rows here.
+					No projects or domains yet. Create a project or domain file, or tag a task, to give it a row of its own.
 				</div>
 			{/if}
 		</div>

@@ -111,10 +111,15 @@ const dom = (id: string): Association => ({ kind: "domain", id });
 
 // ─── rows ──────────────────────────────────────────────────────
 
+// The project/domain rows alone. The Unassigned row always closes the list; it
+// has a test of its own, so the ordering tests can leave it out.
+const entityRows = (s: GridSnapshot) =>
+	buildRows(s, AS_OF).filter((r) => r.kind !== "unassigned");
+
 describe("buildRows", () => {
 	it("emits top-level projects, then domains (always expanded), in order", () => {
 		const s = snap([project({ name: "Alpha" })], [domain()], []);
-		const rows = buildRows(s, AS_OF);
+		const rows = entityRows(s);
 		expect(rows.map((r) => r.kind)).toEqual(["project", "domain"]);
 		expect(rows[0]!.name).toBe("Alpha");
 		expect(rows[1]!.name).toBe("Health");
@@ -126,19 +131,23 @@ describe("buildRows", () => {
 			[domain()],
 			[],
 		);
-		const rows = buildRows(s, AS_OF);
+		const rows = entityRows(s);
 		expect(rows.map((r) => [r.kind, r.name])).toEqual([
 			["domain", "Health"],
 			["project", "Alpha"],
 		]);
 	});
 
-	it("adds an Unassigned row only when an unowned task exists", () => {
+	it("always ends with an Unassigned row, even with no unowned task", () => {
 		const withNone = snap([], [], [task({})]);
 		expect(buildRows(withNone, AS_OF).at(-1)?.kind).toBe("unassigned");
 
 		const owned = snap([project()], [], [task({ owner: proj("Alpha") })]);
-		expect(buildRows(owned, AS_OF).some((r) => r.kind === "unassigned")).toBe(false);
+		expect(buildRows(owned, AS_OF).at(-1)?.kind).toBe("unassigned");
+
+		expect(buildRows(snap([], [], []), AS_OF).map((r) => r.kind)).toEqual([
+			"unassigned",
+		]);
 	});
 
 	it("omits projects/domains that were never active and carry no task in the window", () => {
@@ -152,7 +161,7 @@ describe("buildRows", () => {
 			[],
 			["2026-08-01"],
 		);
-		expect(buildRows(s, AS_OF)).toHaveLength(0);
+		expect(entityRows(s)).toHaveLength(0);
 	});
 
 	it("keeps an archived project for days it was active earlier in the window", () => {
@@ -167,7 +176,7 @@ describe("buildRows", () => {
 			],
 		});
 		const s = snap([p], [], [], ["2026-08-01", "2026-08-02", "2026-08-03"]);
-		expect(buildRows(s, AS_OF).map((r) => r.name)).toEqual(["Wrapped"]);
+		expect(entityRows(s).map((r) => r.name)).toEqual(["Wrapped"]);
 	});
 
 	it("files a task tagged with a project that doesn't exist under Unassigned", () => {
@@ -204,7 +213,7 @@ describe("buildRows", () => {
 		});
 		const t = task({ owner: proj("Ghost"), date: "2026-08-01" });
 		const s = snap([p], [], [t], ["2026-08-01"]);
-		expect(buildRows(s, AS_OF).map((r) => r.name)).toEqual(["Ghost"]);
+		expect(entityRows(s).map((r) => r.name)).toEqual(["Ghost"]);
 	});
 
 	it("keeps a domain header when a child project is visible in the window", () => {
@@ -217,7 +226,7 @@ describe("buildRows", () => {
 		});
 		const child = project({ name: "Alpha", domain: "d-health" });
 		const s = snap([child], [d], [], ["2026-08-01"]);
-		expect(buildRows(s, AS_OF).map((r) => [r.kind, r.name])).toEqual([
+		expect(entityRows(s).map((r) => [r.kind, r.name])).toEqual([
 			["domain", "Health"],
 			["project", "Alpha"],
 		]);
@@ -309,7 +318,7 @@ describe("rollup: a project rendered on its domain's row", () => {
 
 	it("rolled-up projects contribute no row; the others keep theirs", () => {
 		const s = snap([groceries, laundry, moving], [life], []);
-		expect(buildRows(s, AS_OF).map((r) => [r.kind, r.name])).toEqual([
+		expect(entityRows(s).map((r) => [r.kind, r.name])).toEqual([
 			["domain", "Life"],
 			["project", "Move house"],
 		]);
@@ -347,10 +356,10 @@ describe("rollup: a project rendered on its domain's row", () => {
 		const t = task({ owner: proj("Groceries") });
 
 		const without = snap([p], [d], []);
-		expect(buildRows(without, AS_OF)).toHaveLength(0);
+		expect(entityRows(without)).toHaveLength(0);
 
 		const s = snap([p], [d], [t]);
-		const rows = buildRows(s, AS_OF);
+		const rows = entityRows(s);
 		expect(rows.map((r) => [r.kind, r.name])).toEqual([["domain", "Life"]]);
 		expect(cellTasks(rows[0]!, s.days[0]!.tasks, s)).toEqual([t]);
 	});
@@ -359,7 +368,7 @@ describe("rollup: a project rendered on its domain's row", () => {
 		const quiet = [{ date: "2026-07-01", status: "inactive" as const }];
 		const d = domain({ id: "d-life", name: "Life", history: quiet });
 		const p = project({ name: "Groceries", domain: "d-life", rollup: true });
-		expect(buildRows(snap([p], [d], []), AS_OF).map((r) => r.name)).toEqual(["Life"]);
+		expect(entityRows(snap([p], [d], [])).map((r) => r.name)).toEqual(["Life"]);
 	});
 
 	it("puts the domain's own tasks first, then one group per project, by name", () => {
