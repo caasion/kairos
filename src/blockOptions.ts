@@ -7,6 +7,7 @@
 // affordance from one source of truth.
 
 import type { Block, TimeRange } from "./types";
+import { formatTimeRange } from "./parser";
 
 export interface BlockOption {
   block: Block;
@@ -23,14 +24,8 @@ export interface BlockOption {
   untimed: boolean;
 }
 
-function fmt(minutes: number): string {
-  const hh = Math.floor(minutes / 60);
-  const mm = minutes % 60;
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-}
-
 function timeLabelOf(time: TimeRange | undefined): string | undefined {
-  return time ? `${fmt(time.start)}–${fmt(time.end)}` : undefined;
+  return time ? formatTimeRange(time) : undefined;
 }
 
 /**

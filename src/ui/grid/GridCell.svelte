@@ -23,6 +23,7 @@
 	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
 	import { isUnscheduledBlock, sourceKey, type BlockGroup } from "../../gridModel";
+	import { formatClock } from "../../parser";
 	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
 	import { requestRepeat } from "../../routines/repeat";
@@ -168,7 +169,7 @@
 	}
 
 	function headerLabel(block: Block): string {
-		return block.time ? `${fmtTime(block.time.start)} ${block.title}` : block.title;
+		return block.time ? `${formatClock(block.time.start)} ${block.title}` : block.title;
 	}
 
 	// A header removed while the pointer is on it (its last task dropped
@@ -255,12 +256,6 @@
 			e.preventDefault();
 			renaming = null;
 		}
-	}
-
-	function fmtTime(min: number): string {
-		const h = Math.floor(min / 60);
-		const m = min % 60;
-		return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 	}
 
 	// `Task` speaks in bare `Task`s; our callbacks want the `ResolvedTask` (it
@@ -355,7 +350,7 @@
 				{@render taskItem(
 					group.head,
 					at,
-					group.block.time ? fmtTime(group.block.time.start) : undefined,
+					group.block.time ? formatClock(group.block.time.start) : undefined,
 					canCreate && onCreateInBlock ? () => onCreateInBlock(group.block) : undefined,
 					`Add task to ${group.block.title}`,
 				)}
@@ -444,7 +439,7 @@
 					</div>
 					{#if renaming === group.key}
 						<div class="grid-cell-block-edit">
-							{#if block.time}<span>{fmtTime(block.time.start)}</span>{/if}
+							{#if block.time}<span>{formatClock(block.time.start)}</span>{/if}
 							<input
 								class="grid-cell-block-input kairos-inline-input"
 								type="text"
@@ -457,7 +452,7 @@
 						</div>
 					{:else}
 						<span class="grid-cell-block-label">
-							{#if block.time}<span class="grid-cell-block-time">{fmtTime(block.time.start)}</span>{/if}<span
+							{#if block.time}<span class="grid-cell-block-time">{formatClock(block.time.start)}</span>{/if}<span
 								class="grid-cell-block-title"
 								role="textbox"
 								tabindex="0"

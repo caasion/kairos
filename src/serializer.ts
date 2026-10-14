@@ -26,6 +26,7 @@
 
 import type { Association, Block, Task, TaskStatus } from "./types";
 import { DEFAULT_HEADING, normalizeHeading } from "./section";
+import { formatTimeRange } from "./parser";
 
 // ─── configuration ─────────────────────────────────────────────
 
@@ -113,7 +114,9 @@ interface Body {
 function renderBody(b: Body): string {
   let out = "";
   if (b.status !== undefined) out += `[${b.status}] `;
-  if (b.time) out += `${formatTime(b.time.start)} - ${formatTime(b.time.end)} `;
+  // An end at midnight (1440) writes as "24:00", which reads back as the end
+  // of the day.
+  if (b.time) out += `${formatTimeRange(b.time, " - ")} `;
   out += b.title;
   if (b.assoc) out += ` [${formatAssoc(b.assoc)}]`;
   if (b.metadata !== undefined) out += ` (${b.metadata})`;
@@ -125,16 +128,3 @@ function formatAssoc(assoc: Association): string {
   return assoc.kind === "domain" ? `D:${assoc.id}` : assoc.id;
 }
 
-/**
- * Minutes-since-midnight → `HH:MM`, zero-padded. An end at midnight (1440)
- * writes as "24:00", which the parser reads back as the end of the day.
- */
-function formatTime(minutes: number): string {
-  const hh = Math.floor(minutes / 60);
-  const mm = minutes % 60;
-  return `${pad(hh)}:${pad(mm)}`;
-}
-
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}

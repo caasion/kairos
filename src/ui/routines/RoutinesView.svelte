@@ -29,7 +29,7 @@
 	import type { OwnerActive } from "../../routines/owners";
 	import { routineAssoc } from "../../routines/apply";
 	import { todayISO } from "../../dayNote";
-	import { parseEndClock, parseStartClock } from "../../parser";
+	import { formatClock, formatTimeRange, parseTimeRangeText } from "../../parser";
 	import {
 		type ParsedRoutines,
 		type Routine,
@@ -125,18 +125,16 @@
 		void update(r, draft.kind === "block" ? { ...draft, title: name } : { ...draft, text: name });
 	}
 
-	const TIME = /^(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})$/;
-
 	function setTime(r: Routine, value: string) {
 		if (r.kind !== "block") return;
-		const m = TIME.exec(value.trim());
-		// Same rules as the note grammar, so an end at midnight ("24:00" or "00:00") works.
-		const start = m ? parseStartClock(`${m[1]}:${m[2]}`) : undefined;
-		const end = m && start !== undefined ? parseEndClock(`${m[3]}:${m[4]}`, start) : undefined;
-		if (start === undefined || end === undefined || end <= start) {
-			new Notice("Write the time like 09:00 - 10:00, ending after it starts.");
+		// Same rules as a block's time in a note, so an end at midnight ("24:00"
+		// or "00:00") works.
+		const parsed = parseTimeRangeText(value);
+		if (!parsed.ok) {
+			new Notice(parsed.error);
 			return;
 		}
+		const { start, end } = parsed.range;
 		if (start === r.time.start && end === r.time.end) return;
 		void update(r, { ...(draftOf(r) as Extract<RoutineDraft, { kind: "block" }>), time: { start, end } });
 	}
@@ -172,14 +170,8 @@
 		}).open();
 	}
 
-	function formatTime(minutes: number): string {
-		const h = Math.floor(minutes / 60);
-		const m = minutes % 60;
-		return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-	}
-
 	function timeText(r: Routine): string {
-		return r.kind === "block" ? `${formatTime(r.time.start)} - ${formatTime(r.time.end)}` : "";
+		return r.kind === "block" ? formatTimeRange(r.time, " - ") : "";
 	}
 
 	// ── Association picker ──
@@ -229,7 +221,7 @@
 			return {
 				block: { source: { path: store.filePath, line: key }, title, tasks: [], scheduled: time !== undefined, ...(time ? { time } : {}) },
 				title,
-				...(time ? { timeLabel: `${formatTime(time.start)}–${formatTime(time.end)}` } : {}),
+				...(time ? { timeLabel: formatTimeRange(time) } : {}),
 				start: time ? time.start : Number.MAX_SAFE_INTEGER,
 				untimed: time === undefined,
 			};
@@ -405,7 +397,7 @@
 								<RoutineGroupHeader
 									kind="block"
 									title={b.title}
-									start={formatTime(b.time.start)}
+									start={formatClock(b.time.start)}
 									timeText={timeText(b)}
 									checkable={b.checkable}
 									assocLabel={b.assoc ? ba?.displayName || b.assoc.id : undefined}

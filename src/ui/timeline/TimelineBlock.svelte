@@ -8,7 +8,7 @@
     TimeRange,
   } from "../../types";
   import { isCheckable } from "../../types";
-  import { parseEndClock, parseStartClock } from "../../parser";
+  import { formatTimeRange, parseTimeRangeText } from "../../parser";
   import {
     blockLit,
     hoverBlockTarget,
@@ -18,7 +18,7 @@
   } from "../../viewLinks";
   import type { Resolver } from "../../index";
   import { peek } from "../actions/peek";
-  import { Menu } from "obsidian";
+  import { Menu, Notice } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import { requestRepeat } from "../../routines/repeat";
   import { addBlockMenuItems } from "../blockMenu";
@@ -168,15 +168,7 @@
   // task strip.
   const isDropTarget = $derived(dropIndex !== undefined);
 
-  function fmt(minutes: number): string {
-    const hh = Math.floor(minutes / 60);
-    const mm = minutes % 60;
-    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-  }
-
-  const timeLabel = $derived(
-    block.time ? `${fmt(block.time.start)}–${fmt(block.time.end)}` : "",
-  );
+  const timeLabel = $derived(block.time ? formatTimeRange(block.time) : "");
 
   const checkable = $derived(isCheckable(block));
   const blockChecked = $derived(block.status === "x");
@@ -314,39 +306,48 @@
     }
   }
 
-  // ── Time editing (native time inputs; reject end ≤ start) ────────
+  // ── Time editing (the label becomes a text input, in place) ──────
+  // The range is typed as text ("09:00–10:30") and checked by the same rules
+  // as a note's time (parseTimeRangeText). Enter on an invalid range keeps the
+  // editor open and says what's wrong; leaving it then puts the old time back.
 
   let editingTime = $state(false);
-  let startDraft = $state(""); // "HH:MM"
-  let endDraft = $state("");
+  let timeDraft = $state("");
+  // The draft was rejected and hasn't been changed since.
+  let timeInvalid = $state(false);
+  let timeInputEl = $state<HTMLInputElement>();
 
   function beginTimeEdit() {
     if (!block.time || editingTime) return;
-    startDraft = fmt(block.time.start);
-    // A native time input can't hold "24:00"; midnight shows as "00:00" and
-    // parseEndClock reads it back as the end of the day.
-    endDraft = block.time.end >= 24 * 60 ? "00:00" : fmt(block.time.end);
+    timeDraft = timeLabel;
+    timeInvalid = false;
     editingTime = true;
+    queueMicrotask(() => timeInputEl?.focus());
   }
 
-  function commitTimeEdit() {
+  // Save a valid, changed range and close. An invalid one stays open, marked,
+  // with a notice; `revert` closes it unsaved instead (the notice still shows
+  // unless Enter already showed it for this text).
+  function commitTimeEdit(revert: boolean) {
     if (!editingTime) return;
-    const start = parseStartClock(startDraft);
-    const end = start === undefined ? undefined : parseEndClock(endDraft, start);
-    // Only persist a valid range; a block can't have zero/negative minutes
-    // (spec §2.1). An invalid entry just closes the editor unchanged.
-    if (start !== undefined && end !== undefined && end > start) {
-      if (!block.time || start !== block.time.start || end !== block.time.end) {
-        onSetBlockTime(block, { start, end });
-      }
+    const parsed = parseTimeRangeText(timeDraft);
+    if (!parsed.ok) {
+      if (!timeInvalid) new Notice(parsed.error);
+      if (revert) editingTime = false;
+      else timeInvalid = true;
+      return;
     }
     editingTime = false;
+    const { start, end } = parsed.range;
+    if (!block.time || start !== block.time.start || end !== block.time.end) {
+      onSetBlockTime(block, { start, end });
+    }
   }
 
   function onTimeKeydown(event: KeyboardEvent) {
     if (event.key === "Enter") {
       event.preventDefault();
-      commitTimeEdit();
+      commitTimeEdit(false);
     } else if (event.key === "Escape") {
       event.preventDefault();
       editingTime = false;
@@ -454,6 +455,9 @@
   }
   function collapse() {
     cancelExpandTimer();
+    // Shrinking a compact block takes its time line away, and an input that
+    // is removed gets no blur: settle a time edit in it first.
+    if (compact && editingTime) timeInputEl?.blur();
     expanded = false;
   }
   // Hover drives it for a mouse only. A touch "leaves" the moment the finger
@@ -729,34 +733,26 @@
     </div>
 
     {#if !compactLayout}
-      {#if editingTime}
-        <!-- Commit on focusout only when focus leaves the whole editor, so
-             tabbing between the two inputs doesn't close it early. -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="tl-time-edit"
-          onpointerdown={(e) => e.stopPropagation()}
-          onfocusout={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node)) commitTimeEdit();
-          }}
-        >
+      <!-- Time and the association share one line, separated by a dot. -->
+      <div class="kairos-meta-row" bind:this={metaEl}>
+        {#if editingTime}
+          <!-- Stop pointerdown so pressing in the input doesn't also start a
+               block move. -->
           <input
-            class="tl-time-input"
-            type="time"
-            bind:value={startDraft}
+            class="tl-time tl-time-input kairos-inline-input"
+            type="text"
+            aria-label="Block time"
+            aria-invalid={timeInvalid ? "true" : undefined}
+            placeholder="09:00–10:30"
+            bind:value={timeDraft}
+            bind:this={timeInputEl}
+            onpointerdown={(e) => e.stopPropagation()}
+            onfocus={(e) => e.currentTarget.select()}
+            oninput={() => (timeInvalid = false)}
             onkeydown={onTimeKeydown}
+            onblur={() => commitTimeEdit(true)}
           />
-          <span class="tl-time-dash">–</span>
-          <input
-            class="tl-time-input"
-            type="time"
-            bind:value={endDraft}
-            onkeydown={onTimeKeydown}
-          />
-        </div>
-      {:else}
-        <!-- Time and the association share one line, separated by a dot. -->
-        <div class="kairos-meta-row" bind:this={metaEl}>
+        {:else}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <span
             class="tl-time kairos-meta kairos-meta-label"
@@ -765,41 +761,41 @@
             onpointerdown={(e) => e.stopPropagation()}
             onclick={beginTimeEdit}
           >{timeLabel}</span>
-          {#if block.assoc}
-            {@const r = resolve(block.assoc)}
-            <!-- An SVG dot separator: fixed-size so it can't affect line-height
-                 or row height the way a text glyph would. -->
-            <svg
-              class="kairos-meta-dot"
-              width="3"
-              height="3"
-              viewBox="0 0 3 3"
-              aria-hidden="true"
-            ><circle cx="1.5" cy="1.5" r="1.5" fill="currentColor" /></svg>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <span
-              class="kairos-meta"
-              class:is-linked={r.resolved}
-              title={r.resolved ? "Ctrl+click to open" : undefined}
-              onpointerdown={(e) => e.stopPropagation()}
-              onclick={(e) => {
-                if (e.ctrlKey || e.metaKey) {
-                  e.stopPropagation();
-                  onNavigate(block.assoc!);
-                }
-              }}
-            >
-              {#if block.assoc.kind === "domain"}
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-              {:else}
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-              {/if}
-              <span class="kairos-meta-label">{r.displayName}</span>
-            </span>
-          {/if}
-        </div>
-      {/if}
+        {/if}
+        {#if block.assoc}
+          {@const r = resolve(block.assoc)}
+          <!-- An SVG dot separator: fixed-size so it can't affect line-height
+               or row height the way a text glyph would. -->
+          <svg
+            class="kairos-meta-dot"
+            width="3"
+            height="3"
+            viewBox="0 0 3 3"
+            aria-hidden="true"
+          ><circle cx="1.5" cy="1.5" r="1.5" fill="currentColor" /></svg>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <span
+            class="kairos-meta"
+            class:is-linked={r.resolved}
+            title={r.resolved ? "Ctrl+click to open" : undefined}
+            onpointerdown={(e) => e.stopPropagation()}
+            onclick={(e) => {
+              if (e.ctrlKey || e.metaKey) {
+                e.stopPropagation();
+                onNavigate(block.assoc!);
+              }
+            }}
+          >
+            {#if block.assoc.kind === "domain"}
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+            {:else}
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+            {/if}
+            <span class="kairos-meta-label">{r.displayName}</span>
+          </span>
+        {/if}
+      </div>
       {#if rowCount > 0 || dragActive}
         <!-- Editable tasks. A press here must not start a block move/resize, so
              the container swallows pointerdown before it reaches the block.
@@ -1138,30 +1134,25 @@
     flex-shrink: 0;
   }
 
-  /* ── Time editor (native time inputs) ── */
-  .tl-time-edit {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-  }
-
-  .tl-time-input {
-    font-size: 10px;
+  /* The time editor: the label's type, in a box just wide enough for a range,
+     in the normal text colour while editing. `input[type]` outranks the
+     shared .kairos-inline-input reset, which sets width and box-shadow. */
+  input[type].tl-time-input.kairos-inline-input {
+    width: 12ch;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
     font-family: inherit;
+    font-size: var(--kairos-meta-font-size);
     font-variant-numeric: tabular-nums;
-    padding: 0 2px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 0;
-    background: var(--background-primary);
+    line-height: inherit;
     color: var(--text-normal);
-    min-height: 0;
-    height: auto;
-    box-shadow: none;
   }
 
-  .tl-time-dash {
-    font-size: 10px;
-    color: var(--text-muted);
+  /* A rejected range: error-coloured and underlined until it is changed. */
+  input[type].tl-time-input.kairos-inline-input[aria-invalid="true"] {
+    color: var(--text-error);
+    box-shadow: inset 0 -1px 0 var(--text-error);
   }
 
   /* ── Showing every task ── */

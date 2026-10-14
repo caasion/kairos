@@ -46,8 +46,12 @@ const TIME_RANGE = /^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s+(.*)$/;
 // block may end here; the serializer writes it as "24:00".
 const MIDNIGHT = 24 * 60;
 
-// A bare "HH:MM" clock value, as a native time input gives it.
+// A bare "HH:MM" clock value.
 const CLOCK = /^(\d{1,2}):(\d{2})$/;
+
+// A typed "HH:MM - HH:MM" range: a hyphen, en dash or em dash between the two
+// times, spaces around it optional.
+const RANGE_TEXT = /^(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})$/;
 
 // Trailing "[...]" association tag (matched repeatedly, right to left).
 const TRAILING_ASSOC = /\s*\[([^\]]+)\]\s*$/;
@@ -112,7 +116,15 @@ function parseSchedule(
   return blocks;
 }
 
-export { parseSchedule, parseStartClock, parseEndClock };
+export {
+  parseSchedule,
+  parseStartClock,
+  parseEndClock,
+  parseTimeRangeText,
+  formatClock,
+  formatTimeRange,
+};
+export type { TimeRangeText };
 
 // exported for unit testing of the pieces
 export {
@@ -269,15 +281,52 @@ function parseStartClock(value: string): number | undefined {
 /**
  * A bare "HH:MM" end time for a range starting at `start` → minutes since
  * midnight; undefined if invalid. Midnight reads as either "24:00" or "00:00".
- * Unlike a note's range, "00:00" is midnight even from a midnight start: an
- * input can't hold "24:00" (a time editor shows a midnight end as "00:00"),
- * and an empty 00:00–00:00 range is never what was meant.
+ * Unlike a note's range, "00:00" is midnight even from a midnight start: a
+ * midnight end is often typed "00:00", and an empty 00:00–00:00 range is never
+ * what was meant.
  */
 function parseEndClock(value: string, start: number): number | undefined {
   const m = CLOCK.exec(value.trim());
   if (!m) return undefined;
   const end = toEndMinutes(m[1], m[2], start);
   return end === 0 ? MIDNIGHT : end;
+}
+
+type TimeRangeText =
+  | { ok: true; range: TimeRange }
+  | { ok: false; error: string };
+
+/**
+ * A time range typed into an editor ("9:00 - 10:30", "09:00–10:30") → the
+ * range, or a short error to show the user. Built on parseStartClock and
+ * parseEndClock, so it takes exactly the times a note's range does, plus a
+ * midnight end written "00:00" (see parseEndClock).
+ */
+function parseTimeRangeText(text: string): TimeRangeText {
+  const m = RANGE_TEXT.exec(text.trim());
+  if (!m) return { ok: false, error: "Write the time like 09:00 - 10:30." };
+  const [, h1 = "", m1 = "", h2 = "", m2 = ""] = m;
+  if (Number(m1) > 59 || Number(m2) > 59) {
+    return { ok: false, error: "Minutes go up to 59." };
+  }
+  const start = parseStartClock(`${h1}:${m1}`);
+  if (start === undefined) return { ok: false, error: "The start must be before 24:00." };
+  const end = parseEndClock(`${h2}:${m2}`, start);
+  if (end === undefined) return { ok: false, error: "The end can't be after 24:00." };
+  if (end <= start) return { ok: false, error: "The end must be after the start." };
+  return { ok: true, range: { start, end } };
+}
+
+/** Minutes since midnight → "HH:MM"; the end of the day (1440) is "24:00". */
+function formatClock(minutes: number): string {
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+/** A range as "HH:MM–HH:MM" (or with `dash`), which parseTimeRangeText reads back. */
+function formatTimeRange(range: TimeRange, dash = "–"): string {
+  return `${formatClock(range.start)}${dash}${formatClock(range.end)}`;
 }
 
 function toMinutes(h: string | undefined, min: string | undefined): number | undefined {
