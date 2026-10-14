@@ -57,6 +57,11 @@ export interface BlockDragState {
   block: Block;
   /** The ISO date of the source day — used at drop time to find the source day. */
   sourceDate: string;
+  /**
+   * The Grid row it was lifted from. A header can show in a row that isn't the
+   * block's own (decision 73); a drop back on that row keeps its association.
+   */
+  sourceRowKey?: string;
   // Where to paint the floating ghost.
   ghostX: number;
   ghostY: number;

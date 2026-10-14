@@ -65,8 +65,10 @@
 		isUnscheduledBlock,
 		buildRows,
 		dayStatus,
+		blockDropAssociation,
 		dropAssociation,
 		ownerRowKey,
+		sourceKey,
 		rolledUpProjectOf,
 		rolledUpProjects,
 		rowAssociation,
@@ -870,7 +872,7 @@
 	let blockDrag = $state<BlockDragState | null>(null);
 	let blockDrop = $state<GridDropSlot | null>(null);
 
-	function onBlockGrab(block: Block, date: ISODate, event: PointerEvent) {
+	function onBlockGrab(block: Block, date: ISODate, rowKey: string, event: PointerEvent) {
 		lastPointerX = event.clientX;
 		lastPointerY = event.clientY;
 		const childCount = block.tasks.length;
@@ -879,6 +881,7 @@
 		blockDrag = {
 			block,
 			sourceDate: date,
+			sourceRowKey: rowKey,
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			label,
@@ -914,12 +917,13 @@
 		if (!sourceDay || sourceDay.path === null) return;
 
 		// Resolve the target row's association (same rule as a task drop: the row
-		// the block already renders on keeps the block's own association).
+		// the block already renders on keeps the block's own association, and so
+		// does the row it was lifted from, which may only be a label row).
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
 		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
 		const target = snapshot
-			? dropAssociation(targetRow, drag.block.assoc, snapshot)
+			? blockDropAssociation(targetRow, drag.sourceRowKey, drag.block.assoc, snapshot)
 			: undefined;
 		const newAssoc: Association | null | undefined = target?.assoc;
 		const sameRow = target?.sameRow ?? false;
@@ -1412,14 +1416,14 @@
 								{onMoveToBacklog}
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
-								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, e)}
+								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, row.key, e)}
 								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}
 								onDeleteBlock={(block: Block) => onDeleteBlock(date, block)}
 								onToggleBlockCheckable={(block: Block) => onToggleBlockCheckable(date, block)}
 								onSetBlockStatus={(block: Block, status: TaskStatus) => onSetBlockStatus(date, block, status)}
 								onSetBlockTitle={(block: Block, title: string) => onSetBlockTitle(date, block, title)}
-								dragTaskLine={taskDrag?.task.source.line}
-								dragBlockLine={blockDrag?.block.source.line}
+								dragTaskKey={taskDrag ? sourceKey(taskDrag.task.source) : undefined}
+								dragBlockKey={blockDrag ? sourceKey(blockDrag.block.source) : undefined}
 								isDropTarget={isDropTargetFor(date, row.key)}
 								{highlightOf}
 								onHover={onTaskHover}

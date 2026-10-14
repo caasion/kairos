@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ACTIONS_AWAKE_CLASS } from "../actions/actionZone";
 import { setStackOwner } from "../actions/stackOwner";
-import { BLOCK_OVERLAY_SELECTOR, blockInUse, focusInBlock, pressInBlock } from "./blockGrow";
+import { BLOCK_OVERLAY_SELECTOR, afterLeave, blockInUse, focusInBlock, pressInBlock } from "./blockGrow";
 
 // A stand-in for the grown block and its document: containment by identity,
 // and the selector queries the helpers make answered from flags.
@@ -67,6 +67,20 @@ describe("blockGrow", () => {
 		expect(focusInBlock(s.el)).toBe(true);
 		s.state.active = s.button;
 		expect(focusInBlock(s.el)).toBe(true);
+	});
+
+	it("after the pointer leaves, stays for focus in the block but only waits for focus on a portaled stack", () => {
+		const s = setup();
+		expect(afterLeave(s.el)).toBe("shrink");
+		s.state.active = s.row;
+		expect(afterLeave(s.el)).toBe("stay");
+		// Focus on a portaled stack's button: putting the stack back drops that
+		// focus, so the block must check again rather than stop for good.
+		s.state.active = s.button;
+		expect(afterLeave(s.el)).toBe("wait");
+		s.state.active = null;
+		s.state.overlayOpen = true;
+		expect(afterLeave(s.el)).toBe("wait");
 	});
 
 	it("doesn't count a press on a task's portaled stack as elsewhere", () => {

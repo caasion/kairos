@@ -269,10 +269,15 @@ function parseStartClock(value: string): number | undefined {
 /**
  * A bare "HH:MM" end time for a range starting at `start` → minutes since
  * midnight; undefined if invalid. Midnight reads as either "24:00" or "00:00".
+ * Unlike a note's range, "00:00" is midnight even from a midnight start: an
+ * input can't hold "24:00" (a time editor shows a midnight end as "00:00"),
+ * and an empty 00:00–00:00 range is never what was meant.
  */
 function parseEndClock(value: string, start: number): number | undefined {
   const m = CLOCK.exec(value.trim());
-  return m ? toEndMinutes(m[1], m[2], start) : undefined;
+  if (!m) return undefined;
+  const end = toEndMinutes(m[1], m[2], start);
+  return end === 0 ? MIDNIGHT : end;
 }
 
 function toMinutes(h: string | undefined, min: string | undefined): number | undefined {

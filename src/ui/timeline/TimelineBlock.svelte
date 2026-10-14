@@ -25,7 +25,7 @@
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
-  import { blockInUse, focusInBlock, pressInBlock } from "./blockGrow";
+  import { afterLeave, pressInBlock } from "./blockGrow";
 
   interface Props {
     block: Block;
@@ -479,15 +479,17 @@
   // task's action stack, portaled to the body, or a menu or picker a task
   // opened. Shrinking then would unmount the very task in use. Wait until
   // that's done instead. Keep it, too, while something in it has focus (a task
-  // being edited); a press elsewhere shrinks it then.
+  // being edited); a press elsewhere shrinks it then. Focus on a portaled
+  // stack's button only waits: putting the stack back drops that focus.
   function scheduleCollapse() {
     cancelExpandTimer();
     expandTimer = window.setTimeout(() => {
       expandTimer = undefined;
       const el = blockEl;
-      if (!el || focusInBlock(el)) return;
-      if (blockInUse(el)) scheduleCollapse();
-      else expanded = false;
+      if (!el) return;
+      const next = afterLeave(el);
+      if (next === "wait") scheduleCollapse();
+      else if (next === "shrink") expanded = false;
     }, COLLAPSE_MS);
   }
   // While grown: a press anywhere else shrinks it (the way back on touch), and

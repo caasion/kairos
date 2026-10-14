@@ -22,14 +22,13 @@
 	import { Menu } from "obsidian";
 	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
-	import { isUnscheduledBlock, type BlockGroup } from "../../gridModel";
+	import { isUnscheduledBlock, sourceKey, type BlockGroup } from "../../gridModel";
 	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
 	import { requestRepeat } from "../../routines/repeat";
 	import { addBlockMenuItems, addConvertItem, addRevealItem } from "../blockMenu";
 	import { actionZone } from "../actions/actionZone";
-	import { longpress } from "../actions/longpress";
-	import { movedPastSlop } from "../actions/peek";
+	import { grabOnHold } from "../actions/grabOnHold";
 	import { tooltip } from "../actions/tooltip";
 
 	interface Props {
@@ -64,10 +63,12 @@
 		// A long-press on a block's header or a colocated task (checkable block)
 		// began a block drag.
 		onBlockGrab?: (block: Block, event: PointerEvent) => void;
-		// While a drag is live: dim the source item. dragTaskLine for task drags,
-		// dragBlockLine for block drags (matches the block's source line = colocated task line).
-		dragTaskLine?: number;
-		dragBlockLine?: number;
+		// While a drag is live: dim the source item. dragTaskKey for task drags,
+		// dragBlockKey for block drags (a block's own row is its colocated task).
+		// Both are "path:line" (sourceKey), so the same line in another day's
+		// note doesn't dim too.
+		dragTaskKey?: string;
+		dragBlockKey?: string;
 		// True only when THIS cell is the live drop target (not just any drag).
 		isDropTarget?: boolean;
 		// Hover link (viewLinks.ts): how a task is lit (its block, or itself), and
@@ -116,8 +117,8 @@
 		onMoveToBacklog,
 		onTaskGrab,
 		onBlockGrab,
-		dragTaskLine,
-		dragBlockLine,
+		dragTaskKey,
+		dragBlockKey,
 		isDropTarget = false,
 		highlightOf,
 		onHover,
@@ -204,6 +205,8 @@
 	}
 
 	function openBlockMenu(e: MouseEvent, group: BlockGroup) {
+		// A right-click in the rename input keeps the input's own menu.
+		if ((e.target as Partial<Element> | null)?.closest?.("input, textarea")) return;
 		e.preventDefault();
 		e.stopPropagation();
 		const block = group.block;
@@ -254,57 +257,6 @@
 		}
 	}
 
-	// Drag a block by its header: a matured long-press lifts it once the pointer
-	// moves past the slop, as a task's text does (Task.svelte). Releasing in
-	// place does nothing, so a long hold never rewrites the note.
-	function grabOnHold(node: HTMLElement, onGrab: ((e: PointerEvent) => void) | undefined) {
-		let current = onGrab;
-		let press: PointerEvent | undefined;
-		let cleanup: (() => void) | undefined;
-		const finish = () => {
-			press = undefined;
-			node.classList.remove("held");
-			cleanup?.();
-			cleanup = undefined;
-		};
-		const down = (e: PointerEvent) => {
-			if (e.button === 0) press = e;
-		};
-		const matured = () => {
-			const start = press;
-			if (!start || !current) return;
-			node.classList.add("held");
-			const move = (e: PointerEvent) => {
-				if (e.pointerId !== start.pointerId || !movedPastSlop(start, e)) return;
-				finish();
-				current?.(e);
-			};
-			const end = (e: PointerEvent) => {
-				if (e.pointerId === start.pointerId) finish();
-			};
-			window.addEventListener("pointermove", move);
-			window.addEventListener("pointerup", end);
-			window.addEventListener("pointercancel", end);
-			cleanup = () => {
-				window.removeEventListener("pointermove", move);
-				window.removeEventListener("pointerup", end);
-				window.removeEventListener("pointercancel", end);
-			};
-		};
-		const press_ = longpress(node, { duration: 400, onLongpress: matured });
-		node.addEventListener("pointerdown", down);
-		return {
-			update(next: ((e: PointerEvent) => void) | undefined) {
-				current = next;
-			},
-			destroy() {
-				press_.destroy();
-				node.removeEventListener("pointerdown", down);
-				finish();
-			},
-		};
-	}
-
 	function fmtTime(min: number): string {
 		const h = Math.floor(min / 60);
 		const m = min % 60;
@@ -346,7 +298,7 @@
 		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
-			class:dragging-origin={dragTaskLine === task.source.line || (task.colocated && dragBlockLine === task.block.source.line)}
+			class:dragging-origin={dragTaskKey === sourceKey(task.source) || (task.colocated && dragBlockKey === sourceKey(task.block.source))}
 			data-task-index={i}
 		>
 			<Task_
@@ -429,7 +381,7 @@
 				<div
 					class="grid-cell-group-header grid-cell-block-header actionable"
 					class:linked={isBlockLinked?.(block) ?? false}
-					class:dragging-origin={dragBlockLine === block.source.line}
+					class:dragging-origin={dragBlockKey === group.key}
 					style:--kairos-link-color={blockColor(block)}
 					title={block.time ? "Ctrl+click to open in Day view" : undefined}
 					bind:this={headerEls[group.key]}
@@ -444,7 +396,9 @@
 					<!-- Action stack, woken from the header's top-right corner: the
 					     block's "+" in the corner (where it sits on a checkable
 					     block's row), then delete, association, convert. A press
-					     here must not arm the header's drag. -->
+					     here never arms the header's drag: grabOnHold skips presses
+					     on the bar and the rename input (a stopPropagation here
+					     can't, as Svelte delegates pointerdown to the root). -->
 					<div
 						class="grid-cell-block-actions kairos-action-bar"
 						onpointerdown={(e) => e.stopPropagation()}

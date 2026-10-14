@@ -35,6 +35,23 @@ export function blockInUse(block: Element): boolean {
 	return block.ownerDocument.querySelector(BLOCK_OVERLAY_SELECTOR) !== null;
 }
 
+/**
+ * What a grown block the pointer has left does when its shrink timer fires:
+ *
+ *   • "stay": focus is in the block itself (a task being edited). It stays
+ *     grown with no timer; a press elsewhere shrinks it.
+ *   • "wait": it is still in use (blockInUse), or focus is on a button in a
+ *     portaled stack of it. Check again shortly: putting the stack back drops
+ *     that focus, and with no timer left the block would stay grown.
+ *   • "shrink": nothing in or from it is in use.
+ */
+export function afterLeave(block: Element): "stay" | "wait" | "shrink" {
+	const active = block.ownerDocument.activeElement;
+	if (active && block.contains(active)) return "stay";
+	if (focusInBlock(block) || blockInUse(block)) return "wait";
+	return "shrink";
+}
+
 /** Whether a press on `target` is on the block or on UI it opened (so it stays grown). */
 export function pressInBlock(block: Element, target: EventTarget | null): boolean {
 	if (containsWithStacks(block, target as Node | null)) return true;

@@ -384,6 +384,11 @@ export function isUnscheduledBlock(block: Block): boolean {
  * associations also appears in each of those rows (decision 73): there the
  * header is a label, not ownership.
  */
+/** A task's or block's place in its note, "path:line": unique across days. */
+export function sourceKey(source: { path: string; line: number }): string {
+	return `${source.path}:${source.line}`;
+}
+
 export function blockGroups(
 	row: GridRow,
 	tasks: ResolvedTask[],
@@ -393,7 +398,7 @@ export function blockGroups(
 	const groups = new Map<string, BlockGroup>();
 	for (const t of tasks) {
 		if (ownerRowKey(t.owner, snap) !== row.key) continue;
-		const key = `${t.block.source.path}:${t.block.source.line}`;
+		const key = sourceKey(t.block.source);
 		let group = groups.get(key);
 		if (!group) {
 			group = { key, block: t.block, tasks: [] };
@@ -406,7 +411,7 @@ export function blockGroups(
 	// none of its tasks do (decision 95).
 	for (const b of blocks) {
 		if (!b.time || ownerRowKey(b.assoc, snap) !== row.key) continue;
-		const key = `${b.source.path}:${b.source.line}`;
+		const key = sourceKey(b.source);
 		if (!groups.has(key)) groups.set(key, { key, block: b, tasks: [] });
 	}
 	return [...groups.values()].sort((a, b) => blockRank(a.block) - blockRank(b.block) || byTime(a.block, b.block));
@@ -498,4 +503,23 @@ export function dropAssociation(
 	}
 	const assoc = rowAssociation(target);
 	return { assoc: assoc ? { kind: assoc.kind, id: assoc.id } : null, sameRow: false };
+}
+
+/**
+ * `dropAssociation` for a block dragged by a header on row `fromRowKey`. A
+ * block's header also shows, as a label, in each row one of its tasks belongs
+ * to (decision 73). Dropping it back on the row it was lifted from keeps its
+ * own association, as on its own row: the label row is the task's, and filing
+ * the whole block there would take every task inheriting its area with it.
+ */
+export function blockDropAssociation(
+	target: GridRow | undefined,
+	fromRowKey: string | undefined,
+	owner: Association | undefined,
+	snap: GridSnapshot,
+): { assoc: Association | null; sameRow: boolean } | undefined {
+	if (target && fromRowKey !== undefined && target.key === fromRowKey) {
+		return { assoc: owner ? { ...owner } : null, sameRow: true };
+	}
+	return dropAssociation(target, owner, snap);
 }

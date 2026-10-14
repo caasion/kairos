@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveAssociation } from "./association";
 import {
+	blockDropAssociation,
 	blockGroups,
 	buildRows,
 	cellGroups,
@@ -476,6 +477,48 @@ describe("dropAssociation", () => {
 
 	it("is undefined with no target row", () => {
 		expect(dropAssociation(undefined, proj("Groceries"), s)).toBeUndefined();
+	});
+});
+
+describe("blockDropAssociation", () => {
+	const life = domain({ id: "d-life", name: "Life" });
+	const groceries = project({ name: "Groceries", domain: "d-life" });
+	const moving = project({ name: "Move house", domain: "d-life" });
+	const s = snap([groceries, moving], [life], [task({})]);
+	const rows = buildRows(s, AS_OF);
+	const groceriesRow = rows.find((r) => r.name === "Groceries")!;
+	const moveRow = rows.find((r) => r.name === "Move house")!;
+	const unassigned = rows.find((r) => r.kind === "unassigned")!;
+
+	it("keeps the block's own association when dropped back on the label row it was lifted from", () => {
+		// A Move house block shown in the Groceries row for one of its tasks.
+		expect(blockDropAssociation(groceriesRow, groceriesRow.key, proj("Move house"), s)).toEqual({
+			assoc: proj("Move house"),
+			sameRow: true,
+		});
+		expect(blockDropAssociation(groceriesRow, groceriesRow.key, undefined, s)).toEqual({
+			assoc: null,
+			sameRow: true,
+		});
+	});
+
+	it("re-files a block dropped on another row, as a task drop does", () => {
+		expect(blockDropAssociation(unassigned, groceriesRow.key, proj("Move house"), s)).toEqual({
+			assoc: null,
+			sameRow: false,
+		});
+		expect(blockDropAssociation(moveRow, groceriesRow.key, proj("Move house"), s)).toEqual({
+			assoc: proj("Move house"),
+			sameRow: true,
+		});
+	});
+
+	it("falls back to dropAssociation without a source row", () => {
+		expect(blockDropAssociation(groceriesRow, undefined, proj("Move house"), s)).toEqual({
+			assoc: proj("Groceries"),
+			sameRow: false,
+		});
+		expect(blockDropAssociation(undefined, groceriesRow.key, proj("Move house"), s)).toBeUndefined();
 	});
 });
 

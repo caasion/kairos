@@ -56,7 +56,15 @@ describe("clock inputs", () => {
 		expect(parseEndClock("00:00", 1380)).toBe(1440);
 		expect(parseEndClock("24:00", 1380)).toBe(1440);
 		expect(parseEndClock("24:30", 1380)).toBeUndefined();
-		// From a midnight start, "00:00" is just zero (an empty range the caller rejects).
-		expect(parseEndClock("00:00", 0)).toBe(0);
+		// From a midnight start too: an editor can't show "24:00", so a whole
+		// day reads 00:00 to 00:00.
+		expect(parseEndClock("00:00", 0)).toBe(1440);
+		expect(parseEndClock("24:00", 0)).toBe(1440);
+		expect(parseEndClock("0:00", 0)).toBe(1440);
+	});
+
+	it("still rejects an empty 00:00 - 00:00 range in a note", () => {
+		expect(parseTime("00:00 - 00:00 Nothing")).toBeUndefined();
+		expect(parseTime("00:00 - 24:00 All day")?.range).toEqual({ start: 0, end: 1440 });
 	});
 });
