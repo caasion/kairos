@@ -25,6 +25,7 @@
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
+  import { blockInUse, focusInBlock, pressInBlock } from "./blockGrow";
 
   interface Props {
     block: Block;
@@ -471,21 +472,34 @@
   }
   function onBlockLeave(event: PointerEvent) {
     if (event.pointerType !== "mouse" || !expanded) return;
+    scheduleCollapse();
+  }
+  // Shrink once the pointer has been gone a moment, but not while the block
+  // is still in use from outside its box (see blockGrow.ts): the pointer on a
+  // task's action stack, portaled to the body, or a menu or picker a task
+  // opened. Shrinking then would unmount the very task in use. Wait until
+  // that's done instead. Keep it, too, while something in it has focus (a task
+  // being edited); a press elsewhere shrinks it then.
+  function scheduleCollapse() {
     cancelExpandTimer();
     expandTimer = window.setTimeout(() => {
-      // Keep it while something in it has focus (a task being edited).
-      if (blockEl?.contains(blockEl.ownerDocument.activeElement)) return;
-      expanded = false;
+      expandTimer = undefined;
+      const el = blockEl;
+      if (!el || focusInBlock(el)) return;
+      if (blockInUse(el)) scheduleCollapse();
+      else expanded = false;
     }, COLLAPSE_MS);
   }
   // While grown: a press anywhere else shrinks it (the way back on touch), and
-  // so does leaving a focused task once the pointer is gone.
+  // so does leaving a focused task once the pointer is gone. A press on its
+  // tasks' portaled stacks, menus or pickers isn't elsewhere: shrinking on the
+  // pointerdown would unmount the button before its click.
   $effect(() => {
     const el = blockEl;
     if (!expanded || !el) return;
     const win = el.ownerDocument.defaultView ?? window;
     const onPress = (e: PointerEvent) => {
-      if (!el.contains(e.target as Node)) collapse();
+      if (!pressInBlock(el, e.target)) collapse();
     };
     win.addEventListener("pointerdown", onPress, true);
     return () => win.removeEventListener("pointerdown", onPress, true);

@@ -26,8 +26,10 @@
 //    and comes back to its spot in the row once it has faded out. The caller
 //    then keeps it awake while the pointer is over the stack (it's no longer
 //    a descendant, so the row sees a `pointerleave` when the pointer crosses
-//    onto it). Keyboard focus never portals: moving a focused element blurs
-//    it, and a stack at the end of the body would break tab order.
+//    onto it). The row's ancestors see that `pointerleave` too; stackOwner.ts
+//    tells them the stack is still the row's. Keyboard focus never portals:
+//    moving a focused element blurs it, and a stack at the end of the body
+//    would break tab order.
 
 import {
 	boxInside,
@@ -44,6 +46,7 @@ import {
 	type StackPlacement,
 } from "./actionStackGeometry";
 import type { ActionZoneAnchor } from "./actionZoneGeometry";
+import { setStackOwner } from "./stackOwner";
 
 /** On the bar once the stack has been placed (styling hook for button order). */
 export const ACTION_STACK_CLASS = "kairos-action-stack";
@@ -243,6 +246,8 @@ export class ActionStack {
 		this.placeholder = doc.createComment("kairos-action-stack");
 		bar.before(this.placeholder);
 		doc.body.appendChild(bar);
+		// Still the row's, for its ancestors' pointer and press checks.
+		setStackOwner(bar, this.host);
 		bar.classList.add(ACTION_STACK_PORTALED_CLASS);
 		bar.addEventListener("pointerenter", this.onEnter);
 		bar.addEventListener("pointerleave", this.onLeave);
@@ -277,6 +282,7 @@ export class ActionStack {
 		const ph = this.placeholder;
 		if (!ph) return;
 		this.placeholder = null;
+		setStackOwner(this.bar, null);
 		this.bar.removeEventListener("pointerenter", this.onEnter);
 		this.bar.removeEventListener("pointerleave", this.onLeave);
 		this.bar.removeEventListener("contextmenu", this.forwardContextMenu);
