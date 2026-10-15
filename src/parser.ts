@@ -13,12 +13,20 @@
 // Top-level list items are blocks. Items indented under a block are that
 // block's tasks when they carry a checkbox, and its notes when they don't
 // (kept verbatim). A block has no status, so a block line is written without a
-// checkbox. A legacy top-level line that has one ("- [x] 07:00 - 08:00 Gym",
-// from when blocks could be checked) reads as a plain block holding one task
-// first in its list: the block's title, the checkbox's status, no association
-// or metadata of its own (it inherits the block's). That task shares the
-// block's source line until the next write, which splits it into the two-line
-// form ("- 07:00 - 08:00 Gym" / "\t- [x] Gym").
+// checkbox. A legacy top-level line that has one is from when blocks could be
+// checked:
+//   • a timed one ("- [x] 07:00 - 08:00 Gym") reads as a plain block holding
+//     one task first in its list: the block's title, the checkbox's status, no
+//     association or metadata of its own (it inherits the block's). That task
+//     shares the block's source line until the next write, which splits it
+//     into the two-line form ("- 07:00 - 08:00 Gym" / "\t- [x] Gym");
+//   • an untimed one ("- [ ] Call mom [D:Home]") reads as a task in the day's
+//     Unscheduled list, as the same line does in Routines.md, with the items
+//     nested under it after it. An untimed block other than Unscheduled shows
+//     only through its tasks, so a same-named block would be left behind,
+//     empty and out of reach, once the task moved on. When the day has no
+//     Unscheduled line, the parser makes that block and gives it the heading's
+//     line, which no block or task has.
 //
 // The parser is deliberately literal: it records associations exactly as
 // written (a task assoc that duplicates its block's is kept, not dropped) and
@@ -86,6 +94,8 @@ function parseSchedule(
   const blocks: Block[] = [];
   let current: Block | undefined;
   let blockIndent = 0;
+  // Untimed legacy checkbox lines and the items under them, for the inbox.
+  let loose: Block | undefined;
 
   for (let i = start; i < lines.length; i++) {
     const raw = lines[i] ?? "";
@@ -113,16 +123,35 @@ function parseSchedule(
     }
 
     // Otherwise this item starts a new block. A legacy checkbox on it becomes
-    // the block's first task (see the header).
-    current = parseBlock(body, source);
-    if (status !== undefined) {
-      current.tasks.push({ source, text: current.title, status: toStatus(status) });
-    }
+    // the block's first task, or a task for the inbox (see the header).
     blockIndent = indent;
-    blocks.push(current);
+    const block = parseBlock(body, source);
+    if (status !== undefined && !block.time) {
+      loose ??= inboxBlock(path, start - 1);
+      loose.tasks.push(parseTask(body, status, source));
+      current = loose;
+      continue;
+    }
+    if (status !== undefined) {
+      block.tasks.push({ source, text: block.title, status: toStatus(status) });
+    }
+    current = block;
+    blocks.push(block);
+  }
+
+  if (loose) {
+    const inbox = blocks.find((b) => !b.time && b.title === "Unscheduled");
+    if (!inbox) return [...blocks, loose];
+    const at = inbox.tasks.length;
+    for (const n of loose.notes ?? []) (inbox.notes ??= []).push({ text: n.text, at: at + n.at });
+    inbox.tasks.push(...loose.tasks);
   }
 
   return blocks;
+}
+
+function inboxBlock(path: string, line: number): Block {
+  return { source: { path, line }, title: "Unscheduled", tasks: [], scheduled: false };
 }
 
 export {

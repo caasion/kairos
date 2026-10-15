@@ -181,13 +181,37 @@ export function setTaskText(
 
 /** Remove a task from its block's `tasks`. */
 export function deleteTask(blocks: Block[], owner: Block, target: Task): Block[] {
-  return blocks.map((b) => {
-    if (!isOwner(b, owner)) return b;
-    return {
-      ...b,
-      tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)),
-    };
-  });
+  return blocks.map((b) => (isOwner(b, owner) ? withoutTask(b, target.source) : b));
+}
+
+// A note's `at` counts the tasks before it, so taking a task out of a block or
+// putting one in shifts the notes after that slot; otherwise a note under a
+// removed task would jump below the next one.
+
+/** `block` without the task at `target`; the notes after it count one fewer. */
+export function withoutTask(block: Block, target: SourceRef): Block {
+  const i = block.tasks.findIndex((t) => sameSource(t.source, target));
+  if (i === -1) return block;
+  return {
+    ...block,
+    tasks: block.tasks.filter((_, k) => k !== i),
+    ...(block.notes ? { notes: shiftNotes(block.notes, i, -1) } : {}),
+  };
+}
+
+/** `block` with `task` at `index` (clamped); the notes after that slot count it. */
+function withTaskAt(block: Block, task: Task, index: number): Block {
+  const at = Math.max(0, Math.min(index, block.tasks.length));
+  return {
+    ...block,
+    tasks: [...block.tasks.slice(0, at), task, ...block.tasks.slice(at)],
+    ...(block.notes ? { notes: shiftNotes(block.notes, at, 1) } : {}),
+  };
+}
+
+/** Move every note past task slot `i` by `by`. */
+function shiftNotes(notes: Note[], i: number, by: number): Note[] {
+  return notes.map((n) => (n.at > i ? { ...n, at: n.at + by } : n));
 }
 
 /** Return a copy of `blocks` with `target` removed. */
@@ -342,7 +366,7 @@ export function unnestTask(
   // Remove from the source block, then insert into Unscheduled.
   const without = blocks.map((b) =>
     isOwner(b, source)
-      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      ? withoutTask(b, target.source)
       : b,
   );
   return insertIntoUnscheduled(without, moved, path);
@@ -402,18 +426,11 @@ export function nestTaskUnderBlock(
     // Remove from the source block first (in the same-block case this drains the
     // slot the task used to occupy, so `index` counts against the remainder).
     if (isOwner(b, source)) {
-      const remaining = b.tasks.filter(
-        (t) => !sameSource(t.source, target.source),
-      );
-      if (!sameBlock) return { ...b, tasks: remaining };
+      const remaining = withoutTask(b, target.source);
       // Same block: insert into the freshly-drained list at the clamped slot.
-      const at = Math.max(0, Math.min(index, remaining.length));
-      return { ...b, tasks: [...remaining.slice(0, at), moved, ...remaining.slice(at)] };
+      return sameBlock ? withTaskAt(remaining, moved, index) : remaining;
     }
-    if (isOwner(b, dest)) {
-      const at = Math.max(0, Math.min(index, b.tasks.length));
-      return { ...b, tasks: [...b.tasks.slice(0, at), moved, ...b.tasks.slice(at)] };
-    }
+    if (isOwner(b, dest)) return withTaskAt(b, moved, index);
     return b;
   });
 }
@@ -469,7 +486,7 @@ export function moveTaskAcrossDays(
 
   const from = fromBlocks.map((b) =>
     isOwner(b, source)
-      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      ? withoutTask(b, target.source)
       : b,
   );
   const to = insertIntoUnscheduled(toBlocks, moved, toPath);
@@ -766,7 +783,7 @@ function liftTask(
   const task = pinAssoc(nested, source, assoc);
   const without = blocks.map((b) =>
     isOwner(b, source)
-      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      ? withoutTask(b, target.source)
       : b,
   );
   return { without, task };
@@ -780,11 +797,7 @@ function insertIntoBlock(
   index: number,
 ): Block[] {
   if (!blocks.some((b) => isOwner(b, destination))) return blocks;
-  return blocks.map((b) => {
-    if (!isOwner(b, destination)) return b;
-    const at = Math.max(0, Math.min(index, b.tasks.length));
-    return { ...b, tasks: [...b.tasks.slice(0, at), task, ...b.tasks.slice(at)] };
-  });
+  return blocks.map((b) => (isOwner(b, destination) ? withTaskAt(b, task, index) : b));
 }
 
 /**

@@ -39,6 +39,13 @@ export interface BlockRoutine {
 	time: TimeRange;
 	assoc?: Association;
 	metadata?: string;
+	/**
+	 * The line still has the checkbox a block could once carry. It changes
+	 * nothing the routine makes; it only keeps the routines hash such a line
+	 * had (see `canonical` in apply.ts), so days set up from it don't go stale.
+	 * Editing the routine rewrites the line without it.
+	 */
+	legacyCheckbox?: true;
 	line: number;
 }
 
@@ -150,6 +157,7 @@ export function parseRoutines(markdown: string): ParsedRoutines {
 				time: time.range,
 				...(assoc ? { assoc } : {}),
 				...(metadata ? { metadata } : {}),
+				...(checked ? { legacyCheckbox: true as const } : {}),
 				line: i,
 			});
 			continue;

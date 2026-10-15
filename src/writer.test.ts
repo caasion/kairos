@@ -16,6 +16,7 @@ import {
 	unnestTask,
 } from "./writer";
 import { parseSchedule } from "./parser";
+import { serialize } from "./serializer";
 import type { Block, Task } from "./types";
 
 // A timed block with an explicit project association and two child tasks: one
@@ -639,5 +640,57 @@ describe("a task read from a legacy checkbox block line", () => {
 		expect(gymOf(next).tasks.map((t) => t.text)).toEqual(["Stretch"]);
 		const inbox = next.find((b) => b.title === "Unscheduled")!;
 		expect(inbox.tasks).toMatchObject([{ text: "Gym", assoc: { kind: "project", id: "Fitness" } }]);
+	});
+});
+
+// A note's `at` counts the tasks before it, so moving a task in or out of a
+// block must keep every note beside the tasks it was written next to.
+describe("notes when a task leaves or joins a block", () => {
+	const md = [
+		"## Schedule",
+		"- 07:00 - 08:00 Gym",
+		"\t- [ ] Warm up",
+		"\t- felt tired",
+		"\t- [x] Stretch",
+		"\t- done by eight",
+		"- 09:00 - 10:00 Work",
+		"\t- [ ] Email",
+		"\t- inbox zero",
+		"",
+	].join("\n");
+	const day = () => parseSchedule(md, "mon.md");
+	const section = (blocks: Block[]) => serialize(blocks).split("\n").slice(2).join("\n");
+
+	it("keeps a note under the task before it when a task is deleted", () => {
+		const blocks = day();
+		const gym = blocks[0]!;
+		expect(section(deleteTask(blocks, gym, gym.tasks[0]!))).toBe(
+			"- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n\t- done by eight\n" +
+				"- 09:00 - 10:00 Work\n\t- [ ] Email\n\t- inbox zero\n",
+		);
+	});
+
+	it("keeps notes in place when a task moves to another block or to Unscheduled", () => {
+		const blocks = day();
+		const [gym, work] = blocks as [Block, Block];
+		const nested = nestTaskUnderBlock(blocks, gym, gym.tasks[0]!, work, 0);
+		expect(section(nested)).toBe(
+			"- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n\t- done by eight\n" +
+				"- 09:00 - 10:00 Work\n\t- [ ] Warm up\n\t- [ ] Email\n\t- inbox zero\n",
+		);
+		const unnested = unnestTask(blocks, gym, gym.tasks[0]!, "mon.md");
+		expect(unnested[0]!.notes).toEqual([
+			{ text: "felt tired", at: 0 },
+			{ text: "done by eight", at: 1 },
+		]);
+	});
+
+	it("keeps a note after its task when another task is reordered past it", () => {
+		const blocks = day();
+		const gym = blocks[0]!;
+		const next = nestTaskUnderBlock(blocks, gym, gym.tasks[0]!, gym, 1);
+		expect(section(next).split("\n- 09:00")[0]).toBe(
+			"- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n\t- done by eight\n\t- [ ] Warm up",
+		);
 	});
 });

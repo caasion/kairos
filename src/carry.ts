@@ -16,8 +16,8 @@
 //
 // Pure and vault-free; the caller persists both days.
 
-import type { Block, Day, ISODate, Task, TaskStatus } from "./types";
-import { copyTaskIntoDay } from "./writer";
+import type { Block, Day, ISODate, TaskStatus } from "./types";
+import { copyTaskIntoDay, withoutTask } from "./writer";
 import { nextDraftLine } from "./draftLine";
 
 /** The frontmatter key recording which day a note's carried tasks came from. */
@@ -44,17 +44,16 @@ export function carryOver(
 	let moved = 0;
 
 	const from = fromBlocks.map((block) => {
-		const kept: Task[] = [];
+		let left = block;
 		for (const task of block.tasks) {
-			if (!carries(task.status)) {
-				kept.push(task);
-				continue;
-			}
+			if (!carries(task.status)) continue;
 			const assoc = task.assoc ?? block.assoc ?? null;
 			to = copyTaskIntoDay(to, task, toPath, nextDraftLine(), assoc);
+			// The block's notes stay beside the tasks that are left.
+			left = withoutTask(left, task.source);
 			moved++;
 		}
-		return kept.length === block.tasks.length ? block : { ...block, tasks: kept };
+		return left;
 	});
 
 	return moved === 0 ? { from: fromBlocks, to: toBlocks, moved } : { from, to, moved };

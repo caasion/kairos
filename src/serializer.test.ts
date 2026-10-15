@@ -92,7 +92,8 @@ describe("notes: bullets without a checkbox under a block", () => {
 });
 
 // A legacy checkbox block line ("- [x] 07:00 - 08:00 Gym") is read as a block
-// holding a task; the next write splits it into the two-line form.
+// holding a task; the next write splits it into the two-line form. An untimed
+// one is a task in Unscheduled, and is written there.
 describe("legacy checkbox block lines", () => {
 	const legacy = [
 		"## Schedule",
@@ -110,7 +111,7 @@ describe("legacy checkbox block lines", () => {
 		"\t- [x] Gym",
 		"\t- Felt strong",
 		"\t- [ ] Stretch",
-		"- Buy milk",
+		"- Unscheduled",
 		"\t- [ ] Buy milk",
 		"",
 	].join("\n");

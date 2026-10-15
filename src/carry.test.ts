@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { carryOver, previousDay } from "./carry";
 import { parseSchedule } from "./parser";
+import { serialize } from "./serializer";
 import type { Block, Day } from "./types";
 
 function day(path: string): Block[] {
@@ -65,6 +66,23 @@ describe("carryOver", () => {
 		expect(from[0]?.tasks).toEqual([]);
 		const gym = to.find((b) => b.title === "Unscheduled")!.tasks[0]!;
 		expect(gym).toMatchObject({ text: "Gym", status: " ", assoc: { kind: "project", id: "Fitness" } });
+	});
+
+	it("carries an untimed legacy checkbox line out of the inbox, leaving no block of its name", () => {
+		const blocks = parseSchedule("## Schedule\n\n- 09:00 - 10:00 Work\n- [ ] Call mom [D:Home]\n", "mon.md");
+		const { from, to, moved } = carryOver(blocks, [], "tue.md");
+		expect(moved).toBe(1);
+		expect(serialize(from)).toBe("## Schedule\n\n- 09:00 - 10:00 Work\n- Unscheduled\n");
+		expect(to.find((b) => b.title === "Unscheduled")!.tasks[0]).toMatchObject({
+			text: "Call mom",
+			assoc: { kind: "domain", id: "Home" },
+		});
+	});
+
+	it("keeps a note beside the done task it followed after the task above it carries", () => {
+		const md = "## Schedule\n- [ ] 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n";
+		const { from } = carryOver(parseSchedule(md, "mon.md"), [], "tue.md");
+		expect(serialize(from)).toBe("## Schedule\n\n- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n");
 	});
 
 	it("materializes an inherited association and keeps an explicit one", () => {

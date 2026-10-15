@@ -81,12 +81,56 @@ describe("parseSchedule with a legacy checkbox on a block line", () => {
 		expect(gym?.notes).toEqual([{ text: "Felt strong", at: 1 }]);
 	});
 
-	it("reads an untimed line as an untimed block with its task", () => {
-		const [, milk] = parseSchedule(md, "mon.md");
-		expect(milk).not.toHaveProperty("status");
-		expect(milk).toMatchObject({ title: "Buy milk", scheduled: false });
-		expect(milk?.time).toBeUndefined();
-		expect(milk?.tasks).toEqual([{ source: { path: "mon.md", line: 5 }, text: "Buy milk", status: "/" }]);
+	it("reads an untimed line as a task in a new Unscheduled block", () => {
+		const blocks = parseSchedule(md, "mon.md");
+		expect(blocks.map((b) => b.title)).toEqual(["Gym", "Unscheduled"]);
+		const inbox = blocks[1]!;
+		expect(inbox.scheduled).toBe(false);
+		expect(inbox.time).toBeUndefined();
+		expect(inbox.notes).toBeUndefined();
+		// The heading's line: no block or task has it.
+		expect(inbox.source).toEqual({ path: "mon.md", line: 0 });
+		expect(inbox.tasks).toEqual([{ source: { path: "mon.md", line: 5 }, text: "Buy milk", status: "/" }]);
+	});
+
+	it("keeps an untimed line's own association and metadata on its task", () => {
+		const [inbox] = parseSchedule("## Schedule\n- [ ] Call mom [D:Home] (sunday)\n", "x");
+		expect(inbox?.tasks[0]).toMatchObject({
+			text: "Call mom",
+			assoc: { kind: "domain", id: "Home" },
+			metadata: "sunday",
+		});
+		expect(inbox?.assoc).toBeUndefined();
+	});
+
+	it("puts untimed lines in the day's Unscheduled block, after its own tasks and notes", () => {
+		const blocks = parseSchedule(
+			[
+				"## Schedule",
+				"- [ ] Call mom",
+				"\t- [ ] Ask about Sunday",
+				"\t- left a message",
+				"- Unscheduled",
+				"\t- [ ] Water plants",
+				"\t- watered half",
+				"- 09:00 - 10:00 Work",
+				"- [x] Pay rent",
+			].join("\n"),
+			"x",
+		);
+		expect(blocks.map((b) => b.title)).toEqual(["Unscheduled", "Work"]);
+		const inbox = blocks[0]!;
+		expect(inbox.source.line).toBe(4);
+		expect(inbox.tasks.map((t) => [t.text, t.status, t.source.line])).toEqual([
+			["Water plants", " ", 5],
+			["Call mom", " ", 1],
+			["Ask about Sunday", " ", 2],
+			["Pay rent", "x", 8],
+		]);
+		expect(inbox.notes).toEqual([
+			{ text: "watered half", at: 1 },
+			{ text: "left a message", at: 3 },
+		]);
 	});
 });
 

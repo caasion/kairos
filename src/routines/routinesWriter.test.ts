@@ -300,8 +300,9 @@ describe("addRoutine", () => {
 	it("round-trips every routine of the file through draftOf", () => {
 		let md = "";
 		for (const r of routines(FILE)) md = addRoutine(md, draftOf(r));
+		// A legacy checkbox is the one thing a rewritten line doesn't keep.
 		const strip = (rs: Routine[]) =>
-			rs.map(({ line: _l, ...rest }) => rest).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+			rs.map(({ line: _l, ...rest }) => ({ ...rest, legacyCheckbox: undefined })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 		expect(strip(routines(md))).toEqual(strip(routines(FILE)));
 	});
 });

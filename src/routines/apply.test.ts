@@ -208,6 +208,15 @@ describe("routinesHash", () => {
 		expect(routinesHash(plain, MON)).toBe("h5iqjk");
 	});
 
+	it("keeps the hash a block routine with a leftover checkbox had", () => {
+		// Captured before blocks lost their checkbox: days that recorded it must
+		// not go stale until the routine is edited.
+		const legacy = parseRoutines("## Daily\n- [ ] 18:00 - 19:00 Gym [Fitness]\n").routines;
+		expect(routinesHash(legacy, MON)).toBe("6spcx4");
+		const edited = parseRoutines("## Daily\n- 18:00 - 19:00 Gym [Fitness]\n").routines;
+		expect(routinesHash(edited, MON)).not.toBe("6spcx4");
+	});
+
 	it("is stable for the same routines", () => {
 		expect(routinesHash(routines, MON)).toBe(routinesHash(parseRoutines(FILE).routines, MON));
 		expect(routinesHash(routines, MON)).toMatch(/^[0-9a-z]+$/);

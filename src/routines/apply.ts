@@ -203,10 +203,11 @@ function canonical(r: Routine): string {
 			r.title,
 			assocKey(r.assoc),
 			r.metadata ?? "",
-			// Once a block routine's checkbox ("x" when it had one). Blocks have no
-			// status now, but the empty slot stays so hashes recorded earlier still
-			// match.
-			"",
+			// Once whether a block routine was checkable. Blocks have no status
+			// now, but a line that still has the old checkbox fills the slot as
+			// before, so days that recorded the hash earlier don't go stale. Editing
+			// the routine drops the checkbox, which changes the hash then.
+			r.legacyCheckbox ? "x" : "",
 		].join("\u0001");
 	}
 	return [
