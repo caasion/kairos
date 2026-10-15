@@ -3,11 +3,10 @@
 	//
 	// It owns everything intrinsic to a task: the checkbox and its status, the
 	// editable description, and the (skeleton) association line beneath. What it
-	// does NOT own is context — the parent decides whether this row is a plain
-	// nested task or a checkable block's header (`checkable`), supplies the
-	// accent color, and handles persistence through the callbacks. That split is
-	// what lets the same component render inside a timeline block, a grid cell, a
-	// backlog list, etc. without knowing about any of them.
+	// does NOT own is context — the parent decides which actions the row offers,
+	// supplies the accent color, and handles persistence through the callbacks.
+	// That split is what lets the same component render inside a timeline block,
+	// a grid cell, a backlog list, etc. without knowing about any of them.
 	//
 	// Persistence is fire-and-forget: each edit calls back to the parent, which
 	// writes markdown and triggers a reparse. This component keeps no state that
@@ -30,10 +29,6 @@
 		// Resolved domain color for the checkbox accent. Omit (undefined) to keep
 		// the theme accent — do not pass the accent variable itself (see below).
 		color?: string;
-		// When true this row represents a checkable block's colocated task, so it
-		// styles a touch heavier and never shows its own delete (deleting is a
-		// block concern). When false it's an ordinary nested task.
-		checkable?: boolean;
 		// The task's association. Drives the add/edit association action, and is
 		// shown under the text unless `showAssociation` is false. `inherited`
 		// italicises it to signal it came from the block, not the task itself
@@ -52,8 +47,7 @@
 		// Open the association picker for this task, anchored at `rect`.
 		onEditAssoc?: (rect: DOMRect) => void;
 		// Open the block picker to nest this task under another block, anchored at
-		// `rect`. Omitted for a colocated (checkable-block) task, which can't be
-		// lifted off its line — the parent leaves it undefined there.
+		// `rect`. Omitted where the view offers no nesting.
 		onNest?: (rect: DOMRect) => void;
 		// Menu/tooltip label for the nest action. Callers where the task already has
 		// a parent block (e.g. the grid's scheduled tasks) pass "Change parent
@@ -61,8 +55,7 @@
 		nestLabel?: string;
 		// Move this task off its day and back into the backlog (spec §2.6). The
 		// parent lifts the task's text + materialized association into a fresh
-		// backlog entry and drops the day task. Omitted where the task can't leave
-		// its line (a colocated/checkable-block task) or where there is no backlog
+		// backlog entry and drops the day task. Omitted where there is no backlog
 		// to move it to (the backlog view itself).
 		onMoveToBacklog?: () => void;
 		// Turn this task into a routine ("Repeat…"): opens the rule picker and adds
@@ -76,7 +69,7 @@
 		meta?: Snippet;
 		// A long-press on the task body (never the checkbox) began a drag-to-nest.
 		// The parent takes over from here. Omitted where dragging isn't supported
-		// (e.g. a colocated task, or the grid) — then the body is just static.
+		// — then the body is just static.
 		onGrab?: (event: PointerEvent) => void;
 		// How many lines the text may wrap to before it's clamped with an
 		// ellipsis. 1 (the default) keeps the compact single-line row; roomier
@@ -87,29 +80,16 @@
 		// reports the pointer entering (true) or leaving (false) this row.
 		highlight?: Highlight;
 		onHoverChange?: (hovering: boolean) => void;
-		// Short muted labels on the task's own line. `lead` sits before the text
-		// (the Grid puts a checkable block's start time there); `trailing` after it
-		// (the Grid's rolled-up project chip), and gives way first when the line is
-		// tight, so the task text keeps its room.
-		lead?: string;
+		// A short muted label after the text on the task's own line (the Grid's
+		// rolled-up project chip). It gives way first when the line is tight, so
+		// the task text keeps its room.
 		trailing?: string;
-		// This row is a checkable block's own task, standing for the block (the
-		// Grid's block groups): offer "add a task to this block" in its action
-		// bar, in the corner, and in its menu.
-		onAddInside?: () => void;
-		addInsideLabel?: string;
 		// A routine template (the Routines view), not a task in a day: it looks
 		// like every other task, but its checkbox is inert and it has no status
 		// to set, since a template is never done.
 		template?: boolean;
 		// Menu/tooltip label for `onRepeat` ("Change when it repeats" on a routine).
 		repeatLabel?: string;
-		// Menu/tooltip label for delete. The Grid's checkable block row passes
-		// "Delete block": that row stands for the block, so delete removes it.
-		deleteLabel?: string;
-		// More items for the context menu, before the status items: the Grid's
-		// checkable block row adds its block's own (convert, open in Day view).
-		extraMenuItems?: (menu: Menu) => void;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -122,7 +102,6 @@
 		// `--interactive-accent: var(--interactive-accent)` (→ black), so leave it
 		// undefined and let the checkbox fall through to the theme.
 		color,
-		checkable = false,
 		association,
 		inherited = false,
 		showAssociation = true,
@@ -138,14 +117,9 @@
 		lines = 1,
 		highlight = null,
 		onHoverChange,
-		lead,
 		trailing,
-		onAddInside,
-		addInsideLabel = "Add task to block",
 		template = false,
 		repeatLabel = "Repeat…",
-		deleteLabel,
-		extraMenuItems,
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -361,15 +335,6 @@
 			);
 		}
 
-		if (onAddInside) {
-			menu.addItem((item) =>
-				item
-					.setTitle(addInsideLabel)
-					.setIcon("plus")
-					.onClick(() => onAddInside()),
-			);
-		}
-
 		if (onMoveToBacklog) {
 			menu.addItem((item) =>
 				item
@@ -387,8 +352,6 @@
 					.onClick(() => onRepeat()),
 			);
 		}
-
-		extraMenuItems?.(menu);
 
 		if (!template) {
 			menu.addSeparator();
@@ -413,15 +376,13 @@
 			);
 		}
 
-		if (!checkable) {
-			menu.addSeparator();
-			menu.addItem((item) =>
-				item
-					.setTitle(deleteLabel ?? "Delete")
-					.setIcon("trash")
-					.onClick(() => del()),
-			);
-		}
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle("Delete")
+				.setIcon("trash")
+				.onClick(() => del()),
+		);
 
 		menu.showAtMouseEvent(event);
 	}
@@ -431,7 +392,6 @@
 <div
 	class="k-task"
 	class:template
-	class:checkable
 	class:done
 	class:half
 	class:cancelled
@@ -453,16 +413,6 @@
 	     DOM (= tab) order is unchanged; CSS `order` sets the visual order.
 	     Tooltips open to the left of the stack (actions/tooltip.ts). -->
 	<div class="k-task-actions kairos-action-bar">
-		{#if onAddInside}
-			<button
-				class="k-task-action k-task-action-add"
-				aria-label={addInsideLabel}
-				use:tooltip={addInsideLabel}
-				onclick={() => onAddInside()}
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-			</button>
-		{/if}
 		<button
 			class="k-task-action"
 			aria-label={assocAction}
@@ -491,16 +441,14 @@
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
 			</button>
 		{/if}
-		{#if !checkable}
-			<button
-				class="k-task-action k-task-action-danger"
-				aria-label={deleteLabel ?? "Delete task"}
-				use:tooltip={deleteLabel ?? "Delete task"}
-				onclick={del}
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-			</button>
-		{/if}
+		<button
+			class="k-task-action k-task-action-danger"
+			aria-label="Delete task"
+			use:tooltip={"Delete task"}
+			onclick={del}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+		</button>
 	</div>
 
 	<div class="k-task-row" class:wrapped={lines > 1}>
@@ -510,8 +458,6 @@
 			onToggle={template ? () => {} : cycleStatus}
 			onCancel={template ? () => {} : cancelStatus}
 		/>
-		<!-- Shown while editing too: the time is context, not part of the text. -->
-		{#if lead}<span class="k-task-lead">{lead}</span>{/if}
 
 		{#if editing && lines > 1}
 			<!-- Wrapped text edits in a growing textarea so it wraps exactly as the
@@ -636,10 +582,6 @@
 		box-shadow: inset 3px 0 0 var(--kairos-link-color, var(--interactive-accent));
 	}
 
-	.k-task.checkable {
-		font-weight: 600;
-	}
-
 	/* ── Hover action bar ── */
 	.k-task-actions {
 		position: absolute;
@@ -654,15 +596,9 @@
 	}
 
 	/* Stack layout (styles.css): the first item by `order` sits in the corner:
-	   delete, then association and nest in DOM order. A checkable row has no
-	   delete, so association takes the corner. */
+	   delete, then association and nest in DOM order. */
 	.k-task-actions:global(.kairos-action-stack) .k-task-action-danger {
 		order: -1;
-	}
-	/* "Add task to block" takes the corner when present: on a block's own row
-	   it's the action you reach for, in the same spot as a group header's "+". */
-	.k-task-actions:global(.kairos-action-stack) .k-task-action-add {
-		order: -2;
 	}
 
 	.k-task-action {
@@ -727,19 +663,13 @@
 		align-items: flex-start;
 	}
 
-	/* Muted labels on the task's line (lead before the text, trailing after).
-	   Same size and line height as the task text, so a wrapped row's
-	   top-aligned items share one baseline. */
-	.k-task-lead,
+	/* The muted label after the task text. Same size and line height as the
+	   task text, so a wrapped row's top-aligned items share one baseline. */
 	.k-task-trailing {
 		font-size: 12px;
 		line-height: 1.4;
 		color: var(--text-muted);
 		white-space: nowrap;
-	}
-	.k-task-lead {
-		flex-shrink: 0;
-		font-variant-numeric: tabular-nums;
 	}
 	/* With a trailing label the text sizes to its content, and the label's huge
 	   shrink factor makes it give way (and truncate) before the text does. */

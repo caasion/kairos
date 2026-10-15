@@ -517,12 +517,11 @@
 	   Tabular digits keep the times lined up down a column. */
 	.grid-cell-block-header {
 		/* Start the header where task text starts (the row's 4px padding plus the
-		   checkbox and its gap), so its time lines up with a checkable block's
-		   time and with the task text under it. */
+		   checkbox and its gap), so its time lines up with the task text under it. */
 		padding-left: calc(4px + var(--kairos-meta-indent));
 		/* Room at the right end for the group's "+", so it never covers the title. */
 		padding-right: 24px;
-		/* The same type as a checkable block's time and the task text. */
+		/* The same type as the task text. */
 		font-size: 12px;
 		line-height: 1.4;
 		font-variant-numeric: tabular-nums;
@@ -596,8 +595,8 @@
 		background: var(--background-primary);
 		z-index: 2;
 	}
-	/* Stack layout: the "+" takes the corner, as on a checkable block's row,
-	   then delete; association and convert rise above them. */
+	/* Stack layout: the "+" takes the corner, then delete; association rises
+	   above them. */
 	.grid-cell-block-actions:global(.kairos-action-stack) .grid-cell-block-action-add {
 		order: -2;
 	}
@@ -765,8 +764,8 @@
 
 	/* The Unscheduled group's "+", in the group's top-right corner on its header
 	   line. It shows while the pointer is on that group, and stands down while a
-	   task's action bar is awake. (A block's "+" is in its header's action stack,
-	   or a checkable block's own row's.) */
+	   task's action bar is awake. (A block's "+" is in its header's action
+	   stack.) */
 	.grid-cell-group-add {
 		position: absolute;
 		top: 0;

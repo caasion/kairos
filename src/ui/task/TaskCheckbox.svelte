@@ -7,8 +7,8 @@
 	// on a normal click like any other non-open state.
 	//
 	// This component only reports intent through `onToggle` / `onCancel`; the
-	// parent owns persistence. It's shared by plain tasks and checkable block
-	// headers so the checkbox looks and behaves identically everywhere.
+	// parent owns persistence. Every task row uses it, so the checkbox looks and
+	// behaves identically everywhere.
 
 	import type { TaskStatus } from "../../types";
 	import { longpress } from "../actions/longpress";
