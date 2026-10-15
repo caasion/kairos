@@ -72,7 +72,6 @@ function task(
 			scheduled: false,
 		},
 		scheduled: false,
-		colocated: false,
 		...over,
 	};
 }
@@ -585,7 +584,6 @@ describe("blockGroups", () => {
 	const gym = {
 		source: { path, line: 4 },
 		title: "Gym",
-		status: " " as const,
 		assoc: dom("Health"),
 		tasks: [],
 		scheduled: true,
@@ -598,11 +596,12 @@ describe("blockGroups", () => {
 		scheduled: false,
 	};
 
-	it("orders groups by start time with Unscheduled last, the checkable block heading its own", () => {
+	it("orders groups by start time with Unscheduled last", () => {
 		const tasks = [
 			task({ text: "Draft", block: deepWork, owner: dom("Health"), scheduled: true }),
 			task({ text: "Edit", block: deepWork, owner: dom("Health"), scheduled: true }),
-			task({ source: gym.source, text: "Gym", block: gym, owner: dom("Health"), scheduled: true, colocated: true }),
+			// A task read from a legacy checkbox block line shares the block's line.
+			task({ source: gym.source, text: "Gym", block: gym, owner: dom("Health"), scheduled: true }),
 			task({ text: "Stretch", block: gym, owner: dom("Health"), scheduled: true }),
 			task({ text: "Book physio", block: inbox, owner: dom("Health") }),
 		];
@@ -610,19 +609,16 @@ describe("blockGroups", () => {
 		const row = buildRows(s, AS_OF).find((r) => r.kind === "domain")!;
 		const groups = blockGroups(row, tasks, s);
 		expect(groups.map((g) => g.block.title)).toEqual(["Gym", "Deep work", "Unscheduled"]);
-		expect(groups[0]!.head?.text).toBe("Gym");
-		expect(groups[0]!.tasks.map((t) => t.text)).toEqual(["Stretch"]);
-		expect(groups[1]!.head).toBeUndefined();
+		expect(groups[0]!.tasks.map((t) => t.text)).toEqual(["Gym", "Stretch"]);
 		expect(groups[1]!.tasks.map((t) => t.text)).toEqual(["Draft", "Edit"]);
 		expect(groups[2]!.tasks.map((t) => t.text)).toEqual(["Book physio"]);
 	});
 
-	it("shows a block in every row it has tasks in, with the checkbox only in its own", () => {
+	it("shows a block in every row it has tasks in", () => {
 		const school = domain({ id: "d-school", name: "School" });
 		const syde = project({ id: "p-syde", name: "SYDE 223", domain: "d-school" });
 		const lecture = { ...gym, title: "Lecture", assoc: dom("School") };
 		const tasks = [
-			task({ source: lecture.source, text: "Lecture", block: lecture, owner: dom("School"), scheduled: true, colocated: true }),
 			task({ text: "Take notes", block: lecture, owner: dom("School"), scheduled: true }),
 			task({ text: "Problem set", block: lecture, assoc: proj("SYDE 223"), owner: proj("SYDE 223"), scheduled: true }),
 		];
@@ -633,13 +629,11 @@ describe("blockGroups", () => {
 
 		const inSchool = blockGroups(schoolRow, tasks, s);
 		expect(inSchool).toHaveLength(1);
-		expect(inSchool[0]!.head?.text).toBe("Lecture");
 		expect(inSchool[0]!.tasks.map((t) => t.text)).toEqual(["Take notes"]);
 
 		const inSyde = blockGroups(sydeRow, tasks, s);
 		expect(inSyde).toHaveLength(1);
 		expect(inSyde[0]!.key).toBe(inSchool[0]!.key);
-		expect(inSyde[0]!.head).toBeUndefined();
 		expect(inSyde[0]!.tasks.map((t) => t.text)).toEqual(["Problem set"]);
 	});
 

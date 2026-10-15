@@ -2,17 +2,15 @@
 	// A block group's header in the routines list, drawn like the Grid's block
 	// header (decision 70) so the routines read the same way as every other
 	// view: `HH:MM Title`, small and muted, with the block's tasks under it and a
-	// "+" at the right end that adds a task to this block. A checkable block is
-	// its own row (an inert checkbox, then `HH:MM Title`), as in the Grid; an
-	// untimed home is just its title; Unscheduled is italic.
+	// "+" at the right end that adds a task to this block. An untimed home is
+	// just its title; Unscheduled is italic.
 	//
 	// Unlike the Grid's header it edits the block it heads, since the list is
 	// where routines change: select the time or title to edit it;
-	// the corner action bar and the context menu change the rule, association,
-	// checkbox, or delete it. Purely presentational: the parent writes.
+	// the corner action bar and the context menu change the rule or association,
+	// or delete it. Purely presentational: the parent writes.
 
 	import { Menu } from "obsidian";
-	import TaskCheckbox from "../task/TaskCheckbox.svelte";
 	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
 	import { autogrow, singleLine } from "../actions/autogrow";
@@ -24,19 +22,15 @@
 		timeText?: string;
 		/** The start time shown before the title ("09:00"). */
 		start?: string;
-		checkable?: boolean;
 		/** The block's association, shown at the end of the line in its colour. */
 		assocLabel?: string;
 		assocColor?: string;
-		/** Accent for the checkbox and the hover link tint (a domain colour). */
-		color?: string;
 		paused?: boolean;
 		onAdd: () => void;
 		onRename?: (title: string) => void;
 		onSetTime?: (text: string) => void;
 		onChangeRule?: () => void;
 		onEditAssoc?: (rect: DOMRect) => void;
-		onToggleCheckable?: () => void;
 		onDelete?: () => void;
 	}
 
@@ -45,17 +39,14 @@
 		title,
 		timeText,
 		start,
-		checkable = false,
 		assocLabel,
 		assocColor,
-		color,
 		paused = false,
 		onAdd,
 		onRename,
 		onSetTime,
 		onChangeRule,
 		onEditAssoc,
-		onToggleCheckable,
 		onDelete,
 	}: Props = $props();
 
@@ -96,12 +87,6 @@
 		menu.addItem((i) =>
 			i.setTitle(assocLabel ? "Edit association" : "Add association").setIcon("folder-symlink").onClick(assoc),
 		);
-		menu.addItem((i) =>
-			i
-				.setTitle(checkable ? "Make it a plain block" : "Make it checkable")
-				.setIcon("square-check")
-				.onClick(() => onToggleCheckable?.()),
-		);
 		menu.addSeparator();
 		menu.addItem((i) => i.setTitle("Delete").setIcon("trash").onClick(() => onDelete?.()));
 		menu.showAtMouseEvent(e);
@@ -112,7 +97,6 @@
 <div
 	class="rg-header"
 	class:block={isBlock}
-	class:checkable={isBlock && checkable}
 	class:unscheduled={kind === "unscheduled"}
 	class:paused
 	bind:this={rowEl}
@@ -127,9 +111,6 @@
 			<button class="rg-action" aria-label={assocLabel ? "Edit association" : "Add association"} use:tooltip={assocLabel ? "Edit association" : "Add association"} onclick={assoc}>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
 			</button>
-			<button class="rg-action" aria-label={checkable ? "Make it a plain block" : "Make it checkable"} use:tooltip={checkable ? "Make it a plain block" : "Make it checkable"} onclick={() => onToggleCheckable?.()}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="3"/><path d="m9 12 2 2 4-4"/></svg>
-			</button>
 			<button class="rg-action rg-action-danger" aria-label="Delete block" use:tooltip={"Delete block"} onclick={() => onDelete?.()}>
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
 			</button>
@@ -137,12 +118,6 @@
 	{/if}
 
 	<div class="rg-row">
-		{#if isBlock && checkable}
-			<span class="rg-check">
-				<TaskCheckbox status=" " {color} onToggle={() => {}} onCancel={() => {}} />
-			</span>
-		{/if}
-
 		{#if isBlock && editing === "time"}
 			<!-- svelte-ignore a11y_autofocus -->
 			<input
@@ -211,20 +186,6 @@
 		font-variant-numeric: tabular-nums;
 		color: var(--text-muted);
 	}
-	/* A checkable block is a task-like row: its checkbox sits in the indent. */
-	.rg-header.checkable .rg-row {
-		padding-left: 0;
-		color: var(--text-normal);
-	}
-	.rg-check {
-		display: flex;
-		width: calc(var(--kairos-meta-indent) - 6px);
-		flex-shrink: 0;
-	}
-	.rg-check :global(.k-checkbox) {
-		pointer-events: none;
-		opacity: 0.55;
-	}
 	.rg-header.unscheduled .rg-row {
 		font-style: italic;
 	}
@@ -286,8 +247,7 @@
 	}
 	.rg-header.paused .rg-time,
 	.rg-header.paused .rg-title,
-	.rg-header.paused .rg-assoc,
-	.rg-header.paused .rg-check {
+	.rg-header.paused .rg-assoc {
 		opacity: 0.5;
 	}
 

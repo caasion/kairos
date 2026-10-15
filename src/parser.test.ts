@@ -41,13 +41,52 @@ describe("parseTime", () => {
 
 describe("parseSchedule with a block ending at midnight", () => {
 	it("keeps the block timed and its title clean", () => {
-		const md = "## Schedule\n\n- [ ] 22:00 - 24:00 Late [Proj]\n\t- [ ] sub\n";
+		const md = "## Schedule\n\n- 22:00 - 24:00 Late [Proj]\n\t- [ ] sub\n";
 		const [block] = parseSchedule(md, "x");
 		expect(block?.scheduled).toBe(true);
 		expect(block?.time).toEqual({ start: 1320, end: 1440 });
 		expect(block?.title).toBe("Late");
-		expect(block?.status).toBe(" ");
 		expect(block?.tasks.map((t) => t.text)).toEqual(["sub"]);
+	});
+});
+
+// Blocks could once be checked ("- [x] 07:00 - 08:00 Gym"). Such a line now
+// reads as a plain block holding one task with the block's title and status.
+describe("parseSchedule with a legacy checkbox on a block line", () => {
+	const md = [
+		"## Schedule",
+		"",
+		"- [x] 07:00 - 08:00 Gym [Fitness] (legs)",
+		"\t- Felt strong",
+		"\t- [ ] Stretch",
+		"- [/] Buy milk",
+		"",
+	].join("\n");
+
+	it("reads a timed line as a statusless block with the task first", () => {
+		const [gym] = parseSchedule(md, "mon.md");
+		expect(gym).not.toHaveProperty("status");
+		expect(gym).toMatchObject({
+			title: "Gym",
+			assoc: { kind: "project", id: "Fitness" },
+			metadata: "legs",
+			time: { start: 420, end: 480 },
+			scheduled: true,
+		});
+		// The task inherits the block's association and keeps no metadata; it
+		// shares the block's line until the next write splits them.
+		expect(gym?.tasks[0]).toEqual({ source: { path: "mon.md", line: 2 }, text: "Gym", status: "x" });
+		expect(gym?.tasks[1]).toMatchObject({ text: "Stretch", status: " ", source: { line: 4 } });
+		// The note counts the task it now follows.
+		expect(gym?.notes).toEqual([{ text: "Felt strong", at: 1 }]);
+	});
+
+	it("reads an untimed line as an untimed block with its task", () => {
+		const [, milk] = parseSchedule(md, "mon.md");
+		expect(milk).not.toHaveProperty("status");
+		expect(milk).toMatchObject({ title: "Buy milk", scheduled: false });
+		expect(milk?.time).toBeUndefined();
+		expect(milk?.tasks).toEqual([{ source: { path: "mon.md", line: 5 }, text: "Buy milk", status: "/" }]);
 	});
 });
 

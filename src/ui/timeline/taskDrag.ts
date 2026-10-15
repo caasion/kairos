@@ -46,13 +46,9 @@ export interface TaskDragState {
   // Ctrl/Cmd held → drop a copy instead of moving. Tracked live (set on grab,
   // refreshed on every move) so the user can decide mid-drag; read at drop.
   duplicate: boolean;
-  // Option/Alt held → a drop on empty time time-boxes the task (it becomes a
-  // checkable block) instead of nesting it in a new block. Tracked like
-  // `duplicate`.
-  timebox: boolean;
 }
 
-/** A checkable block being dragged (grid block DnD). */
+/** A block being dragged (grid block DnD). */
 export interface BlockDragState {
   block: Block;
   /** The ISO date of the source day — used at drop time to find the source day. */

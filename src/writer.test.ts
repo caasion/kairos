@@ -9,10 +9,13 @@ import {
 	moveBlockAcrossDays,
 	nestTaskUnderBlock,
 	retimeBlock,
-	setBlockCheckable,
+	deleteTask,
 	setBlockTitle,
+	setTaskStatus,
+	setTaskText,
 	unnestTask,
 } from "./writer";
+import { parseSchedule } from "./parser";
 import type { Block, Task } from "./types";
 
 // A timed block with an explicit project association and two child tasks: one
@@ -182,25 +185,6 @@ describe("unnestTask", () => {
 		expect(inbox.source.line).toBeLessThan(0); // not yet on disk
 	});
 
-	it("is a no-op for a colocated task (a checkable block isn't unnestable)", () => {
-		// A checkable block: its own line carries the checkbox, so the 'task' the
-		// UI hands back shares the block's source line — it is not in `tasks`.
-		const block: Block = {
-			source: { path: "mon.md", line: 3 },
-			title: "Gym",
-			status: " ",
-			scheduled: true,
-			time: { start: 540, end: 600 },
-			tasks: [],
-		};
-		const colocated: Task = {
-			source: { path: "mon.md", line: 3 },
-			text: "Gym",
-			status: " ",
-		};
-		expect(unnestTask([block], block, colocated, "mon.md")).toEqual([block]);
-	});
-
 	it("does not mutate the input array", () => {
 		const block = sampleBlock("mon.md");
 		const input = [block];
@@ -316,25 +300,6 @@ describe("nestTaskUnderBlock", () => {
 		);
 		const outBlock = out.find((b) => b.title === "Deep work")!;
 		expect(outBlock.tasks.map((t) => t.text)).toEqual(["Emails", "Design"]);
-	});
-
-	it("is a no-op for a colocated task (a checkable block isn't liftable)", () => {
-		const block: Block = {
-			source: { path: "mon.md", line: 3 },
-			title: "Gym",
-			status: " ",
-			scheduled: true,
-			time: { start: 540, end: 600 },
-			tasks: [],
-		};
-		const dest = otherBlock("mon.md");
-		const colocated: Task = {
-			source: { path: "mon.md", line: 3 },
-			text: "Gym",
-			status: " ",
-		};
-		const input = [block, dest];
-		expect(nestTaskUnderBlock(input, block, colocated, dest)).toBe(input);
 	});
 
 	it("is a no-op when the destination block isn't in the array", () => {
@@ -625,42 +590,54 @@ describe("notes", () => {
 	});
 });
 
-describe("setBlockCheckable", () => {
-	it("gives a plain block an open checkbox, keeping everything else", () => {
-		const block = sampleBlock("mon.md");
-		const [next] = setBlockCheckable([block], { ...block }, true);
-		expect(next).toEqual({ ...block, status: " " });
+// A legacy checkbox block line ("- [x] 07:00 - 08:00 Gym") reads as a block
+// holding a task that shares the block's line. Every task edit must reach only
+// that task, never the block.
+describe("a task read from a legacy checkbox block line", () => {
+	const md = "## Schedule\n\n- [ ] 07:00 - 08:00 Gym [Fitness] (legs)\n\t- [ ] Stretch\n- 09:00 - 10:00 Deep work\n";
+	const day = () => parseSchedule(md, "mon.md");
+	const gymOf = (blocks: Block[]) => blocks.find((b) => b.time?.start === 420)!;
+	const blockFields = (b: Block) => ({ title: b.title, time: b.time, assoc: b.assoc, metadata: b.metadata });
+
+	it("sets its status and text without touching the block", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const legacy = gym.tasks[0]!;
+		const done = gymOf(setTaskStatus(blocks, gym, legacy, "x"));
+		expect(done.tasks.map((t) => [t.text, t.status])).toEqual([["Gym", "x"], ["Stretch", " "]]);
+		expect(blockFields(done)).toEqual(blockFields(gym));
+		const renamed = gymOf(setTaskText(blocks, gym, legacy, "Leg day"));
+		expect(renamed.tasks.map((t) => t.text)).toEqual(["Leg day", "Stretch"]);
+		expect(blockFields(renamed)).toEqual(blockFields(gym));
 	});
 
-	it("takes a checkable block's checkbox and its metadata away", () => {
-		const block: Block = {
-			...sampleBlock("mon.md"),
-			status: "x",
-			metadata: "!high",
-		};
-		const [next] = setBlockCheckable([block], { ...block }, false);
-		expect(next).not.toHaveProperty("status");
-		expect(next).not.toHaveProperty("metadata");
-		expect(next!.title).toBe("Deep work");
-		expect(next!.time).toEqual({ start: 540, end: 600 });
-		expect(next!.assoc).toEqual({ kind: "project", id: "Kairos" });
-		expect(next!.tasks).toHaveLength(2);
+	it("deletes it and keeps the block", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const next = gymOf(deleteTask(blocks, gym, gym.tasks[0]!));
+		expect(next.tasks.map((t) => t.text)).toEqual(["Stretch"]);
+		expect(blockFields(next)).toEqual(blockFields(gym));
 	});
 
-	it("matches the block by source, not identity, and leaves others alone", () => {
-		const target = sampleBlock("mon.md");
-		const other: Block = { ...sampleBlock("mon.md"), source: { path: "mon.md", line: 9 } };
-		const blocks = [target, other];
-		const next = setBlockCheckable(blocks, { ...target }, true);
-		expect(next).not.toBe(blocks);
-		expect(next[0]!.status).toBe(" ");
-		expect(next[1]).toBe(other);
+	it("nests it under another block, carrying the association it inherited", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const deep = blocks[1]!;
+		const next = nestTaskUnderBlock(blocks, gym, gym.tasks[0]!, deep);
+		expect(gymOf(next).tasks.map((t) => t.text)).toEqual(["Stretch"]);
+		expect(blockFields(gymOf(next))).toEqual(blockFields(gym));
+		expect(next[1]!.tasks).toEqual([
+			{ source: gym.source, text: "Gym", status: " ", assoc: { kind: "project", id: "Fitness" } },
+		]);
 	});
 
-	it("is a no-op when the block is already that way", () => {
-		const plain = sampleBlock("mon.md");
-		const done: Block = { ...sampleBlock("tue.md"), status: "x" };
-		expect(setBlockCheckable([plain], plain, false)[0]).toBe(plain);
-		expect(setBlockCheckable([done], done, true)[0]).toBe(done);
+	it("unnests it to Unscheduled, carrying the association it inherited", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const next = unnestTask(blocks, gym, gym.tasks[0]!, "mon.md");
+		expect(blockFields(gymOf(next))).toEqual(blockFields(gym));
+		expect(gymOf(next).tasks.map((t) => t.text)).toEqual(["Stretch"]);
+		const inbox = next.find((b) => b.title === "Unscheduled")!;
+		expect(inbox.tasks).toMatchObject([{ text: "Gym", assoc: { kind: "project", id: "Fitness" } }]);
 	});
 });

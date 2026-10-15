@@ -275,7 +275,7 @@ function dropByPath(
  * and notifies no one. This is what stops the view bouncing after an edit.
  *
  * Order-sensitive (block order is meaningful) and covers everything the UI
- * renders: time, title, status, association, metadata, and each block's tasks.
+ * renders: time, title, association, metadata, and each block's tasks.
  */
 export function daySignature(blocks: Block[]): string {
 	return JSON.stringify(blocks.map(blockSig));
@@ -285,7 +285,6 @@ function blockSig(b: Block): unknown {
 	return [
 		b.time ? [b.time.start, b.time.end] : null,
 		b.title,
-		b.status ?? null,
 		b.assoc ? [b.assoc.kind, b.assoc.id] : null,
 		b.metadata ?? null,
 		b.tasks.map(taskSig),

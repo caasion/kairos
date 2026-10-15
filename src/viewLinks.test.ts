@@ -67,7 +67,7 @@ describe("ViewLinks", () => {
 		expect(seen).toMatchObject({ kind: "block", line: 3 });
 		links.clearHover(hoverBlockTarget(inbox));
 		expect(seen).toMatchObject({ kind: "block", line: 3 });
-		links.setDrag({ from: { date: "2026-10-12", line: 4 }, drop: null, label: "x", duplicate: false, timebox: false });
+		links.setDrag({ from: { date: "2026-10-12", line: 4 }, drop: null, label: "x", duplicate: false });
 		expect(seen).toBeNull();
 		links.setHover(hoverBlockTarget(lectures));
 		expect(seen).toBeNull();

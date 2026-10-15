@@ -440,10 +440,6 @@
 	}
 
 	function realTask(owner: Block, target: Task): Task | undefined {
-		if (owner.status !== undefined && owner.source.line === target.source.line) {
-			// Colocated task: it *is* the block, patched via block fields below.
-			return undefined;
-		}
 		return owner.tasks.find((t) => t.source.line === target.source.line);
 	}
 
@@ -491,39 +487,25 @@
 	function handleSetTaskStatus(owner: Block, task: Task, status: TaskStatus) {
 		const real = ownerFor(owner);
 		if (!real) return;
-		if (real.status !== undefined && real.source.line === task.source.line) {
-			real.status = status; // colocated task → block's own status
-		} else {
-			const t = realTask(real, task);
-			if (!t) return;
-			t.status = status;
-		}
+		const t = realTask(real, task);
+		if (!t) return;
+		t.status = status;
 		void writeToDisk();
 	}
 
 	function handleSetTaskText(owner: Block, task: Task, text: string) {
 		const real = ownerFor(owner);
 		if (!real) return;
-		if (real.status !== undefined && real.source.line === task.source.line) {
-			real.title = text; // colocated task text is the block title
-		} else {
-			const t = realTask(real, task);
-			if (!t) return;
-			t.text = text;
-		}
+		const t = realTask(real, task);
+		if (!t) return;
+		t.text = text;
 		void writeToDisk();
 	}
 
 	function handleDeleteTask(owner: Block, task: Task) {
 		const real = ownerFor(owner);
 		if (!real) return;
-		if (real.status !== undefined && real.source.line === task.source.line) {
-			// Deleting a colocated task drops the block's checkbox, keeps the block.
-			delete real.status;
-			delete real.metadata;
-		} else {
-			real.tasks = real.tasks.filter((t) => t.source.line !== task.source.line);
-		}
+		real.tasks = real.tasks.filter((t) => t.source.line !== task.source.line);
 		void writeToDisk();
 	}
 
@@ -540,29 +522,6 @@
 		const real = ownerFor(block);
 		if (!real) return;
 		real.time = time; // in place — array position (and thus identity) unchanged
-		void writeToDisk();
-	}
-
-	function handleSetBlockStatus(block: Block, status: TaskStatus) {
-		const real = ownerFor(block);
-		if (real?.status === undefined) return;
-		real.status = status;
-		void writeToDisk();
-	}
-
-	// Convert a plain block into a checkable one (a colocated task) or back. The
-	// colocated task shares the block's line, so "becoming a task" is just adding
-	// a status; "becoming a plain block again" drops the status and any metadata
-	// that rode on that line (mirroring handleDeleteTask's colocated branch).
-	function handleToggleBlockCheckable(block: Block) {
-		const real = ownerFor(block);
-		if (!real) return;
-		if (real.status === undefined) {
-			real.status = " ";
-		} else {
-			delete real.status;
-			delete real.metadata;
-		}
 		void writeToDisk();
 	}
 
@@ -610,16 +569,10 @@
 	function handleSetTaskAssoc(owner: Block, task: Task, assoc: Association | null) {
 		const real = ownerFor(owner);
 		if (!real) return;
-		// A colocated task is the block itself; associate the block instead.
-		if (real.status !== undefined && real.source.line === task.source.line) {
-			if (assoc) real.assoc = assoc;
-			else delete real.assoc;
-		} else {
-			const t = realTask(real, task);
-			if (!t) return;
-			if (assoc) t.assoc = assoc;
-			else delete t.assoc;
-		}
+		const t = realTask(real, task);
+		if (!t) return;
+		if (assoc) t.assoc = assoc;
+		else delete t.assoc;
 		void writeToDisk();
 	}
 
@@ -765,7 +718,6 @@
 			top,
 			height: minutesToOffset(drop.time.end, geo) - top,
 			label: p.label,
-			timebox: p.timebox,
 			duplicate: p.duplicate,
 		};
 	});
@@ -995,7 +947,6 @@
 			ghostY: event.clientY,
 			label: task.text,
 			duplicate: event.ctrlKey || event.metaKey,
-			timebox: event.altKey,
 		};
 		// Any timeline is a target: this one, a Week column, another Day view.
 		taskDrop = hitTestTimeline(event);
@@ -1009,7 +960,6 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			duplicate: event.ctrlKey || event.metaKey,
-			timebox: event.altKey,
 		};
 		taskDrop = hitTestTimeline(event);
 		publishDrag();
@@ -1017,7 +967,7 @@
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
 	function dropMods(drag: TaskDragState) {
-		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: settings.dropBlockTitle };
+		return { duplicate: drag.duplicate, blockTitle: settings.dropBlockTitle };
 	}
 
 	function publishDrag() {
@@ -1029,7 +979,6 @@
 						drop: taskDrop,
 						label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
 						duplicate: drag.duplicate,
-						timebox: drag.timebox,
 					}
 				: null,
 		);
@@ -1346,12 +1295,12 @@
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
 					<span>Unscheduled</span>
-					<span class="us-count">{unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).filter((t) => !t.colocated).length, 0)}</span>
+					<span class="us-count">{unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).length, 0)}</span>
 				</div>
 				{#if unscheduledOpen}
 					{#each unscheduled as block (block.source.line)}
 						{@const tasks = tasksBySource.get(block.source.line) ?? []}
-						{#each tasks.filter((t) => !t.colocated) as task (task.source.line)}
+						{#each tasks as task (task.source.line)}
 							{@const r = task.owner ? resolve(task.owner) : undefined}
 							<TaskRow
 								{task}
@@ -1457,8 +1406,6 @@
 							onDeleteTask={handleDeleteTask}
 							onSetBlockTitle={handleSetBlockTitle}
 							onSetBlockTime={handleSetBlockTime}
-							onSetBlockStatus={handleSetBlockStatus}
-							onToggleCheckable={handleToggleBlockCheckable}
 							onAddTask={handleAddTask}
 							onAddNote={handleAddNote}
 							onSetNoteText={handleSetNoteText}
@@ -1488,7 +1435,6 @@
 						<!-- Where a task released here would land: a new block. -->
 						<div
 							class="kairos-drop-preview"
-							class:timebox={timePreview.timebox}
 							class:duplicate={timePreview.duplicate}
 							style={`top: ${timePreview.top}px; height: ${timePreview.height}px;`}
 						>

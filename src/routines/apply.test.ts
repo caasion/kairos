@@ -174,15 +174,40 @@ describe("applyRoutines", () => {
 		});
 	});
 
-	it("makes a checkable block routine with an open checkbox", () => {
+	it("makes a plain block from a timed routine line with a legacy checkbox", () => {
 		const { blocks } = applyRoutines([], routines, TUE, PATH);
 		const gym = blocks.find((b) => b.title === "Gym")!;
-		expect(gym.status).toBe(" ");
+		expect(gym).not.toHaveProperty("status");
+		expect(gym.tasks).toEqual([]);
 		expect(gym.assoc).toEqual({ kind: "project", id: "Fitness" });
+	});
+
+	it("doesn't count a block of the same title as a task routine's copy", () => {
+		// Only a task stands for a task routine; a block line never did once it
+		// lost its checkbox.
+		const block: Block = {
+			source: { path: PATH, line: 3 },
+			title: "Water the plants",
+			assoc: { kind: "domain", id: "Home" },
+			scheduled: true,
+			time: { start: 600, end: 630 },
+			tasks: [],
+		};
+		const { blocks } = applyRoutines([block], routines, SAT, PATH);
+		expect(inbox(blocks)!.tasks.map((t) => t.text)).toContain("Water the plants");
 	});
 });
 
 describe("routinesHash", () => {
+	it("keeps the hash a plain block routine had before blocks lost their checkbox", () => {
+		// Captured before the change: days that recorded it must not go stale.
+		const plain = parseRoutines(`## Weekdays
+- 07:30 - 08:00 Morning Routine [D:Health] (am)
+	- [ ] Take meds
+`).routines;
+		expect(routinesHash(plain, MON)).toBe("h5iqjk");
+	});
+
 	it("is stable for the same routines", () => {
 		expect(routinesHash(routines, MON)).toBe(routinesHash(parseRoutines(FILE).routines, MON));
 		expect(routinesHash(routines, MON)).toMatch(/^[0-9a-z]+$/);

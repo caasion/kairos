@@ -123,6 +123,18 @@ describe("updateRoutine in place", () => {
 		expect(find(next, "Morning Routine")).toMatchObject({ time: { start: 1380, end: 1440 } });
 	});
 
+	it("rewrites a legacy checkbox block routine without the checkbox when edited", () => {
+		const gym = find(FILE, "Gym");
+		const draft = draftOf(gym);
+		if (draft.kind !== "block") throw new Error();
+		const next = updateRoutine(FILE, gym, { ...draft, time: { start: 1020, end: 1080 } });
+		expect(changed(FILE, next)).toEqual({
+			removed: ["- [ ] 18:00 - 19:00 Gym [Fitness] 🔁 Tue, Thu"],
+			added: ["- 17:00 - 18:00 Gym [Fitness] 🔁 Tue, Thu"],
+		});
+		expect(find(next, "Gym")).toMatchObject({ kind: "block", time: { start: 1020, end: 1080 } });
+	});
+
 	it("sets and clears an association", () => {
 		const water = find(FILE, "Water the plants");
 		const { assoc: _drop, ...bare } = draftOf(water) as Extract<RoutineDraft, { kind: "task" }>;
@@ -235,17 +247,16 @@ describe("addRoutine", () => {
 		expect(next).toBe("## Monday and Wednesday\n- [ ] Rehearsal\n- [ ] Sing\n\n## Daily\n- [ ] Read\n");
 	});
 
-	it("adds a block with time, checkbox and association", () => {
+	it("adds a block with time and association", () => {
 		const next = addRoutine("", {
 			kind: "block",
 			rule: rule("tue, thu"),
 			title: "Gym",
 			time: { start: 1080, end: 1140 },
-			checkable: true,
 			assoc: { kind: "project", id: "Fitness" },
 		});
-		expect(next).toBe("## Tue, Thu\n- [ ] 18:00 - 19:00 Gym [Fitness]\n");
-		expect(find(next, "Gym")).toMatchObject({ checkable: true, time: { start: 1080, end: 1140 } });
+		expect(next).toBe("## Tue, Thu\n- 18:00 - 19:00 Gym [Fitness]\n");
+		expect(find(next, "Gym")).toMatchObject({ time: { start: 1080, end: 1140 } });
 	});
 
 	it("nests a homed task under the section's block of that title", () => {

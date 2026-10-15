@@ -23,6 +23,7 @@ import {
 	type IndexPaths,
 } from "./index";
 import { parseSchedule } from "./parser";
+import { serialize } from "./serializer";
 import { addTaskToUnscheduled, makeBlock } from "./writer";
 import type { BacklogEntry } from "./types";
 
@@ -115,6 +116,12 @@ describe("daySignature", () => {
 		expect(daySignature(base)).not.toBe(daySignature(done));
 		expect(daySignature(base)).not.toBe(daySignature(assoc));
 	});
+
+	it("matches a legacy checkbox block line and the two-line form it's written as", () => {
+		const legacy = parseSchedule(note("- [x] 07:00 - 08:00 Gym [Fitness]\n\t- [ ] Stretch"), "x");
+		const written = parseSchedule(serialize(legacy), "x");
+		expect(daySignature(written)).toBe(daySignature(legacy));
+	});
 });
 
 // ─── pure reindex ──────────────────────────────────────────────
@@ -163,9 +170,9 @@ describe("deriveLookups", () => {
 			1,
 		);
 		s = deriveLookups(s);
-		// task one inherits [Alpha]; the checkable Errand block surfaces as a
-		// task owning [D:Life]. A non-checkable childless block would contribute
-		// no task (only time), so it would not bucket here — see resolver.
+		// task one inherits [Alpha]; the legacy checkbox on the Errand line is
+		// read as a task inside it, which inherits [D:Life]. A childless block
+		// contributes no task (only time), so it would not bucket here.
 		expect(s.byProject.get("Alpha")).toBeTruthy();
 		expect(s.byDomain.get("Life")).toBeTruthy();
 	});

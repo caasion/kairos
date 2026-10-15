@@ -38,8 +38,6 @@
 		moveTaskAcrossDays,
 		nestTaskUnderBlock,
 		setBlockAssoc,
-		setBlockCheckable,
-		setBlockStatus,
 		setBlockTitle,
 		setTaskStatus,
 		setTaskText,
@@ -144,10 +142,9 @@
 	let dayViewDate = $state<ISODate | null>(null);
 	let hovered = $state<HoverTarget | null>(null);
 
-	// A Grid task's hover identity. A checkable block's own task *is* the block,
-	// so it reports the block — which also lights it in the timelines.
+	// A Grid task's hover identity.
 	function hoverTargetOf(task: ResolvedTask): HoverTarget {
-		return task.colocated ? hoverBlockTarget(task.block) : hoverTaskTarget(task, task.block);
+		return hoverTaskTarget(task, task.block);
 	}
 	function onTaskHover(task: ResolvedTask, on: boolean) {
 		const target = hoverTargetOf(task);
@@ -455,7 +452,7 @@
 		commit(task.date, day.path, deleteTask(day.blocks, task.block, task));
 	}
 
-	// ── Block edits (a block group's header, and a checkable block's own row) ──
+	// ── Block edits (a block group's header) ──
 	// The same actions as a timeline block's menu and action bar (blockMenu.ts),
 	// each a pure writer transform on the block's day, committed like a task's.
 
@@ -468,19 +465,11 @@
 	function onDeleteBlock(date: ISODate, block: Block) {
 		editBlock(date, (blocks) => deleteBlock(blocks, block));
 	}
-	function onToggleBlockCheckable(date: ISODate, block: Block) {
-		editBlock(date, (blocks) => setBlockCheckable(blocks, block, block.status === undefined));
-	}
-	function onSetBlockStatus(date: ISODate, block: Block, status: TaskStatus) {
-		editBlock(date, (blocks) => setBlockStatus(blocks, block, status));
-	}
 	function onSetBlockTitle(date: ISODate, block: Block, title: string) {
 		editBlock(date, (blocks) => setBlockTitle(blocks, block, title));
 	}
 
-	// Send a task back to the backlog (task context menu). Only offered on genuine
-	// nested tasks — a colocated task is a block, which can't leave its line. The
-	// shared helper lifts the task's text + materialized association into a fresh
+	// Send a task back to the backlog (task context menu). The shared helper lifts the task's text + materialized association into a fresh
 	// entry and commits the day removal + backlog append as one optimistic unit.
 	function onMoveToBacklog(task: ResolvedTask) {
 		const day = dayOf(task.date);
@@ -604,7 +593,6 @@
 			ghostY: event.clientY,
 			label: task.text,
 			duplicate: event.ctrlKey || event.metaKey,
-			timebox: event.altKey,
 		};
 		// Show the task's day in the Day view, so its blocks are there to drop on.
 		focusDay(task.date);
@@ -620,7 +608,6 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			duplicate: event.ctrlKey || event.metaKey,
-			timebox: event.altKey,
 		};
 		hitTestDrag(event);
 	}
@@ -641,13 +628,12 @@
 			drop: timelineDrop ?? groupDrop?.drop ?? null,
 			label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
 			duplicate: drag.duplicate,
-			timebox: drag.timebox,
 		});
 	}
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
 	function dropMods(drag: GridTaskDrag) {
-		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: settings.dropBlockTitle };
+		return { duplicate: drag.duplicate, blockTitle: settings.dropBlockTitle };
 	}
 
 	// Holding a drag on a column header shows that day in the Day view, so one
@@ -839,7 +825,7 @@
 			drag.owner,
 			drag.task,
 			at.drop,
-			{ duplicate: drag.duplicate, timebox: false },
+			{ duplicate: drag.duplicate },
 			assoc,
 		);
 	}
@@ -864,7 +850,7 @@
 	}
 
 	// ── Block drag (grid block DnD) ──
-	// Long-press on a block's header (or a checkable block's own row) lifts the
+	// Long-press on a block's header lifts the
 	// whole block — its time, title, and all child tasks — and drops it onto a
 	// new (date, row).
 	// Same-day drop: association-only change via setBlockAssoc.
@@ -1037,10 +1023,6 @@
 		// rather than adding a writer helper, mirroring how the timeline applies it.
 		const blocks = day.blocks.map((b) => {
 			if (b.source.line !== task.block.source.line) return b;
-			// Colocated task shares the block line.
-			if (b.status !== undefined && b.source.line === task.source.line) {
-				return assoc ? { ...b, assoc } : stripAssoc(b);
-			}
 			return {
 				...b,
 				tasks: b.tasks.map((t) =>
@@ -1419,8 +1401,6 @@
 								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, row.key, e)}
 								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}
 								onDeleteBlock={(block: Block) => onDeleteBlock(date, block)}
-								onToggleBlockCheckable={(block: Block) => onToggleBlockCheckable(date, block)}
-								onSetBlockStatus={(block: Block, status: TaskStatus) => onSetBlockStatus(date, block, status)}
 								onSetBlockTitle={(block: Block, title: string) => onSetBlockTitle(date, block, title)}
 								dragTaskKey={taskDrag ? sourceKey(taskDrag.task.source) : undefined}
 								dragBlockKey={blockDrag ? sourceKey(blockDrag.block.source) : undefined}

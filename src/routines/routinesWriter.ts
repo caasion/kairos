@@ -44,7 +44,6 @@ export type RoutineDraft =
 			rule: Rule;
 			title: string;
 			time: TimeRange;
-			checkable: boolean;
 			assoc?: Association;
 			metadata?: string;
 	  }
@@ -77,7 +76,6 @@ export function draftOf(r: Routine): RoutineDraft {
 			rule: r.rule,
 			title: r.title,
 			time: r.time,
-			checkable: r.checkable,
 			...(r.assoc ? { assoc: r.assoc } : {}),
 			...(r.metadata ? { metadata: r.metadata } : {}),
 		};
@@ -113,7 +111,7 @@ export function scheduleInNewBlock(
 	time: TimeRange,
 ): string {
 	locate(markdown, task);
-	const withBlock = addRoutine(markdown, { kind: "block", rule: task.rule, title, time, checkable: false });
+	const withBlock = addRoutine(markdown, { kind: "block", rule: task.rule, title, time });
 	const moved = parseRoutines(withBlock).routines.find(
 		(r): r is TaskRoutine =>
 			r.kind === "task" &&
@@ -259,7 +257,6 @@ function renderLine(draft: RoutineDraft): string {
 			time: draft.time,
 			tasks: [],
 			scheduled: true,
-			...(draft.checkable ? { status: " " as const } : {}),
 			...(draft.assoc ? { assoc: draft.assoc } : {}),
 			...(draft.metadata ? { metadata: draft.metadata } : {}),
 		};

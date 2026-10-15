@@ -128,15 +128,9 @@ function compatibleAssoc(a: Association | undefined, b: Association | undefined)
 
 function hasTask(blocks: Block[], r: TaskRoutine): boolean {
 	const assoc = effectiveAssoc(r);
-	return blocks.some((b) => {
-		// A checkable block's own line is a task too.
-		if (b.status !== undefined && b.title === r.text && compatibleAssoc(b.assoc, assoc)) {
-			return true;
-		}
-		return b.tasks.some(
-			(t) => t.text === r.text && compatibleAssoc(t.assoc ?? b.assoc, assoc),
-		);
-	});
+	return blocks.some((b) =>
+		b.tasks.some((t) => t.text === r.text && compatibleAssoc(t.assoc ?? b.assoc, assoc)),
+	);
 }
 
 // ─── building ──────────────────────────────────────────────────
@@ -148,7 +142,6 @@ function makeRoutineBlock(r: BlockRoutine, path: string): Block {
 		...(r.assoc ? { assoc: r.assoc } : {}),
 		...(r.metadata ? { metadata: r.metadata } : {}),
 		tasks: [],
-		...(r.checkable ? { status: " " as const } : {}),
 		scheduled: true,
 		time: r.time,
 	};
@@ -210,7 +203,10 @@ function canonical(r: Routine): string {
 			r.title,
 			assocKey(r.assoc),
 			r.metadata ?? "",
-			r.checkable ? "x" : "",
+			// Once a block routine's checkbox ("x" when it had one). Blocks have no
+			// status now, but the empty slot stays so hashes recorded earlier still
+			// match.
+			"",
 		].join("\u0001");
 	}
 	return [

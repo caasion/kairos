@@ -88,7 +88,7 @@
 	async function add(rule: Rule, kind: "task" | "block", home?: string) {
 		const draft: RoutineDraft =
 			kind === "block"
-				? { kind, rule, title: NEW_BLOCK, time: { start: 540, end: 600 }, checkable: false }
+				? { kind, rule, title: NEW_BLOCK, time: { start: 540, end: 600 } }
 				: { kind, rule, text: NEW_TASK, ...(home ? { home } : {}) };
 		await store.edit((md) => addRoutine(md, draft));
 	}
@@ -151,11 +151,6 @@
 			...(assoc ? { assoc } : {}),
 			...(home ? { home } : {}),
 		});
-	}
-
-	function toggleCheckable(r: Routine) {
-		if (r.kind !== "block") return;
-		void update(r, { ...(draftOf(r) as Extract<RoutineDraft, { kind: "block" }>), checkable: !r.checkable });
 	}
 
 	function changeRule(r: Routine) {
@@ -399,17 +394,14 @@
 									title={b.title}
 									start={formatClock(b.time.start)}
 									timeText={timeText(b)}
-									checkable={b.checkable}
 									assocLabel={b.assoc ? ba?.displayName || b.assoc.id : undefined}
 									assocColor={ba?.color}
-									color={ba?.color}
 									paused={isPaused(b)}
 									onAdd={() => void add(group.rule, "task", b.title)}
 									onRename={(title) => setName(b, title)}
 									onSetTime={(text) => setTime(b, text)}
 									onChangeRule={() => changeRule(b)}
 									onEditAssoc={(rect) => openAssoc(b, rect)}
-									onToggleCheckable={() => toggleCheckable(b)}
 									onDelete={() => void remove(b)}
 								/>
 							{:else}

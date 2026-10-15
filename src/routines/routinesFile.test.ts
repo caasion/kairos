@@ -33,7 +33,6 @@ describe("parseRoutines", () => {
 		expect(morning).toMatchObject({
 			kind: "block",
 			time: { start: 450, end: 480 },
-			checkable: false,
 			rule: { kind: "weekly", days: [1, 2, 3, 4, 5] },
 		});
 	});
@@ -47,8 +46,9 @@ describe("parseRoutines", () => {
 		const stretch = routines.find((r) => r.kind === "task" && r.text === "Stretch");
 		expect(stretch).toMatchObject({ rule: { days: [0, 1, 2, 3, 4, 5, 6] } });
 		const gym = routines.find((r) => r.kind === "block" && r.title === "Gym");
+		// A checkbox on a timed line is ignored: a block has no status.
+		expect(gym).not.toHaveProperty("checkable");
 		expect(gym).toMatchObject({
-			checkable: true,
 			assoc: { kind: "project", id: "Fitness" },
 			rule: { kind: "weekly", days: [2, 4] },
 		});

@@ -8,15 +8,14 @@
 	//
 	// Tasks sit under their block's header, in time order with Unscheduled last,
 	// and a timed block shows in its own row even with no tasks there (decision
-	// 95). A checkable block's own task is its header. The header does what the
+	// 95). The header does what the
 	// old per-task badge did: Ctrl/Cmd+click opens the block in the Day view,
 	// pointing at it lights the block in other views, and a task dropped on it
 	// nests there. Nothing renders under a task (decision 72).
 	//
-	// A block's header (or a checkable block's own row) carries the block's own
-	// actions too, as on the timeline: its context menu (shared via
-	// blockMenu.ts), an action stack in its corner (add task, association,
-	// convert, delete), a click on the title to rename it, and a long-press to
+	// A block's header carries the block's own actions too, as on the timeline:
+	// its context menu (shared via blockMenu.ts), an action stack in its corner
+	// (add task, association, delete), a click on the title to rename it, and a long-press to
 	// drag it to another row or day.
 
 	import { Menu } from "obsidian";
@@ -27,7 +26,7 @@
 	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
 	import { requestRepeat } from "../../routines/repeat";
-	import { addBlockMenuItems, addConvertItem, addRevealItem } from "../blockMenu";
+	import { addBlockMenuItems } from "../blockMenu";
 	import { actionZone } from "../actions/actionZone";
 	import { grabOnHold } from "../actions/grabOnHold";
 	import { tooltip } from "../actions/tooltip";
@@ -53,20 +52,16 @@
 		// Jump to a block in the Day view (its header's ctrl+click).
 		onRevealBlock: (block: Block) => void;
 		// Open the block picker to change a nested task's parent block, anchored at
-		// `rect`. Wired only for non-colocated tasks (a checkable block can't move).
+		// `rect`.
 		onNest: (task: ResolvedTask, anchor: DOMRect) => void;
-		// Move a task off this day and back into the backlog. Wired only for
-		// non-colocated tasks — a colocated task is a block, which can't leave
-		// its line.
+		// Move a task off this day and back into the backlog.
 		onMoveToBacklog: (task: ResolvedTask) => void;
 		// A long-press on a regular task began a grid drag-to-reschedule.
 		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
-		// A long-press on a block's header or a colocated task (checkable block)
-		// began a block drag.
+		// A long-press on a block's header began a block drag.
 		onBlockGrab?: (block: Block, event: PointerEvent) => void;
 		// While a drag is live: dim the source item. dragTaskKey for task drags,
-		// dragBlockKey for block drags (a block's own row is its colocated task).
-		// Both are "path:line" (sourceKey), so the same line in another day's
+		// dragBlockKey for block drags. Both are "path:line" (sourceKey), so the same line in another day's
 		// note doesn't dim too.
 		dragTaskKey?: string;
 		dragBlockKey?: string;
@@ -92,13 +87,10 @@
 		// some row or view), and a header coming under / leaving the pointer.
 		isBlockLinked?: (block: Block) => boolean;
 		onBlockHover?: (block: Block, on: boolean) => void;
-		// A block's own edits, from its header's menu and action stack (and a
-		// checkable block's own row): the association picker anchored at `rect`,
-		// delete, convert to/from a task, status, rename.
+		// A block's own edits, from its header's menu and action stack: the
+		// association picker anchored at `rect`, delete, rename.
 		onEditBlockAssoc?: (block: Block, anchor: DOMRect) => void;
 		onDeleteBlock?: (block: Block) => void;
-		onToggleBlockCheckable?: (block: Block) => void;
-		onSetBlockStatus?: (block: Block, status: TaskStatus) => void;
 		onSetBlockTitle?: (block: Block, title: string) => void;
 	}
 
@@ -133,8 +125,6 @@
 		onBlockHover,
 		onEditBlockAssoc,
 		onDeleteBlock,
-		onToggleBlockCheckable,
-		onSetBlockStatus,
 		onSetBlockTitle,
 	}: Props = $props();
 
@@ -151,13 +141,12 @@
 		return isUnscheduledBlock(group.block) ? "unscheduled" : group.block.source.line;
 	}
 
-	// Each block group's offset into the cell's flat task order (its own task
-	// first, then its nested ones), so `data-task-index` runs across the cell.
+	// Each block group's offset into the cell's flat task order, so `data-task-index` runs across the cell.
 	const blockOffsets = $derived.by(() => {
 		let n = 0;
 		return blockGroups.map((g) => {
 			const at = n;
-			n += (g.head ? 1 : 0) + g.tasks.length;
+			n += g.tasks.length;
 			return at;
 		});
 	});
@@ -194,7 +183,7 @@
 		onRevealBlock(group.block);
 	}
 
-	// ── Block actions (a header's menu and stack; a checkable block's row) ──
+	// ── Block actions (a header's menu and stack) ──
 
 	// Each block header, by group key: the association picker's anchor (the
 	// stack may be portaled out of the header, so a button can't find it).
@@ -215,19 +204,10 @@
 		addBlockMenuItems(menu, block, {
 			onAddTask: canCreate && onCreateInBlock ? () => onCreateInBlock(block) : undefined,
 			onEditAssoc: () => editBlockAssoc(group),
-			onToggleCheckable: () => onToggleBlockCheckable?.(block),
-			onSetStatus: (status) => onSetBlockStatus?.(block, status),
 			onDelete: () => onDeleteBlock?.(block),
 			onReveal: block.time ? () => onRevealBlock(block) : undefined,
 		});
 		menu.showAtMouseEvent(e);
-	}
-
-	// A checkable block's own row is a task row, so it keeps the task's menu;
-	// these add what only the block has.
-	function headMenuItems(menu: Menu, block: Block) {
-		if (onToggleBlockCheckable) addConvertItem(menu, block, () => onToggleBlockCheckable(block));
-		if (block.time) addRevealItem(menu, () => onRevealBlock(block));
 	}
 
 	// Rename: a click on a header's title edits it in place, like a task's text.
@@ -267,18 +247,11 @@
 	function textOf(task: Task, text: string) {
 		onSetText(task as ResolvedTask, text);
 	}
-	// A checkable block's own row stands for the block, so its delete removes
-	// the block (deleteTask would only take its checkbox away).
 	function deleteOf(task: Task) {
-		const t = task as ResolvedTask;
-		if (t.colocated && onDeleteBlock) onDeleteBlock(t.block);
-		else onDelete(t);
+		onDelete(task as ResolvedTask);
 	}
 	function grabOf(task: Task, event: PointerEvent) {
 		if (onTaskGrab) onTaskGrab(task as ResolvedTask, event);
-	}
-	function blockGrabOf(task: Task, event: PointerEvent) {
-		if (onBlockGrab) onBlockGrab((task as ResolvedTask).block, event);
 	}
 
 </script>
@@ -289,11 +262,11 @@
 		     dim/hatch reads the column as past context, not a place to add work. -->
 		<div class="grid-cell-inactive-badge" title="Not active on this day"></div>
 	{/if}
-	{#snippet taskItem(task: ResolvedTask, i: number, lead?: string, addInside?: () => void, addLabel?: string)}
+	{#snippet taskItem(task: ResolvedTask, i: number)}
 		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
-			class:dragging-origin={dragTaskKey === sourceKey(task.source) || (task.colocated && dragBlockKey === sourceKey(task.block.source))}
+			class:dragging-origin={dragTaskKey === sourceKey(task.source)}
 			data-task-index={i}
 		>
 			<Task_
@@ -309,21 +282,12 @@
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
-				deleteLabel={task.colocated && onDeleteBlock ? "Delete block" : undefined}
-				extraMenuItems={task.colocated ? (menu: Menu) => headMenuItems(menu, task.block) : undefined}
-				onNest={!task.colocated && onNest ? (rect) => onNest(task, rect) : undefined}
+				onNest={(rect) => onNest(task, rect)}
 				nestLabel="Change parent block"
-				onMoveToBacklog={task.colocated
-					? undefined
-					: () => onMoveToBacklog(task)}
+				onMoveToBacklog={() => onMoveToBacklog(task)}
 				onRepeat={() => requestRepeat(task, task.block)}
-				{lead}
-				onAddInside={addInside}
-				addInsideLabel={addLabel}
 				trailing={chipFor?.(task)}
-				onGrab={task.colocated
-					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined
-					: onTaskGrab ? (e) => grabOf(task, e) : undefined}
+				onGrab={onTaskGrab ? (e) => grabOf(task, e) : undefined}
 				highlight={highlightOf?.(task) ?? null}
 				onHoverChange={onHover ? (on: boolean) => onHover(task, on) : undefined}
 			/>
@@ -342,19 +306,7 @@
 			data-grid-drop-date={date}
 			data-grid-drop-block={isUnscheduledBlock(group.block) ? undefined : group.block.source.line}
 		>
-			{#if group.head}
-				<!-- A checkable block heads its own group: its task row, with the
-				     start time before the title. -->
-				<!-- Its "+" lives in the row's own action bar, in the top-right
-				     corner, so it doesn't fight the row's corner zone. -->
-				{@render taskItem(
-					group.head,
-					at,
-					group.block.time ? formatClock(group.block.time.start) : undefined,
-					canCreate && onCreateInBlock ? () => onCreateInBlock(group.block) : undefined,
-					`Add task to ${group.block.title}`,
-				)}
-			{:else if isUnscheduledBlock(group.block)}
+			{#if isUnscheduledBlock(group.block)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="grid-cell-group-header grid-cell-block-header unscheduled"
@@ -389,8 +341,7 @@
 					use:grabOnHold={onBlockGrab ? (e) => onBlockGrab(block, e) : undefined}
 				>
 					<!-- Action stack, woken from the header's top-right corner: the
-					     block's "+" in the corner (where it sits on a checkable
-					     block's row), then delete, association, convert. A press
+					     block's "+" in the corner, then delete and association. A press
 					     here never arms the header's drag: grabOnHold skips presses
 					     on the bar and the rename input (a stopPropagation here
 					     can't, as Svelte delegates pointerdown to the root). -->
@@ -415,18 +366,6 @@
 							onclick={() => editBlockAssoc(group)}
 						>
 							<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-						</button>
-						<button
-							class="grid-cell-block-action"
-							aria-label={block.status !== undefined ? "Convert to block" : "Convert to task"}
-							use:tooltip={block.status !== undefined ? "Convert to block" : "Convert to task"}
-							onclick={() => onToggleBlockCheckable?.(block)}
-						>
-							{#if block.status !== undefined}
-								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
-							{:else}
-								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
-							{/if}
 						</button>
 						<button
 							class="grid-cell-block-action grid-cell-block-action-danger"
@@ -463,7 +402,7 @@
 				</div>
 			{/if}
 			{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
-				{@render taskItem(task, at + (group.head ? 1 : 0) + j)}
+				{@render taskItem(task, at + j)}
 			{/each}
 			{#if canCreate && onCreateInBlock && isUnscheduledBlock(group.block)}
 				<!-- Unscheduled's "+", at the right end of its header line (a

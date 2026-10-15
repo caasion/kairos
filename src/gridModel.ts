@@ -358,14 +358,7 @@ export interface BlockGroup {
 	/** Stable key for keyed rendering: the block's note path and line. */
 	key: string;
 	block: Block;
-	/**
-	 * The checkable block's own task, when it renders on this row. It is then
-	 * the group's header (checkbox, time, title). A checkable block whose own
-	 * task belongs to another row gets a plain header here, so there's only one
-	 * checkbox to tick.
-	 */
-	head?: ResolvedTask;
-	/** The block's nested tasks on this row, in note order. */
+	/** The block's tasks on this row, in note order. */
 	tasks: ResolvedTask[];
 }
 
@@ -404,8 +397,7 @@ export function blockGroups(
 			group = { key, block: t.block, tasks: [] };
 			groups.set(key, group);
 		}
-		if (t.colocated) group.head = t;
-		else group.tasks.push(t);
+		group.tasks.push(t);
 	}
 	// A block is time spent on its own row's area, so it shows there even when
 	// none of its tasks do (decision 95).

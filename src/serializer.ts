@@ -12,11 +12,12 @@
 //
 // Line grammar produced (mirrors the parser's, metadata right of the title):
 //
-//   <indent> "- " [ "[" status "] " ] [ HH:MM " - " HH:MM " " ] title
-//            [ " [" Assoc "]" ] [ " (" tag ")" ]
+//   block:  "- " [ HH:MM " - " HH:MM " " ] title [ " [" Assoc "]" ] [ " (" tag ")" ]
+//   task:   "\t- [" status "] " text [ " [" Assoc "]" ] [ " (" tag ")" ]
+//   note:   "\t- " text
 //
-// Associations serialize as `[Project]` or `[D:Domain]`; a checkbox on a block
-// line comes from that block's colocated `task`. Nested tasks and notes are
+// Associations serialize as `[Project]` or `[D:Domain]`. A block has no status,
+// so a block line never carries a checkbox. Nested tasks and notes are
 // indented one tab under their block, each note after the tasks it followed.
 //
 // Fidelity note: the parser strips a trailing `[...]` or `(...)` off any title,
@@ -57,14 +58,11 @@ export { serialize, serializeBlock, serializeTask };
 function serializeBlock(block: Block): string[] {
   const lines: string[] = [];
 
-  // The block line. `status` (the checkbox) is present iff the block is
-  // checkable; `metadata` is the trailing paren note. Both live directly on the
-  // block now, so there is a single source for the line's text — no title/text
-  // pair to drift apart.
+  // The block line: time, title, association and the trailing paren note
+  // (`metadata`). No checkbox — that belongs to tasks.
   lines.push(
     "- " +
       renderBody({
-        status: block.status,
         time: block.time,
         title: block.title,
         assoc: block.assoc,

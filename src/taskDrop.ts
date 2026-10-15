@@ -9,9 +9,8 @@
 //   drop on a block      same day → nest at the slot; other day → move there
 //   drop on Unscheduled  out of its block, into the day's Unscheduled (made if
 //                        the day has none)
-//   drop on empty time   a new block at that time (see writer's NewBlockMode)
+//   drop on empty time   a new block at that time, holding the task
 //   Ctrl/Cmd held        drop a copy instead; the source day isn't touched
-//   Option/Alt held      on empty time, time-box: the task becomes the block
 
 import type { Association, Block, ISODate, Task, TimeRange } from "./types";
 import { nextDraftLine } from "./draftLine";
@@ -25,7 +24,6 @@ import {
 	unnestTask,
 	scheduleTaskInNewBlock,
 	scheduleTaskInNewBlockAcrossDays,
-	type NewBlockMode,
 } from "./writer";
 
 /** A drop position on a timeline, found by hit-testing its DOM. */
@@ -64,7 +62,6 @@ export interface DragSource {
 /** Modifier state at release. */
 export interface DropModifiers {
 	duplicate: boolean;
-	timebox: boolean;
 	/**
 	 * The title a block made by a drop on empty time gets (a setting). Empty or
 	 * absent: the task's project or domain name.
@@ -77,10 +74,6 @@ export type DropOutcome =
 	| { kind: "day"; day: DayBlocks }
 	| { kind: "cross"; from: DayBlocks; to: DayBlocks };
 
-function modeOf(mods: DropModifiers): NewBlockMode {
-	return mods.timebox ? "timebox" : "container";
-}
-
 /** True for the day's Unscheduled inbox (an untimed block by that name). */
 function isInbox(block: Block): boolean {
 	return block.time === undefined && block.title === "Unscheduled";
@@ -89,8 +82,8 @@ function isInbox(block: Block): boolean {
 /**
  * Decide what releasing `source`'s task on `drop` (a position on `target`'s
  * timeline, or a Grid block group) writes. Null when nothing changes: the
- * destination block is gone, the task can't be lifted (a checkable block's own
- * checkbox), or the result equals the input.
+ * destination block is gone, the task isn't in its owner, or the result equals
+ * the input.
  *
  * `assoc` re-files the task as it moves (a drop in another Grid row): an
  * association, or null for none. Omitted, the task keeps the association it
@@ -104,7 +97,6 @@ export function planTaskDrop(
 	assoc?: Association | null,
 ): DropOutcome | null {
 	const { owner, task } = source;
-	const mode = modeOf(mods);
 	const destination =
 		drop.kind === "block"
 			? target.blocks.find((b) => b.source.line === drop.blockLine)
@@ -120,7 +112,7 @@ export function planTaskDrop(
 				? copyTaskIntoBlock(target.blocks, task, copyAssoc, destination!, drop.index)
 				: drop.kind === "unscheduled"
 					? copyTaskIntoDay(target.blocks, task, target.path, nextDraftLine(), copyAssoc)
-					: copyTaskIntoNewBlock(target.blocks, task, copyAssoc, target.path, drop.time, mode, mods.blockTitle);
+					: copyTaskIntoNewBlock(target.blocks, task, copyAssoc, target.path, drop.time, mods.blockTitle);
 		return blocks === target.blocks ? null : { kind: "day", day: { ...target, blocks } };
 	}
 
@@ -133,7 +125,7 @@ export function planTaskDrop(
 				? nestTaskUnderBlock(day.blocks, owner, task, destination!, drop.index, assoc)
 				: drop.kind === "unscheduled"
 					? unnestTask(day.blocks, owner, task, day.path, assoc)
-					: scheduleTaskInNewBlock(day.blocks, owner, task, drop.time, mode, assoc, mods.blockTitle);
+					: scheduleTaskInNewBlock(day.blocks, owner, task, drop.time, assoc, mods.blockTitle);
 		return blocks === day.blocks ? null : { kind: "day", day: { ...day, blocks } };
 	}
 
@@ -148,7 +140,7 @@ export function planTaskDrop(
 						from0, target.blocks, owner, task, target.path, nextDraftLine(), assoc,
 					)
 				: scheduleTaskInNewBlockAcrossDays(
-						from0, target.blocks, owner, task, target.path, drop.time, mode, assoc, mods.blockTitle,
+						from0, target.blocks, owner, task, target.path, drop.time, assoc, mods.blockTitle,
 					);
 	if (from === from0 && to === target.blocks) return null;
 	return {
@@ -163,7 +155,6 @@ export function planTaskDrop(
  * timeline draws under the pointer. Mirrors the writer's `blockForTask`.
  */
 export function newBlockLabel(task: Task, owner: Block, mods: DropModifiers): string {
-	if (mods.timebox) return task.text;
 	const title = mods.blockTitle?.trim();
 	if (title) return title;
 	const assoc = task.assoc ?? owner.assoc;

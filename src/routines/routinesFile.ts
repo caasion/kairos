@@ -9,7 +9,7 @@
 //   ## Weekdays
 //   - 07:30 - 08:00 Morning Routine          ← block routine
 //   	- [ ] Take meds                        ← task, homed in "Morning Routine"
-//   - [ ] 18:00 - 19:00 Gym [Fitness] 🔁 Tue, Thu   ← checkable block, own rule
+//   - 18:00 - 19:00 Gym [Fitness] 🔁 Tue, Thu     ← block routine, own rule
 //
 //   ## Daily
 //   - [ ] Water the plants [D:Home]           ← task, lands in Unscheduled
@@ -17,7 +17,8 @@
 //   	- [ ] Journal                          ← task, homed in "Night Routine"
 //
 // So the line shape decides what a routine makes, with no extra syntax:
-//   • a timed top-level line makes a block (a checkbox makes it checkable);
+//   • a timed top-level line makes a block (a block has no status, so a
+//     checkbox on it, left from when blocks could be checked, is ignored);
 //   • an untimed top-level line WITH a checkbox makes a task for the day's list;
 //   • an untimed top-level line WITHOUT a checkbox is a home — it names a block
 //     and makes nothing itself; the tasks under it go into the day's block of
@@ -36,7 +37,6 @@ export interface BlockRoutine {
 	rule: Rule;
 	title: string;
 	time: TimeRange;
-	checkable: boolean;
 	assoc?: Association;
 	metadata?: string;
 	line: number;
@@ -148,7 +148,6 @@ export function parseRoutines(markdown: string): ParsedRoutines {
 				rule,
 				title: time.title,
 				time: time.range,
-				checkable: checked,
 				...(assoc ? { assoc } : {}),
 				...(metadata ? { metadata } : {}),
 				line: i,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Menu } from "obsidian";
 import { addBlockMenuItems, type BlockMenuActions } from "./blockMenu";
 import { setRepeatHandler } from "../routines/repeat";
-import type { Block, TaskStatus } from "../types";
+import type { Block } from "../types";
 
 // A stand-in for Obsidian's Menu that records each item's title and click.
 interface Item {
@@ -54,8 +54,6 @@ function actions() {
 		onAddTask: vi.fn<() => void>(),
 		onAddNote: vi.fn<() => void>(),
 		onEditAssoc: vi.fn<() => void>(),
-		onToggleCheckable: vi.fn<() => void>(),
-		onSetStatus: vi.fn<(status: TaskStatus) => void>(),
 		onDelete: vi.fn<() => void>(),
 		onReveal: vi.fn<() => void>(),
 	} satisfies BlockMenuActions;
@@ -72,7 +70,7 @@ const timed: Block = {
 describe("addBlockMenuItems", () => {
 	afterEach(() => setRepeatHandler(undefined));
 
-	it("offers a plain timed block every block action, without status items", () => {
+	it("offers a timed block every block action, and no status or convert items", () => {
 		const { menu, items } = fakeMenu();
 		addBlockMenuItems(menu, timed, actions());
 		expect(titles(items)).toEqual([
@@ -81,28 +79,6 @@ describe("addBlockMenuItems", () => {
 			"Add association",
 			"Repeat…",
 			"Open in day view",
-			"---",
-			"Convert to task",
-			"---",
-			"Delete block",
-		]);
-	});
-
-	it("offers a checkable block's status items and 'Convert to block'", () => {
-		const { menu, items } = fakeMenu();
-		const block: Block = { ...timed, status: "x", assoc: { kind: "project", id: "Kairos" } };
-		addBlockMenuItems(menu, block, actions());
-		expect(titles(items)).toEqual([
-			"Add task",
-			"Add note",
-			"Edit association",
-			"Repeat…",
-			"Open in day view",
-			"---",
-			"Convert to block",
-			"Mark open",
-			"Mark half-done",
-			"Mark cancelled",
 			"---",
 			"Delete block",
 		]);
@@ -116,8 +92,6 @@ describe("addBlockMenuItems", () => {
 		expect(titles(items)).toEqual([
 			"Add association",
 			"---",
-			"Convert to task",
-			"---",
 			"Delete block",
 		]);
 	});
@@ -127,25 +101,19 @@ describe("addBlockMenuItems", () => {
 		const a = actions();
 		const repeat = vi.fn();
 		setRepeatHandler(repeat);
-		addBlockMenuItems(menu, { ...timed, status: " " }, a);
+		addBlockMenuItems(menu, timed, a);
 		click(items, "Add task");
 		click(items, "Add note");
 		click(items, "Add association");
 		click(items, "Open in day view");
-		click(items, "Convert to block");
-		click(items, "Mark done");
-		click(items, "Mark half-done");
 		click(items, "Delete block");
 		click(items, "Repeat…");
 		expect(a.onAddTask).toHaveBeenCalledOnce();
 		expect(a.onAddNote).toHaveBeenCalledOnce();
 		expect(a.onEditAssoc).toHaveBeenCalledOnce();
 		expect(a.onReveal).toHaveBeenCalledOnce();
-		expect(a.onToggleCheckable).toHaveBeenCalledOnce();
-		expect(a.onSetStatus.mock.calls).toEqual([["x"], ["/"]]);
 		expect(a.onDelete).toHaveBeenCalledOnce();
-		// Repeat… starts from the block's own line.
-		expect(repeat).toHaveBeenCalledOnce();
-		expect(repeat.mock.calls[0]![0]).toMatchObject({ source: timed.source, text: "Deep work" });
+		// Repeat… repeats the block itself: no task.
+		expect(repeat.mock.calls).toEqual([[timed]]);
 	});
 });

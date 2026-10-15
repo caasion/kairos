@@ -7,7 +7,6 @@
     TaskStatus,
     TimeRange,
   } from "../../types";
-  import { isCheckable } from "../../types";
   import { formatTimeRange, parseTimeRangeText } from "../../parser";
   import {
     blockLit,
@@ -22,7 +21,6 @@
   import TaskComponent from "../task/Task.svelte";
   import { requestRepeat } from "../../routines/repeat";
   import { addBlockMenuItems } from "../blockMenu";
-  import TaskCheckbox from "../task/TaskCheckbox.svelte";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
   import { afterLeave, pressInBlock } from "./blockGrow";
@@ -80,9 +78,6 @@
 		// Block field write-back.
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
-		onSetBlockStatus: (block: Block, status: TaskStatus) => void;
-		// Toggle whether the block is a checkable task (adds/removes its checkbox).
-		onToggleCheckable: (block: Block) => void;
 		// Create a new child task inside this block.
 		onAddTask: (block: Block) => void;
 		// Notes (decision 96): add one at the end, or set note `index`'s text
@@ -124,8 +119,6 @@
 		dragActive = false,
 		onSetBlockTitle,
 		onSetBlockTime,
-		onSetBlockStatus,
-		onToggleCheckable,
 		onAddTask,
 		onAddNote,
 		onSetNoteText,
@@ -170,20 +163,14 @@
 
   const timeLabel = $derived(block.time ? formatTimeRange(block.time) : "");
 
-  const checkable = $derived(isCheckable(block));
-  const blockChecked = $derived(block.status === "x");
-
-  // Domain color for the block's accent — the left border and the colocated
-  // checkbox. Undefined when the association is a project with no domain, or
+  // Domain color for the block's accent — the left border. Undefined when the association is a project with no domain, or
   // unresolved; the accent then falls back to the theme. The association *tag*
   // stays plain; only the accent carries the color.
   const accentColor = $derived(
     block.assoc ? resolve(block.assoc).color : undefined,
   );
 
-  // The colocated task is represented by the block header itself, so it is not
-  // repeated in the chip list.
-  const chips = $derived(tasks.filter((t) => !t.colocated));
+  const chips = $derived(tasks);
   const notes = $derived(block.notes ?? []);
 
   // ── Notes (decision 96) ──
@@ -354,29 +341,6 @@
     }
   }
 
-  // ── Block checkbox (checkable block) ─────────────────────────────
-
-  function nextStatus(status: TaskStatus): TaskStatus {
-    switch (status) {
-      case " ":
-        return "/";
-      case "/":
-        return "x";
-      default:
-        return " ";
-    }
-  }
-
-  function cycleBlockStatus() {
-    if (block.status === undefined) return;
-    onSetBlockStatus(block, nextStatus(block.status));
-  }
-
-  function cancelBlockStatus() {
-    if (block.status === undefined) return;
-    onSetBlockStatus(block, "-");
-  }
-
   // ── Block context menu ───────────────────────────────────────────
 
   let blockEl = $state<HTMLDivElement>();
@@ -531,8 +495,6 @@
       onAddTask: () => onAddTask(block),
       onAddNote: () => beginNoteAdd(),
       onEditAssoc: () => requestEditAssoc(),
-      onToggleCheckable: () => onToggleCheckable(block),
-      onSetStatus: (status) => onSetBlockStatus(block, status),
       onDelete: () => onDelete(block),
     });
     menu.showAtMouseEvent(event);
@@ -620,7 +582,7 @@
     }}
   ></div>
 
-	<!-- Action bar: add-task + add-note + convert + delete, top-right corner. Woken from
+	<!-- Action bar: add-task + add-note + delete, top-right corner. Woken from
 	     the top-right corner zone (see actions/actionZone.ts), not on any hover.
 	     On a mouse wake it's a vertical stack: delete stays in the corner and
 	     the rest rise above it (above the block). Touch keeps the bar. -->
@@ -653,23 +615,6 @@
 		</button>
 		<button
 			type="button"
-			class="tl-action-btn"
-			aria-label={checkable ? "Convert to block" : "Convert to task"}
-			use:tooltip={checkable ? "Convert to block" : "Convert to task"}
-			onpointerdown={(e) => e.stopPropagation()}
-			onclick={(e) => {
-				e.stopPropagation();
-				onToggleCheckable(block);
-			}}
-		>
-			{#if checkable}
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
-			{:else}
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/></svg>
-			{/if}
-		</button>
-		<button
-			type="button"
 			class="tl-action-btn tl-action-danger"
 			aria-label="Delete block"
 			use:tooltip={"Delete block"}
@@ -687,24 +632,10 @@
   <div
     class="tl-content"
     class:compact={compactLayout}
-    class:checked={blockChecked}
     class:drop-target={isDropTarget}
     style={accentColor ? `border-left-color:${accentColor};` : ""}
   >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="tl-block-header">
-      {#if checkable}
-        <!-- The colocated task's checkbox. Stop pointerdown so pressing it
-             doesn't also start a block move. -->
-        <span class="tl-check-wrap" onpointerdown={(e) => e.stopPropagation()}>
-          <TaskCheckbox
-            status={block.status ?? " "}
-            color={accentColor}
-            onToggle={cycleBlockStatus}
-            onCancel={cancelBlockStatus}
-          />
-        </span>
-      {/if}
       {#if editingTitle}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <input
@@ -943,10 +874,6 @@
     box-shadow: 0 0 0 1px var(--interactive-accent);
   }
 
-  .tl-content.checked {
-    opacity: 0.6;
-  }
-
   /* Hover link: this block, or a task in it, is under the pointer in some view
      (this one included). Outlined and tinted in its domain color (the theme
      accent without one); the task itself is marked on its chip. */
@@ -1015,7 +942,7 @@
     bottom: 2px;
   }
 
-	/* Hover action bar (add-task + convert + delete), top-right corner. */
+	/* Hover action bar (add-task + add-note + delete), top-right corner. */
 	.tl-actions {
 		position: absolute;
 		top: 4px;
@@ -1073,12 +1000,6 @@
     min-width: 0;
   }
 
-  .tl-check-wrap {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-  }
-
   .tl-title {
     font-size: 12px;
     font-weight: 600;
@@ -1087,10 +1008,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: text;
-  }
-
-  .checked .tl-title {
-    text-decoration: line-through;
   }
 
   /* Title edit input: indistinguishable from the static title. */

@@ -12,8 +12,13 @@
 //
 // Top-level list items are blocks. Items indented under a block are that
 // block's tasks when they carry a checkbox, and its notes when they don't
-// (kept verbatim). A block line that carries a checkbox also gets a colocated
-// `task` sharing the block's source line.
+// (kept verbatim). A block has no status, so a block line is written without a
+// checkbox. A legacy top-level line that has one ("- [x] 07:00 - 08:00 Gym",
+// from when blocks could be checked) reads as a plain block holding one task
+// first in its list: the block's title, the checkbox's status, no association
+// or metadata of its own (it inherits the block's). That task shares the
+// block's source line until the next write, which splits it into the two-line
+// form ("- 07:00 - 08:00 Gym" / "\t- [x] Gym").
 //
 // The parser is deliberately literal: it records associations exactly as
 // written (a task assoc that duplicates its block's is kept, not dropped) and
@@ -107,8 +112,12 @@ function parseSchedule(
       continue;
     }
 
-    // Otherwise this item starts a new block.
-    current = parseBlock(body, status, source);
+    // Otherwise this item starts a new block. A legacy checkbox on it becomes
+    // the block's first task (see the header).
+    current = parseBlock(body, source);
+    if (status !== undefined) {
+      current.tasks.push({ source, text: current.title, status: toStatus(status) });
+    }
     blockIndent = indent;
     blocks.push(current);
   }
@@ -137,11 +146,7 @@ export {
 
 // ─── block / task construction ─────────────────────────────────
 
-function parseBlock(
-  body: string,
-  status: string | undefined,
-  source: SourceRef,
-): Block {
+function parseBlock(body: string, source: SourceRef): Block {
   const { title, assoc, metadata } = stripMetadata(body);
   const time = parseTime(title);
   // when a time range is present, the block title is the text after it
@@ -153,8 +158,6 @@ function parseBlock(
     ...(assoc ? { assoc } : {}),
     ...(metadata ? { metadata } : {}),
     tasks: [],
-    // A checkbox on the block line makes the block itself checkable.
-    ...(status !== undefined ? { status: toStatus(status) } : {}),
   };
 
   if (time) {

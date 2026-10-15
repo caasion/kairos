@@ -43,9 +43,8 @@ export interface DragPreview {
 	drop: TimelineDrop | null;
 	/** The title a drop on empty time would give the new block. */
 	label: string;
-	/** Modifier state, so the preview can show "copy" or "time-box". */
+	/** Modifier state, so the preview can show "copy". */
 	duplicate: boolean;
-	timebox: boolean;
 }
 
 /**
@@ -161,7 +160,6 @@ export class ViewLinks {
 			prev.from.line === next.from.line &&
 			prev.label === next.label &&
 			prev.duplicate === next.duplicate &&
-			prev.timebox === next.timebox &&
 			sameDrop(prev.drop, next.drop)
 		) {
 			return;

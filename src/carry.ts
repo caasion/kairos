@@ -3,8 +3,7 @@
 // When a new day starts, every open or half-done task from the most recent
 // earlier daily note moves into the new note's Unscheduled list. Done and
 // cancelled tasks stay where they are, and blocks never carry (decision 37) —
-// time is spent or it isn't. A checkable block's own checkbox is the block, so
-// it stays too.
+// time is spent or it isn't.
 //
 // It is a MOVE, not a copy: the task leaves the earlier note. That keeps exactly
 // one live copy of every task, which is what lets a routine skip a task that
