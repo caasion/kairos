@@ -2,9 +2,9 @@
 	// The editable status-history log, mounted inside a native Obsidian modal
 	// (StatusHistoryModal). The modal owns the chrome (backdrop, title, close);
 	// this component owns the log itself: the list of records, inline edit of a
-	// prior record's date/status/note/why, delete, and add-at-date. A record's
-	// `note` says what the state entails and its `why` says what moved the entity
-	// into it; both are freeform, and a record with no reason renders a muted
+	// prior record's date/status/note/why/intensity, delete, and add-at-date. A
+	// record's `note` is the intention for that stretch and its `why` says what
+	// moved the entity into it; both are freeform, and a record with no reason renders a muted
 	// placeholder so the gaps are visible rather than invisible. Every mutation
 	// routes through the pure edit functions via projectActions (they own the
 	// invariants) — the form is a guardrail, not a raw editor.
@@ -33,6 +33,7 @@
 		setProjectStatus,
 	} from "../../projectActions";
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
+	import { INTENSITY_MAX } from "../../projectFile";
 	import Datepicker from "../components/Datepicker.svelte";
 
 	interface Props {
@@ -71,6 +72,10 @@
 		return feed.orphans.find((p) => p.source.path === path) ?? null;
 	});
 
+	// Intensity choices for the select; "" is unset (no claim).
+	const LEVELS = Array.from({ length: INTENSITY_MAX + 1 }, (_, i) => i);
+	const parseLevel = (v: string): number | undefined => (v === "" ? undefined : Number(v));
+
 	// The states offered when adding/editing a record: domains can't archive.
 	const historyStates = $derived<LifecycleState[]>(
 		isDomain ? ["active", "inactive"] : ["active", "inactive", "archived"],
@@ -81,6 +86,7 @@
 	let addPickDate = $state(false);
 	let addNote = $state("");
 	let addWhy = $state("");
+	let addIntensity = $state(""); // applies only when the added record is active
 
 	function addStatusRecord(status: LifecycleState) {
 		const e = row;
@@ -88,10 +94,12 @@
 		const date = isoFromDate(addDate);
 		const note = addNote.trim();
 		const why = addWhy.trim();
+		const intensity = status === "active" ? parseLevel(addIntensity) : undefined;
 		addNote = "";
 		addWhy = "";
-		if (isDomain) setDomainStatus(index, e as Domain, date, status, note, why);
-		else setProjectStatus(index, e as Project, date, status, note, why);
+		addIntensity = "";
+		if (isDomain) setDomainStatus(index, e as Domain, date, status, note, why, intensity);
+		else setProjectStatus(index, e as Project, date, status, note, why, intensity);
 	}
 
 	// ── Inline edit of a prior record ──
@@ -100,6 +108,7 @@
 	let editStatus = $state<LifecycleState>("active");
 	let editNote = $state("");
 	let editWhy = $state("");
+	let editIntensity = $state("");
 	let editPickDate = $state(false);
 
 	function startEditRecord(rec: StatusRecord) {
@@ -108,18 +117,22 @@
 		editStatus = rec.status;
 		editNote = rec.note ?? "";
 		editWhy = rec.why ?? "";
+		editIntensity = rec.intensity === undefined ? "" : String(rec.intensity);
 		editPickDate = false;
 	}
 	function commitEditRecord() {
 		const e = row;
 		if (!e || !editingDate) return;
-		// Both keys are always present: this form owns them, so an emptied field
-		// clears the stored value rather than leaving the old one behind.
+		// Note and why are always present: this form owns them, so an emptied
+		// field clears the stored value rather than leaving the old one behind.
+		// Intensity is owned only while the record is active (the select is hidden
+		// otherwise), so an inactive edit leaves whatever is stored alone.
 		const next = {
 			date: isoFromDate(editDate),
 			status: editStatus,
 			note: editNote.trim(),
 			why: editWhy.trim(),
+			...(editStatus === "active" ? { intensity: parseLevel(editIntensity) } : {}),
 		};
 		const original = editingDate;
 		editingDate = null;
@@ -166,13 +179,20 @@
 									<option value={s}>{STATUS_LABEL[s]}</option>
 								{/each}
 							</select>
+							{#if editStatus === "active"}
+								<select class="dropdown history-select" bind:value={editIntensity} title="Intensity">
+									<option value="">Intensity —</option>
+									{#each LEVELS as l (l)}
+										<option value={String(l)}>Intensity {l}</option>
+									{/each}
+								</select>
+							{/if}
 						</div>
-						<!-- The note is no longer gated on `active`: it once fed intensity
-						     shading, which is gone (#29), and describing what an inactive
-						     or archived phase consists of is just as useful. -->
+						<!-- The note is not gated on `active`: an intention for an
+						     inactive or archived stretch is just as useful. -->
 						<input
 							class="history-note-input"
-							placeholder="what this phase consists of"
+							placeholder="intention for this stretch"
 							bind:value={editNote}
 							onkeydown={(e) => { if (e.key === "Enter") commitEditRecord(); }}
 						/>
@@ -202,6 +222,11 @@
 						<div class="history-line">
 							<span class="history-dot" class:active={rec.status === "active"}></span>
 							<span class="history-status">{STATUS_LABEL[rec.status]}</span>
+							{#if rec.status === "active" && rec.intensity !== undefined}
+								<span class="history-intensity" title={`Intensity ${rec.intensity} of ${INTENSITY_MAX}`}>
+									{#each LEVELS.slice(1) as l (l)}<span class="history-pip" class:on={rec.intensity >= l}></span>{/each}
+								</span>
+							{/if}
 							{#if rec.note}<span class="history-note">{rec.note}</span>{/if}
 							<span class="history-spacer"></span>
 							<span class="history-date">{formatDate(rec.date)}</span>
@@ -230,9 +255,15 @@
 			</button>
 			<input
 				class="history-note-input"
-				placeholder="what this phase consists of (optional)"
+				placeholder="intention for this stretch (optional)"
 				bind:value={addNote}
 			/>
+			<select class="dropdown history-select" bind:value={addIntensity} title="Intensity, if adding an active record">
+				<option value="">Intensity —</option>
+				{#each LEVELS as l (l)}
+					<option value={String(l)}>Intensity {l}</option>
+				{/each}
+			</select>
 			<span class="history-spacer"></span>
 			{#each historyStates as s}
 				<button onclick={() => addStatusRecord(s)}>{STATUS_LABEL[s]}</button>
@@ -334,6 +365,19 @@
 	.history-add .why-input {
 		margin-top: 5px;
 		width: 100%;
+	}
+	.history-intensity {
+		display: inline-flex;
+		gap: 2px;
+	}
+	.history-pip {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		border: 1px solid var(--text-muted);
+	}
+	.history-pip.on {
+		background: var(--text-muted);
 	}
 	.history-edit-actions {
 		display: flex;

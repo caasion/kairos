@@ -5,10 +5,10 @@
 // is open-ended, rendered as running to `today`). This module is pure and
 // vault-free so it runs under vitest, mirroring projectFile.ts.
 //
-// A span's `note` is freeform prose describing what the phase consists of
-// ("getting groceries, meal planning, doing laundry") — an open label, never
-// logic and never a keyword. Rendering weight follows the status alone: an
-// active span renders at `ACTIVE_WEIGHT`, everything else at 0 (#29).
+// A span's `note` is freeform prose, the intention for that stretch ("get it
+// done this week") — an open label, never logic and never a keyword (#29). How
+// hard the stretch is pushed is a separate, explicit field: the record's 0–5
+// `intensity`, carried onto active spans only.
 
 import type { ISODate, LifecycleState, StatusRecord } from "../types";
 
@@ -22,17 +22,9 @@ export interface Span {
 	why?: string;
 	/** True for the trailing, still-running span (no successor record). */
 	open: boolean;
-	/** Shading weight: `ACTIVE_WEIGHT` on an active span, 0 otherwise. */
-	intensity: number;
+	/** The record's 0–5 intensity. Only set on an active span that has one. */
+	intensity?: number;
 }
-
-/**
- * The single shading weight an active span renders at. It was once the fallback
- * for a note that matched no keyword, which is what almost every note was, so
- * keeping it here leaves the rendering unchanged from the keyword era. Inactive
- * and archived spans render at 0.
- */
-export const ACTIVE_WEIGHT = 0.7;
 
 /**
  * Fold an ordered status history into renderable spans. Assumes `history` is
@@ -68,8 +60,10 @@ export function historyToSpans(
 			status: rec.status,
 			...(rec.note ? { note: rec.note } : {}),
 			...(rec.why ? { why: rec.why } : {}),
+			...(rec.status === "active" && rec.intensity !== undefined
+				? { intensity: rec.intensity }
+				: {}),
 			open,
-			intensity: rec.status === "active" ? ACTIVE_WEIGHT : 0,
 		});
 	}
 	return spans;
