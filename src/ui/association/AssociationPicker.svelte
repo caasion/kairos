@@ -6,11 +6,17 @@
 	// `onPick`. Purely presentational: the caller supplies the options and owns
 	// what "pick" does (write the tag, close, etc.). Keyboard: type to filter,
 	// ↑/↓ to move, Enter to choose the highlighted row, Escape to cancel.
+	//
+	// With `create`, a typed name nothing matches is offered as a new project
+	// or domain after the matches, so a task can be filed under something that
+	// doesn't exist yet without leaving the picker.
 
 	import { onMount, tick } from "svelte";
 	import type { Association } from "../../types";
 	import {
 		filterOptions,
+		newNameProblem,
+		offersCreate,
 		type AssociationOption,
 	} from "../../associationOptions";
 
@@ -39,9 +45,13 @@
 		onPick: (association: Association | null) => void;
 		// Dismissed without choosing (outside click / Escape).
 		onClose: () => void;
+		// Make a new project or domain named `name`; resolves to its association,
+		// or null if it couldn't be made (the callee says why). Omit to offer
+		// only existing ones.
+		create?: (kind: Association["kind"], name: string) => Promise<Association | null>;
 	}
 
-	let { options, current, anchor, onPick, onClose }: Props = $props();
+	let { options, current, anchor, onPick, onClose, create }: Props = $props();
 
 	let query = $state("");
 	let inputEl = $state<HTMLInputElement>();
@@ -50,10 +60,18 @@
 
 	const filtered = $derived(filterOptions(options, query));
 
+	// The "Create project/domain" rows, after the matches. A name that can't be
+	// used shows why in their place.
+	const offering = $derived(create !== undefined && offersCreate(options, query));
+	const createProblem = $derived(offering ? newNameProblem(query) : null);
+	const createKinds = $derived<Association["kind"][]>(
+		offering && !createProblem ? ["project", "domain"] : [],
+	);
+	const rowCount = $derived(filtered.length + createKinds.length);
+
 	// Keep the highlight in range as the list shrinks/grows while typing.
 	$effect(() => {
-		filtered;
-		if (highlighted >= filtered.length) highlighted = Math.max(0, filtered.length - 1);
+		if (highlighted >= rowCount) highlighted = Math.max(0, rowCount - 1);
 	});
 
 	function isCurrent(o: AssociationOption): boolean {
@@ -72,21 +90,38 @@
 		onPick(null);
 	}
 
+	// One create at a time: a double Enter mustn't make the file twice.
+	let creatingNow = false;
+	async function createAs(kind: Association["kind"]) {
+		if (!create || creatingNow) return;
+		creatingNow = true;
+		const made = await create(kind, query);
+		creatingNow = false;
+		if (made) onPick(made);
+	}
+
+	function chooseRow(i: number) {
+		const option = filtered[i];
+		if (option) choose(option);
+		else {
+			const kind = createKinds[i - filtered.length];
+			if (kind) void createAs(kind);
+		}
+	}
+
 	function onKeydown(event: KeyboardEvent) {
 		switch (event.key) {
 			case "ArrowDown":
 				event.preventDefault();
-				if (filtered.length) highlighted = (highlighted + 1) % filtered.length;
+				if (rowCount) highlighted = (highlighted + 1) % rowCount;
 				break;
 			case "ArrowUp":
 				event.preventDefault();
-				if (filtered.length)
-					highlighted = (highlighted - 1 + filtered.length) % filtered.length;
+				if (rowCount) highlighted = (highlighted - 1 + rowCount) % rowCount;
 				break;
 			case "Enter": {
 				event.preventDefault();
-				const pick = filtered[highlighted];
-				if (pick) choose(pick);
+				chooseRow(highlighted);
 				break;
 			}
 			case "Escape":
@@ -167,7 +202,7 @@
 			</div>
 		{/if}
 
-		{#if filtered.length === 0}
+		{#if rowCount === 0 && !createProblem}
 			<div class="assoc-empty">No matches</div>
 		{:else}
 			{#each filtered as option, i (option.kind + ":" + option.name)}
@@ -194,6 +229,25 @@
 					{/if}
 				</div>
 			{/each}
+			{#each createKinds as kind, k (kind)}
+				{@const i = filtered.length + k}
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_interactive_supports_focus -->
+				<div
+					class="assoc-row assoc-create"
+					class:highlighted={i === highlighted}
+					role="option"
+					aria-selected="false"
+					onmouseenter={() => (highlighted = i)}
+					onclick={() => void createAs(kind)}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+					<span class="assoc-name">Create {kind} “{query.trim()}”</span>
+				</div>
+			{/each}
+			{#if createProblem}
+				<div class="assoc-empty">{createProblem}</div>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -280,6 +334,14 @@
 
 	.assoc-clear {
 		color: var(--text-muted);
+	}
+
+	.assoc-create {
+		color: var(--text-muted);
+	}
+
+	.assoc-create.highlighted {
+		color: var(--text-normal);
 	}
 
 	.assoc-empty {

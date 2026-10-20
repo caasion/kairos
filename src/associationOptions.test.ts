@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { associationOptions, filterOptions } from "./associationOptions";
+import {
+	associationOptions,
+	filterOptions,
+	newNameProblem,
+	offersCreate,
+} from "./associationOptions";
 import type { Domain, Project, StatusRecord } from "./types";
 
 const hist = (...rs: [string, "active" | "inactive" | "archived"][]): StatusRecord[] =>
@@ -107,5 +112,44 @@ describe("associationOptions: a domain bounds its projects", () => {
 		const opts = associationOptions(pmap(p, solo), dmap(d));
 		expect(opts.find((o) => o.name === "Groceries")?.status).toBe("inactive");
 		expect(opts.find((o) => o.name === "Solo")?.status).toBe("active");
+	});
+});
+
+describe("offersCreate", () => {
+	const options = associationOptions(
+		new Map([["Thesis", project("Thesis")]]),
+		new Map([["Health", domain("Health")]]),
+	);
+
+	it("offers a name nothing has", () => {
+		expect(offersCreate(options, "Groceries")).toBe(true);
+		expect(offersCreate(options, "Thes")).toBe(true);
+	});
+
+	it("doesn't offer a name a project or domain already has, in any case", () => {
+		expect(offersCreate(options, "thesis")).toBe(false);
+		expect(offersCreate(options, "  Health ")).toBe(false);
+	});
+
+	it("offers nothing while the query is empty", () => {
+		expect(offersCreate(options, "")).toBe(false);
+		expect(offersCreate(options, "   ")).toBe(false);
+	});
+});
+
+describe("newNameProblem", () => {
+	it("accepts ordinary names", () => {
+		expect(newNameProblem("Linear Algebra")).toBeNull();
+		expect(newNameProblem("Thesis (v2)")).toBeNull();
+	});
+
+	it("refuses an empty name", () => {
+		expect(newNameProblem("  ")).not.toBeNull();
+	});
+
+	it("refuses characters that break a tag or a file name", () => {
+		for (const name of ["A[b", "A]b", "D:Health", "a/b", "a#b", "a|b", "a?b"]) {
+			expect(newNameProblem(name)).not.toBeNull();
+		}
 	});
 });

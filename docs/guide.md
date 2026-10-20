@@ -2,8 +2,6 @@
 
 How to do things in Kairos, grouped by what you're trying to do. If you haven't used Kairos before, start with [Getting started](getting-started.md).
 
-On Windows and Linux, read **Cmd** as **Ctrl**.
-
 ## Plan a day (Day and Week views)
 
 The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in its header (**Days before today**, **Days after today**).
@@ -15,9 +13,9 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 - **Change its time:** select the time and type a range, like `14:00-15:30`. A block can end at `24:00`.
 - **Move it:** drag an empty part of the block. In the Week view you can drag it to another day.
 - **Resize it:** drag its top or bottom edge.
-- **Select several:** Shift+click or Cmd+click them, then drag any one to move them all.
+- **Select several:** Shift+click or Ctrl/Cmd+click them, then drag any one to move them all.
 - **Delete it:** point at its top-right corner and select **Delete block**, or select it and press **Delete**. Deleting a block deletes the tasks and notes inside it.
-- **Associate it with a project or domain:** right-click it and select **Add association**.
+- **Associate it with a project or domain:** right-click it and select **Add association**. Type a name that doesn't exist yet to create it: select **Create project** or **Create domain**.
 
 **Tasks**
 
@@ -25,7 +23,7 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 - **Rename it:** select its text. **Enter** saves, **Esc** cancels.
 - **Check it off:** select its checkbox. Each click moves it along: open → half-done → done → open.
 - **Cancel it:** press and hold its checkbox, or right-click and select **Mark cancelled**.
-- **Move it:** press and hold its text, then drag it to another block. Drop it on **Unscheduled** to take its time away, or on empty time to make a new 30-minute block around it. Hold **Cmd** to drop a copy instead.
+- **Move it:** press and hold its text, then drag it to another block. Drop it on **Unscheduled** to take its time away, or on empty time to make a new 30-minute block around it. Hold **Ctrl/Cmd** to drop a copy instead.
 - **Move it to another block without dragging:** right-click and select **Nest under block**.
 - **Give it its own association:** point at its top-right corner and select **Add association**. Without one, a task belongs to its block's project or domain.
 
@@ -57,14 +55,14 @@ The Grid has one row per project and domain, and one column per day. Use it to s
   - Onto another row: it changes project or domain.
   - Onto another day: it moves to that day.
   - Onto the Day or Week view: it's scheduled there, the same as a drag inside the timeline.
-  - Hold **Cmd** to drop a copy.
+  - Hold **Ctrl/Cmd** to drop a copy.
 - **Move a whole block:** press and hold its header, then drag it to another day or row.
 - **Switch the Day view to another day mid-drag:** hold the dragged task over that day's column header for a moment.
 
 **Linking to the timelines**
 
-- **Select a column header** to show that day in the Day view. Cmd+click it to open the day's note.
-- **Cmd+click a block's header** to see it in the Day view.
+- **Select a column header** to show that day in the Day view. Ctrl/Cmd+click it to open the day's note.
+- **Ctrl/Cmd+click a block's header** to see it in the Day view.
 - **Follow the grid** (on by default): when you work on a day in the Grid, the Day view shows that day. Toggle it with the button in the Day view's header.
 - **Highlight across views** (on by default): pointing at a block or task lights it up in every open view.
 
@@ -120,10 +118,10 @@ When today's note is created, Kairos moves open and half-done tasks from your mo
 
 Open **Projects & domains** from the hourglass menu.
 
-- **New domain:** select **New domain** in the header.
-- **New project:** right-click a domain and select **Add project**. For a project with no domain, right-click it afterwards and select **Change domain → None**.
+- **New project or domain:** select **New project** or **New domain** in the header. To make a project inside a domain, right-click the domain and select **Add project**.
+- **Or create one as you go:** in any association picker, type a new name and select **Create project** or **Create domain**.
 - **Rename:** select the name. Kairos keeps the old name as an alias, so old notes still point to it.
-- **Open the note:** Cmd+click the name. Add whatever you like below the frontmatter.
+- **Open the note:** Ctrl/Cmd+click the name. Add whatever you like below the frontmatter.
 - **Domain color:** select the color swatch.
 - **Domain order:** select **Reorder domains**.
 - **More:** right-click, or select **⋯**, for **Change domain**, **Set inactive**, **Archive**, **Status history…**, and **Delete**.

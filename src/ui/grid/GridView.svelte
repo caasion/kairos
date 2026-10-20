@@ -100,6 +100,7 @@
 	import RowLabel from "../components/RowLabel.svelte";
 	import type { RowLabelInfo } from "../components/rowLabel";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
@@ -1488,6 +1489,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
+		create={(kind, name) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

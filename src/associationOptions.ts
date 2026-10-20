@@ -82,3 +82,35 @@ export function filterOptions(
 	if (!q) return options;
 	return options.filter((o) => o.name.toLowerCase().includes(q));
 }
+
+/** Characters a project or domain name can't contain. Brackets would end the
+ *  `[Name]` tag early, `:` is reserved for `[D:Name]`, and the rest are refused
+ *  in file names or links on some platform. */
+const NAME_FORBIDDEN = /[[\]#^|\\/:*"<>?]/;
+
+/**
+ * Why `name` can't be a new project or domain, or null if it can. Collisions
+ * are the index's to check (`nameCollision`), since they need aliases too.
+ */
+export function newNameProblem(name: string): string | null {
+	const trimmed = name.trim();
+	if (!trimmed) return "Type a name first.";
+	if (NAME_FORBIDDEN.test(trimmed))
+		return "A name can't contain [ ] # ^ | \\ / : * \" < > or ?.";
+	return null;
+}
+
+/**
+ * Whether the picker should offer to create `query` as a new project or
+ * domain: there is something typed and no option already has that name
+ * (ignoring case). An invalid name is still offered, so the picker can say
+ * what's wrong with it instead of going quiet.
+ */
+export function offersCreate(
+	options: AssociationOption[],
+	query: string,
+): boolean {
+	const q = query.trim().toLowerCase();
+	if (!q) return false;
+	return !options.some((o) => o.name.toLowerCase() === q);
+}

@@ -2,8 +2,6 @@
 
 The markdown Kairos reads and writes, every mouse and keyboard shortcut, and all settings. For how-tos, see the [Guide](guide.md).
 
-On Windows and Linux, read **Cmd** as **Ctrl**.
-
 ## The markdown format
 
 ### A day
@@ -139,10 +137,10 @@ status:
 | Select a checkbox | Open → half-done → done → open |
 | Press and hold a checkbox | Mark the task cancelled |
 | Press and hold a task's text, then move | Drag the task |
-| Hold **Cmd** while dropping | Drop a copy |
+| Hold **Ctrl/Cmd** while dropping | Drop a copy |
 | **Esc** during a drag | Cancel it |
-| Cmd+click a date | Open (or create) that day's note |
-| Cmd+click a task's or block's project | Open the project's note |
+| Ctrl/Cmd+click a date | Open (or create) that day's note |
+| Ctrl/Cmd+click a task's or block's project | Open the project's note |
 
 ### Day and Week views
 
@@ -152,7 +150,7 @@ status:
 | Drag an empty part of a block | Move it (in Week, also to another day) |
 | Drag a block's top or bottom edge | Resize it |
 | Select a block's time | Type a new time range |
-| Shift+click or Cmd+click blocks | Select several |
+| Shift+click or Ctrl/Cmd+click blocks | Select several |
 | **Delete**, **Backspace** or **X** | Delete the selected blocks and everything in them |
 | Point at or select "N more" | Grow the block to show all its tasks |
 | Drop a task on empty time | Make a 30-minute block around it |
@@ -164,7 +162,7 @@ status:
 |---|---|
 | Select a column header | Show that day in the Day view |
 | Hold a dragged task over a column header | Switch the Day view to that day |
-| Cmd+click a block's header | Show the block in the Day view |
+| Ctrl/Cmd+click a block's header | Show the block in the Day view |
 | Press and hold a block's header, then move | Drag the whole block to another day or row |
 | Drop a task on another row | Change its project or domain |
 | Right-click a row label | **Change domain**, **Show on domain's row** |

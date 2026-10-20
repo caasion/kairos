@@ -32,6 +32,7 @@
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
 	import { nextDraftLine } from "../../draftLine";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import { createAssociation } from "../association/createAssociation";
 	import Datepicker from "../components/Datepicker.svelte";
 	import { autogrow, singleLine } from "../actions/autogrow";
 
@@ -515,6 +516,7 @@
 {#if pickerEntry && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
+		create={(kind, name) => createAssociation(index, kind, name)}
 		current={pickerEntry.assoc}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
