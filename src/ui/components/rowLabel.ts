@@ -23,6 +23,12 @@ export interface RowLabelInfo {
 	since: ISODate | null;
 	/** End of the current span; null → still open ("ongoing"). */
 	until: ISODate | null;
+	/**
+	 * Grid rows only: the 0–5 intensity on `on`, the first visible day, drawn as
+	 * pips beside the name. Absent when the row has no level that day. The Grid
+	 * marks later changes in its cells, so the label is the starting point.
+	 */
+	intensity?: { level: number; on: ISODate };
 }
 
 /**
