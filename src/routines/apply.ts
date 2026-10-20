@@ -128,15 +128,9 @@ function compatibleAssoc(a: Association | undefined, b: Association | undefined)
 
 function hasTask(blocks: Block[], r: TaskRoutine): boolean {
 	const assoc = effectiveAssoc(r);
-	return blocks.some((b) => {
-		// A checkable block's own line is a task too.
-		if (b.status !== undefined && b.title === r.text && compatibleAssoc(b.assoc, assoc)) {
-			return true;
-		}
-		return b.tasks.some(
-			(t) => t.text === r.text && compatibleAssoc(t.assoc ?? b.assoc, assoc),
-		);
-	});
+	return blocks.some((b) =>
+		b.tasks.some((t) => t.text === r.text && compatibleAssoc(t.assoc ?? b.assoc, assoc)),
+	);
 }
 
 // ─── building ──────────────────────────────────────────────────
@@ -148,7 +142,6 @@ function makeRoutineBlock(r: BlockRoutine, path: string): Block {
 		...(r.assoc ? { assoc: r.assoc } : {}),
 		...(r.metadata ? { metadata: r.metadata } : {}),
 		tasks: [],
-		...(r.checkable ? { status: " " as const } : {}),
 		scheduled: true,
 		time: r.time,
 	};
@@ -210,7 +203,11 @@ function canonical(r: Routine): string {
 			r.title,
 			assocKey(r.assoc),
 			r.metadata ?? "",
-			r.checkable ? "x" : "",
+			// Once whether a block routine was checkable. Blocks have no status
+			// now, but a line that still has the old checkbox fills the slot as
+			// before, so days that recorded the hash earlier don't go stale. Editing
+			// the routine drops the checkbox, which changes the hash then.
+			r.legacyCheckbox ? "x" : "",
 		].join("\u0001");
 	}
 	return [

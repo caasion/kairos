@@ -97,19 +97,21 @@ describe("moveTaskIntoBlockAcrossDays", () => {
 		expect(res.to).toBe(thu);
 	});
 
-	it("won't lift a checkable block's own checkbox", () => {
+	it("lifts a task read from a legacy checkbox block line, leaving the block", () => {
+		// "- [ ] 07:00 - 07:30 Run [Fitness]": the task shares the block's line.
+		const legacy: Task = { source: { path: "wed.md", line: 2 }, text: "Run", status: " " };
 		const block: Block = {
 			source: { path: "wed.md", line: 2 },
 			title: "Run",
-			status: " ",
+			assoc: { kind: "project", id: "Fitness" },
 			scheduled: true,
 			time: { start: 420, end: 450 },
-			tasks: [],
+			tasks: [legacy],
 		};
-		const colocated: Task = { source: block.source, text: "Run", status: " " };
 		const thu = thursday();
-		const res = moveTaskIntoBlockAcrossDays([block], thu, block, colocated, thu[0]!, "thu.md");
-		expect(res.to).toBe(thu);
+		const res = moveTaskIntoBlockAcrossDays([block], thu, block, legacy, thu[0]!, "thu.md");
+		expect(res.from).toEqual([{ ...block, tasks: [] }]);
+		expect(res.to[0]!.tasks.at(-1)).toMatchObject({ text: "Run", assoc: { kind: "project", id: "Fitness" } });
 	});
 });
 
@@ -123,10 +125,9 @@ describe("blockForTask", () => {
 	};
 
 	it("names a container block after the association and nests the task", () => {
-		const block = blockForTask(task, TWO_PM, "thu.md", "container");
+		const block = blockForTask(task, TWO_PM, "thu.md");
 		expect(block.title).toBe("Kairos");
 		expect(block.assoc).toEqual({ kind: "project", id: "Kairos" });
-		expect(block.status).toBeUndefined();
 		expect(block.time).toEqual(TWO_PM);
 		expect(block.tasks).toHaveLength(1);
 		expect(block.tasks[0]!.text).toBe("Launch post");
@@ -136,36 +137,26 @@ describe("blockForTask", () => {
 	});
 
 	it("uses a given title over the association", () => {
-		const block = blockForTask(task, TWO_PM, "thu.md", "container", "  Focus  ");
+		const block = blockForTask(task, TWO_PM, "thu.md", "  Focus  ");
 		expect(block.title).toBe("Focus");
 		expect(block.assoc).toEqual({ kind: "project", id: "Kairos" });
 		// A blank title is no title.
-		expect(blockForTask(task, TWO_PM, "thu.md", "container", "  ").title).toBe("Kairos");
-		// A time-box is always named after its task.
-		expect(blockForTask(task, TWO_PM, "thu.md", "timebox", "Focus").title).toBe("Launch post");
+		expect(blockForTask(task, TWO_PM, "thu.md", "  ").title).toBe("Kairos");
 	});
 
 	it("falls back to the default title without an association", () => {
 		const { assoc: _a, ...bare } = task;
-		const block = blockForTask(bare, TWO_PM, "thu.md", "container");
+		const block = blockForTask(bare, TWO_PM, "thu.md");
 		expect(block.title).toBe("New block");
 		expect(block.assoc).toBeUndefined();
 	});
 
-	it("turns the task into a checkable block when time-boxing", () => {
-		const block = blockForTask(task, TWO_PM, "thu.md", "timebox");
-		expect(block.title).toBe("Launch post");
-		expect(block.status).toBe("/");
-		expect(block.assoc).toEqual({ kind: "project", id: "Kairos" });
-		expect(block.metadata).toBe("p1");
-		expect(block.tasks).toEqual([]);
-	});
 });
 
 describe("scheduleTaskInNewBlock", () => {
 	it("moves the task out of Unscheduled into a new block on the same day", () => {
 		const wed = wednesday();
-		const next = scheduleTaskInNewBlock(wed, inbox(wed), launch(wed), TWO_PM, "container");
+		const next = scheduleTaskInNewBlock(wed, inbox(wed), launch(wed), TWO_PM);
 		expect(inbox(next).tasks.map((t) => t.text)).toEqual(["Groceries"]);
 		const created = next.at(-1)!;
 		expect(created.title).toBe("Kairos");
@@ -174,20 +165,20 @@ describe("scheduleTaskInNewBlock", () => {
 		expect(created.tasks.map((t) => t.text)).toEqual(["Launch post"]);
 	});
 
-	it("time-boxes an inheriting task with the association it had", () => {
+	it("nests an inheriting task with the association it had", () => {
 		const wed = wednesday();
-		const next = scheduleTaskInNewBlock(wed, wed[0]!, fixBug(wed), TWO_PM, "timebox");
+		const next = scheduleTaskInNewBlock(wed, wed[0]!, fixBug(wed), TWO_PM);
 		expect(next[0]!.tasks).toEqual([]);
 		const created = next.at(-1)!;
-		expect(created.title).toBe("Fix carry bug");
-		expect(created.status).toBe(" ");
+		expect(created.title).toBe("Kairos");
 		expect(created.assoc).toEqual({ kind: "project", id: "Kairos" });
+		expect(created.tasks).toMatchObject([{ text: "Fix carry bug", assoc: { kind: "project", id: "Kairos" } }]);
 	});
 
 	it("is a no-op for an unknown task", () => {
 		const wed = wednesday();
 		const ghost: Task = { source: { path: "wed.md", line: 99 }, text: "?", status: " " };
-		expect(scheduleTaskInNewBlock(wed, wed[0]!, ghost, TWO_PM, "container")).toBe(wed);
+		expect(scheduleTaskInNewBlock(wed, wed[0]!, ghost, TWO_PM)).toBe(wed);
 	});
 });
 
@@ -196,7 +187,7 @@ describe("scheduleTaskInNewBlockAcrossDays", () => {
 		const wed = wednesday();
 		const thu = thursday();
 		const { from, to } = scheduleTaskInNewBlockAcrossDays(
-			wed, thu, inbox(wed), launch(wed), "thu.md", TWO_PM, "container",
+			wed, thu, inbox(wed), launch(wed), "thu.md", TWO_PM,
 		);
 		expect(inbox(from).tasks.map((t) => t.text)).toEqual(["Groceries"]);
 		expect(to).toHaveLength(2);
@@ -219,7 +210,7 @@ describe("copies", () => {
 	it("copies a task into a new block with the given association", () => {
 		const thu = thursday();
 		const wed = wednesday();
-		const next = copyTaskIntoNewBlock(thu, fixBug(wed), { kind: "project", id: "Kairos" }, "thu.md", TWO_PM, "container");
+		const next = copyTaskIntoNewBlock(thu, fixBug(wed), { kind: "project", id: "Kairos" }, "thu.md", TWO_PM);
 		const created = next.at(-1)!;
 		expect(created.title).toBe("Kairos");
 		expect(created.tasks[0]!.assoc).toEqual({ kind: "project", id: "Kairos" });

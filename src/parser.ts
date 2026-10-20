@@ -11,8 +11,22 @@
 //     (paren note)  a single trailing parenthesised note -> Task.tag
 //
 // Top-level list items are blocks. Items indented under a block are that
-// block's tasks. A block line that carries a checkbox also gets a colocated
-// `task` sharing the block's source line.
+// block's tasks when they carry a checkbox, and its notes when they don't
+// (kept verbatim). A block has no status, so a block line is written without a
+// checkbox. A legacy top-level line that has one is from when blocks could be
+// checked:
+//   • a timed one ("- [x] 07:00 - 08:00 Gym") reads as a plain block holding
+//     one task first in its list: the block's title, the checkbox's status, no
+//     association or metadata of its own (it inherits the block's). That task
+//     shares the block's source line until the next write, which splits it
+//     into the two-line form ("- 07:00 - 08:00 Gym" / "\t- [x] Gym");
+//   • an untimed one ("- [ ] Call mom [D:Home]") reads as a task in the day's
+//     Unscheduled list, as the same line does in Routines.md, with the items
+//     nested under it after it. An untimed block other than Unscheduled shows
+//     only through its tasks, so a same-named block would be left behind,
+//     empty and out of reach, once the task moved on. When the day has no
+//     Unscheduled line, the parser makes that block and gives it the heading's
+//     line, which no block or task has.
 //
 // The parser is deliberately literal: it records associations exactly as
 // written (a task assoc that duplicates its block's is kept, not dropped) and
@@ -40,6 +54,17 @@ const LIST_ITEM = /^([ \t]*)[-*+]\s+(?:\[(.)\]\s+)?(.*)$/;
 
 // Leading "HH:MM - HH:MM " time range.
 const TIME_RANGE = /^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s+(.*)$/;
+
+// Midnight at the end of the day. The timeline runs to 24:00 by default, so a
+// block may end here; the serializer writes it as "24:00".
+const MIDNIGHT = 24 * 60;
+
+// A bare "HH:MM" clock value.
+const CLOCK = /^(\d{1,2}):(\d{2})$/;
+
+// A typed "HH:MM - HH:MM" range: a hyphen, en dash or em dash between the two
+// times, spaces around it optional.
+const RANGE_TEXT = /^(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})$/;
 
 // Trailing "[...]" association tag (matched repeatedly, right to left).
 const TRAILING_ASSOC = /\s*\[([^\]]+)\]\s*$/;
@@ -69,6 +94,8 @@ function parseSchedule(
   const blocks: Block[] = [];
   let current: Block | undefined;
   let blockIndent = 0;
+  // Untimed legacy checkbox lines and the items under them, for the inbox.
+  let loose: Block | undefined;
 
   for (let i = start; i < lines.length; i++) {
     const raw = lines[i] ?? "";
@@ -84,22 +111,58 @@ function parseSchedule(
     const body = item[3] ?? "";
     const source: SourceRef = { path, line: i };
 
-    // Nested item under an open block → a task of that block.
+    // Nested item under an open block → a task of that block, or a note when
+    // it has no checkbox.
     if (current && indent > blockIndent) {
-      current.tasks.push(parseTask(body, status, source));
+      if (status === undefined) {
+        (current.notes ??= []).push({ text: body, at: current.tasks.length });
+      } else {
+        current.tasks.push(parseTask(body, status, source));
+      }
       continue;
     }
 
-    // Otherwise this item starts a new block.
-    current = parseBlock(body, status, source);
+    // Otherwise this item starts a new block. A legacy checkbox on it becomes
+    // the block's first task, or a task for the inbox (see the header).
     blockIndent = indent;
-    blocks.push(current);
+    const block = parseBlock(body, source);
+    if (status !== undefined && !block.time) {
+      loose ??= inboxBlock(path, start - 1);
+      loose.tasks.push(parseTask(body, status, source));
+      current = loose;
+      continue;
+    }
+    if (status !== undefined) {
+      block.tasks.push({ source, text: block.title, status: toStatus(status) });
+    }
+    current = block;
+    blocks.push(block);
+  }
+
+  if (loose) {
+    const inbox = blocks.find((b) => !b.time && b.title === "Unscheduled");
+    if (!inbox) return [...blocks, loose];
+    const at = inbox.tasks.length;
+    for (const n of loose.notes ?? []) (inbox.notes ??= []).push({ text: n.text, at: at + n.at });
+    inbox.tasks.push(...loose.tasks);
   }
 
   return blocks;
 }
 
-export { parseSchedule };
+function inboxBlock(path: string, line: number): Block {
+  return { source: { path, line }, title: "Unscheduled", tasks: [], scheduled: false };
+}
+
+export {
+  parseSchedule,
+  parseStartClock,
+  parseEndClock,
+  parseTimeRangeText,
+  formatClock,
+  formatTimeRange,
+};
+export type { TimeRangeText };
 
 // exported for unit testing of the pieces
 export {
@@ -112,11 +175,7 @@ export {
 
 // ─── block / task construction ─────────────────────────────────
 
-function parseBlock(
-  body: string,
-  status: string | undefined,
-  source: SourceRef,
-): Block {
+function parseBlock(body: string, source: SourceRef): Block {
   const { title, assoc, metadata } = stripMetadata(body);
   const time = parseTime(title);
   // when a time range is present, the block title is the text after it
@@ -128,8 +187,6 @@ function parseBlock(
     ...(assoc ? { assoc } : {}),
     ...(metadata ? { metadata } : {}),
     tasks: [],
-    // A checkbox on the block line makes the block itself checkable.
-    ...(status !== undefined ? { status: toStatus(status) } : {}),
   };
 
   if (time) {
@@ -159,7 +216,7 @@ function parseTask(
   };
 }
 
-// A checkbox-less nested item is treated as an open task.
+// An unknown status char reads as open.
 function toStatus(status: string | undefined): TaskStatus {
   switch (status) {
     case "x":
@@ -240,10 +297,68 @@ function parseTime(text: string): ParsedTime | undefined {
   if (!m) return undefined;
 
   const start = toMinutes(m[1], m[2]);
-  const end = toMinutes(m[3], m[4]);
-  if (start === undefined || end === undefined || end <= start) return undefined;
+  if (start === undefined) return undefined;
+  const end = toEndMinutes(m[3], m[4], start);
+  if (end === undefined || end <= start) return undefined;
 
   return { range: { start, end }, title: (m[5] ?? "").trim() };
+}
+
+/** A bare "HH:MM" start time → minutes since midnight; undefined if invalid. */
+function parseStartClock(value: string): number | undefined {
+  const m = CLOCK.exec(value.trim());
+  return m ? toMinutes(m[1], m[2]) : undefined;
+}
+
+/**
+ * A bare "HH:MM" end time for a range starting at `start` → minutes since
+ * midnight; undefined if invalid. Midnight reads as either "24:00" or "00:00".
+ * Unlike a note's range, "00:00" is midnight even from a midnight start: a
+ * midnight end is often typed "00:00", and an empty 00:00–00:00 range is never
+ * what was meant.
+ */
+function parseEndClock(value: string, start: number): number | undefined {
+  const m = CLOCK.exec(value.trim());
+  if (!m) return undefined;
+  const end = toEndMinutes(m[1], m[2], start);
+  return end === 0 ? MIDNIGHT : end;
+}
+
+type TimeRangeText =
+  | { ok: true; range: TimeRange }
+  | { ok: false; error: string };
+
+/**
+ * A time range typed into an editor ("9:00 - 10:30", "09:00–10:30") → the
+ * range, or a short error to show the user. Built on parseStartClock and
+ * parseEndClock, so it takes exactly the times a note's range does, plus a
+ * midnight end written "00:00" (see parseEndClock).
+ */
+function parseTimeRangeText(text: string): TimeRangeText {
+  const m = RANGE_TEXT.exec(text.trim());
+  if (!m) return { ok: false, error: "Write the time like 09:00 - 10:30." };
+  const [, h1 = "", m1 = "", h2 = "", m2 = ""] = m;
+  if (Number(m1) > 59 || Number(m2) > 59) {
+    return { ok: false, error: "Minutes go up to 59." };
+  }
+  const start = parseStartClock(`${h1}:${m1}`);
+  if (start === undefined) return { ok: false, error: "The start must be before 24:00." };
+  const end = parseEndClock(`${h2}:${m2}`, start);
+  if (end === undefined) return { ok: false, error: "The end can't be after 24:00." };
+  if (end <= start) return { ok: false, error: "The end must be after the start." };
+  return { ok: true, range: { start, end } };
+}
+
+/** Minutes since midnight → "HH:MM"; the end of the day (1440) is "24:00". */
+function formatClock(minutes: number): string {
+  const hh = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+/** A range as "HH:MM–HH:MM" (or with `dash`), which parseTimeRangeText reads back. */
+function formatTimeRange(range: TimeRange, dash = "–"): string {
+  return `${formatClock(range.start)}${dash}${formatClock(range.end)}`;
 }
 
 function toMinutes(h: string | undefined, min: string | undefined): number | undefined {
@@ -252,6 +367,18 @@ function toMinutes(h: string | undefined, min: string | undefined): number | und
   if (!Number.isInteger(hh) || !Number.isInteger(mm)) return undefined;
   if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return undefined;
   return hh * 60 + mm;
+}
+
+// An end time may also be midnight: "24:00", or "00:00" after a later start
+// ("23:00 - 00:00"). Both read as minute 1440 so the range stays ordered.
+function toEndMinutes(
+  h: string | undefined,
+  min: string | undefined,
+  start: number,
+): number | undefined {
+  if (Number(h) === 24 && Number(min) === 0) return MIDNIGHT;
+  const end = toMinutes(h, min);
+  return end === 0 && start > 0 ? MIDNIGHT : end;
 }
 
 // ─── helpers ───────────────────────────────────────────────────

@@ -24,6 +24,7 @@ import { DEFAULT_HEADING, spliceSection } from "./section";
 import type {
   Association,
   Block,
+  Note,
   SourceRef,
   Task,
   TaskStatus,
@@ -105,10 +106,7 @@ export function retimeBlocks(
 
 // ─── block field edits ─────────────────────────────────────────
 
-/**
- * Rename a block. The title is the block line's text; a checkable block has no
- * separate task text to keep in sync, so this is a single-field edit.
- */
+/** Rename a block. The title is the block line's text. */
 export function setBlockTitle(
   blocks: Block[],
   target: Block,
@@ -117,37 +115,18 @@ export function setBlockTitle(
   return blocks.map((b) => (isOwner(b, target) ? { ...b, title } : b));
 }
 
-/**
- * Set a checkable block's status. No-op on a block without a checkbox — adding a
- * checkbox is a separate action, not a status change.
- */
-export function setBlockStatus(
-  blocks: Block[],
-  target: Block,
-  status: TaskStatus,
-): Block[] {
-  return blocks.map((b) => {
-    if (!isOwner(b, target) || b.status === undefined) return b;
-    return { ...b, status };
-  });
-}
-
 // ─── task operations ───────────────────────────────────────────
 //
-// A task is either a block's colocated checkbox (its `source` is the block's
-// own line) or an entry in `block.tasks`. These transforms take the owning
-// block and the target task and return a fresh `Block[]` with just that task
-// changed.
+// A task is an entry in `block.tasks`; a block has no status of its own (time
+// belongs to blocks, work to tasks). These transforms take the owning block and
+// the target task and return a fresh `Block[]` with just that task changed.
 //
 // Matching is by source location, not object identity. The render layer hands
-// tasks out as resolved clones (`resolveBlocks` synthesizes/spreads each task),
+// tasks out as resolved clones (`resolveBlocks` spreads each task),
 // so the object the caller passes back is never the same reference stored in
 // `blocks`. A `SourceRef` (path + line) is stable across that clone and
-// uniquely names a task line, so it's the handle every match uses.
-//
-// The colocated task has no separate storage: its fields *are* the block's
-// (`title`↔`text`, `status`, `assoc`, `metadata`). Patching it therefore folds
-// the patched task fields back onto the block, keeping one source of truth.
+// uniquely names a task line, so it's the handle every match uses. Tasks are
+// only ever matched within one block's `tasks`, never against a block's line.
 
 /** True if two source refs name the same file line. */
 function sameSource(a: SourceRef, b: SourceRef): boolean {
@@ -162,30 +141,6 @@ function isOwner(block: Block, owner: Block): boolean {
   return sameSource(block.source, owner.source);
 }
 
-/** A checkable block viewed as its colocated task. */
-function blockAsTask(b: Block): Task {
-  return {
-    source: b.source,
-    text: b.title,
-    status: b.status as TaskStatus,
-    ...(b.assoc ? { assoc: b.assoc } : {}),
-    ...(b.metadata ? { metadata: b.metadata } : {}),
-  };
-}
-
-/** Fold patched colocated-task fields back onto the block. */
-function foldTaskOntoBlock(b: Block, t: Task): Block {
-  return {
-    ...b,
-    title: t.text,
-    status: t.status,
-    ...(t.assoc ? { assoc: t.assoc } : { assoc: undefined }),
-    ...(t.metadata !== undefined
-      ? { metadata: t.metadata }
-      : { metadata: undefined }),
-  };
-}
-
 /** Replace a task's fields via `patch`, returning a new `Block[]`. */
 function patchTask(
   blocks: Block[],
@@ -195,13 +150,6 @@ function patchTask(
 ): Block[] {
   return blocks.map((b) => {
     if (!isOwner(b, owner)) return b;
-
-    // Colocated task: the target shares the block's line, so patch the block's
-    // own fields (there is no nested task object).
-    if (b.status !== undefined && sameSource(b.source, target.source)) {
-      return foldTaskOntoBlock(b, patch(blockAsTask(b)));
-    }
-    // Otherwise a nested task in `b.tasks`.
     return {
       ...b,
       tasks: b.tasks.map((t) =>
@@ -231,24 +179,39 @@ export function setTaskText(
   return patchTask(blocks, owner, target, (t) => ({ ...t, text }));
 }
 
-/**
- * Remove a task. A nested task is filtered out of its block's `tasks`. A
- * colocated task can't be removed on its own without also removing the block's
- * checkbox, so deleting it drops the block's `status`/`metadata` (the block
- * itself, its title and time, stays).
- */
+/** Remove a task from its block's `tasks`. */
 export function deleteTask(blocks: Block[], owner: Block, target: Task): Block[] {
-  return blocks.map((b) => {
-    if (!isOwner(b, owner)) return b;
-    if (b.status !== undefined && sameSource(b.source, target.source)) {
-      const { status: _s, metadata: _m, ...rest } = b;
-      return { ...rest };
-    }
-    return {
-      ...b,
-      tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)),
-    };
-  });
+  return blocks.map((b) => (isOwner(b, owner) ? withoutTask(b, target.source) : b));
+}
+
+// A note's `at` counts the tasks before it, so taking a task out of a block or
+// putting one in shifts the notes after that slot; otherwise a note under a
+// removed task would jump below the next one.
+
+/** `block` without the task at `target`; the notes after it count one fewer. */
+export function withoutTask(block: Block, target: SourceRef): Block {
+  const i = block.tasks.findIndex((t) => sameSource(t.source, target));
+  if (i === -1) return block;
+  return {
+    ...block,
+    tasks: block.tasks.filter((_, k) => k !== i),
+    ...(block.notes ? { notes: shiftNotes(block.notes, i, -1) } : {}),
+  };
+}
+
+/** `block` with `task` at `index` (clamped); the notes after that slot count it. */
+function withTaskAt(block: Block, task: Task, index: number): Block {
+  const at = Math.max(0, Math.min(index, block.tasks.length));
+  return {
+    ...block,
+    tasks: [...block.tasks.slice(0, at), task, ...block.tasks.slice(at)],
+    ...(block.notes ? { notes: shiftNotes(block.notes, at, 1) } : {}),
+  };
+}
+
+/** Move every note past task slot `i` by `by`. */
+function shiftNotes(notes: Note[], i: number, by: number): Note[] {
+  return notes.map((n) => (n.at > i ? { ...n, at: n.at + by } : n));
 }
 
 /** Return a copy of `blocks` with `target` removed. */
@@ -381,9 +344,7 @@ function pinAssoc(nested: Task, source: Block, assoc?: Association | null): Task
  * written explicitly onto the moved task. A task with its own explicit
  * association keeps it unchanged.
  *
- * No-op unless `owner` is a real timed block holding `target` as a nested task:
- * a colocated task (the block's own checkbox) is part of a *block*, which is not
- * unnestable — remove the block in the timeline instead. Pure; caller persists.
+ * No-op unless `owner` holds `target` in its `tasks`. Pure; caller persists.
  */
 export function unnestTask(
   blocks: Block[],
@@ -395,8 +356,6 @@ export function unnestTask(
   const source = blocks.find((b) => isOwner(b, owner));
   if (!source) return blocks;
 
-  // Only a genuinely nested task can unnest. A colocated task shares the block's
-  // own line (it *is* the block's checkbox), so bail if the target is that.
   const nested = source.tasks.find((t) => sameSource(t.source, target.source));
   if (!nested) return blocks;
 
@@ -407,7 +366,7 @@ export function unnestTask(
   // Remove from the source block, then insert into Unscheduled.
   const without = blocks.map((b) =>
     isOwner(b, source)
-      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      ? withoutTask(b, target.source)
       : b,
   );
   return insertIntoUnscheduled(without, moved, path);
@@ -416,8 +375,7 @@ export function unnestTask(
 // ─── nest a task under a block ─────────────────────────────────
 //
 // CORE LOGIC — flagged for review. Re-parent a task from wherever it lives now
-// (a timed block, the Unscheduled inbox, or a checkable block viewed as its own
-// colocated task) into `target` block, optionally at a chosen slot among that
+// (a timed block or the Unscheduled inbox) into `target` block, optionally at a chosen slot among that
 // block's existing tasks. This is the timeline's "nest" gesture — the inverse
 // of `unnestTask` — reached from the task's menu, its context-menu picker, and
 // drag-and-drop between blocks. It is a pure `Block[]` transform so the timeline
@@ -430,12 +388,7 @@ export function unnestTask(
 // before it moves. A task with its own explicit association keeps it verbatim.
 // Result: nesting never changes a task's owner unless the user meant it to.
 //
-// Two source shapes are handled:
-//   • a genuine nested task, removed from its old block's `tasks`;
-//   • a colocated task (a checkable block's own line). That task *is* a block,
-//     so it can't be lifted off its line — nesting it is a no-op. Convert the
-//     block first (or move the block), then nest.
-// Nesting into the same block it already lives in is allowed: it becomes a pure
+// The task is removed from its old block's `tasks`. Nesting into the same block it already lives in is allowed: it becomes a pure
 // reorder (remove then re-insert at `index`).
 
 /**
@@ -444,8 +397,8 @@ export function unnestTask(
  * pass a large value to append). Returns a fresh `Block[]`; the caller persists.
  *
  * The inherited-or-explicit association is materialized onto the task so its
- * owner survives the move (see the block comment above). No-op if the source
- * task is a colocated block line, or either block can't be found.
+ * owner survives the move (see the block comment above). No-op if the task or
+ * either block can't be found.
  */
 export function nestTaskUnderBlock(
   blocks: Block[],
@@ -458,12 +411,6 @@ export function nestTaskUnderBlock(
   const source = blocks.find((b) => isOwner(b, sourceOwner));
   const dest = blocks.find((b) => isOwner(b, destination));
   if (!source || !dest) return blocks;
-
-  // A colocated task is the block's own checkbox line — it isn't a liftable
-  // nested task, so there is nothing to re-parent.
-  if (source.status !== undefined && sameSource(source.source, target.source)) {
-    return blocks;
-  }
 
   const nested = source.tasks.find((t) => sameSource(t.source, target.source));
   if (!nested) return blocks;
@@ -479,18 +426,11 @@ export function nestTaskUnderBlock(
     // Remove from the source block first (in the same-block case this drains the
     // slot the task used to occupy, so `index` counts against the remainder).
     if (isOwner(b, source)) {
-      const remaining = b.tasks.filter(
-        (t) => !sameSource(t.source, target.source),
-      );
-      if (!sameBlock) return { ...b, tasks: remaining };
+      const remaining = withoutTask(b, target.source);
       // Same block: insert into the freshly-drained list at the clamped slot.
-      const at = Math.max(0, Math.min(index, remaining.length));
-      return { ...b, tasks: [...remaining.slice(0, at), moved, ...remaining.slice(at)] };
+      return sameBlock ? withTaskAt(remaining, moved, index) : remaining;
     }
-    if (isOwner(b, dest)) {
-      const at = Math.max(0, Math.min(index, b.tasks.length));
-      return { ...b, tasks: [...b.tasks.slice(0, at), moved, ...b.tasks.slice(at)] };
-    }
+    if (isOwner(b, dest)) return withTaskAt(b, moved, index);
     return b;
   });
 }
@@ -515,8 +455,7 @@ export interface CrossDayTaskMove {
  * `toLine` is the moved task's throwaway line on the destination day; the real
  * one is re-derived by that note's reparse.
  *
- * Colocated tasks (a checkable block's own line) are a no-op — they are blocks,
- * not liftable tasks. Pure; caller persists both days via `applyCrossDayMove`.
+ * Pure; caller persists both days via `applyCrossDayMove`.
  */
 export function moveTaskAcrossDays(
   fromBlocks: Block[],
@@ -529,11 +468,6 @@ export function moveTaskAcrossDays(
 ): CrossDayTaskMove {
   const source = fromBlocks.find((b) => isOwner(b, sourceOwner));
   if (!source) return { from: fromBlocks, to: toBlocks };
-
-  // Colocated task = the block's own checkbox line; not liftable.
-  if (source.status !== undefined && sameSource(source.source, target.source)) {
-    return { from: fromBlocks, to: toBlocks };
-  }
 
   const nested = source.tasks.find((t) => sameSource(t.source, target.source));
   if (!nested) return { from: fromBlocks, to: toBlocks };
@@ -552,7 +486,7 @@ export function moveTaskAcrossDays(
 
   const from = fromBlocks.map((b) =>
     isOwner(b, source)
-      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      ? withoutTask(b, target.source)
       : b,
   );
   const to = insertIntoUnscheduled(toBlocks, moved, toPath);
@@ -788,7 +722,26 @@ export function copyBlockIntoDay(
     ...(assoc ? { assoc } : {}),
   };
   if (!assoc) delete (copy as Partial<Block>).assoc;
+  // Notes record what happened in the original's time; a copy starts fresh.
+  delete (copy as Partial<Block>).notes;
   return [...toBlocks, copy];
+}
+
+// ─── notes (decision 96) ───────────────────────────────────────
+
+/** `block`'s notes with `text` added at the end, after all its tasks. */
+export function notesWithAdded(block: Block, text: string): Note[] {
+  return [...(block.notes ?? []), { text, at: block.tasks.length }];
+}
+
+/**
+ * `block`'s notes with note `index` set to `text`, or removed when `text` is
+ * blank: clearing a note deletes it.
+ */
+export function notesWithText(block: Block, index: number, text: string): Note[] {
+  const notes = block.notes ?? [];
+  if (text.trim() === "") return notes.filter((_, i) => i !== index);
+  return notes.map((n, i) => (i === index ? { ...n, text } : n));
 }
 
 // ─── schedule a task across views ──────────────────────────────
@@ -800,17 +753,10 @@ export function copyBlockIntoDay(
 // materializing the association it had (explicit, else inherited from its old
 // owner) so moving never changes which project or domain it belongs to.
 //
-// Dropping on empty time creates a block at that time. Two shapes:
-//   • "container" (the default): a block named after the task's association,
-//     carrying that association, with the task nested inside. The task stays a
-//     task, so it still carries to tomorrow if it's not done (decision 17).
-//   • "timebox" (Option/Alt): the task becomes a checkable block — its text,
-//     status, association and metadata move onto the block line (decision 11).
-//     A checkable block's own checkbox does not carry over, which is why this
-//     is the alternate and not the default.
-
-/** What a drop on empty time turns the task into. */
-export type NewBlockMode = "container" | "timebox";
+// Dropping on empty time creates a block at that time: a block named after the
+// task's association, carrying that association, with the task nested inside.
+// The task stays a task, so it still carries to tomorrow if it's not done
+// (decision 17).
 
 /** A nested task, lifted out of its block with its association materialized. */
 interface Lifted {
@@ -820,9 +766,8 @@ interface Lifted {
 
 /**
  * Remove `target` from `owner` in `blocks`, returning the remainder and the
- * task with its association pinned (`assoc` overrides it, see `pinAssoc`). Null when the owner or task can't be found,
- * or when the target is a colocated task (a block's own checkbox line, which
- * can't leave that line).
+ * task with its association pinned (`assoc` overrides it, see `pinAssoc`). Null
+ * when the owner or task can't be found.
  */
 function liftTask(
   blocks: Block[],
@@ -832,16 +777,13 @@ function liftTask(
 ): Lifted | null {
   const source = blocks.find((b) => isOwner(b, owner));
   if (!source) return null;
-  if (source.status !== undefined && sameSource(source.source, target.source)) {
-    return null;
-  }
   const nested = source.tasks.find((t) => sameSource(t.source, target.source));
   if (!nested) return null;
 
   const task = pinAssoc(nested, source, assoc);
   const without = blocks.map((b) =>
     isOwner(b, source)
-      ? { ...b, tasks: b.tasks.filter((t) => !sameSource(t.source, target.source)) }
+      ? withoutTask(b, target.source)
       : b,
   );
   return { without, task };
@@ -855,11 +797,7 @@ function insertIntoBlock(
   index: number,
 ): Block[] {
   if (!blocks.some((b) => isOwner(b, destination))) return blocks;
-  return blocks.map((b) => {
-    if (!isOwner(b, destination)) return b;
-    const at = Math.max(0, Math.min(index, b.tasks.length));
-    return { ...b, tasks: [...b.tasks.slice(0, at), task, ...b.tasks.slice(at)] };
-  });
+  return blocks.map((b) => (isOwner(b, destination) ? withTaskAt(b, task, index) : b));
 }
 
 /**
@@ -867,7 +805,7 @@ function insertIntoBlock(
  * materialized onto it). The block's line is drawn before the task's so the
  * draft lines keep the order the real ones will have after the reparse.
  *
- * A container block takes `title` when one is given (the "Name for blocks made
+ * The block takes `title` when one is given (the "Name for blocks made
  * by a drop" setting), else the task's project or domain name, else the
  * default block title.
  */
@@ -875,22 +813,9 @@ export function blockForTask(
   task: Task,
   time: TimeRange,
   path: string,
-  mode: NewBlockMode,
   title?: string,
 ): Block {
   const source: SourceRef = { path, line: nextDraftLine() };
-  if (mode === "timebox") {
-    return {
-      source,
-      title: task.text,
-      status: task.status,
-      ...(task.assoc ? { assoc: task.assoc } : {}),
-      ...(task.metadata ? { metadata: task.metadata } : {}),
-      tasks: [],
-      scheduled: true,
-      time,
-    };
-  }
   return {
     source,
     title: title?.trim() || (task.assoc ? task.assoc.id : DEFAULT_BLOCK_TITLE),
@@ -933,21 +858,20 @@ export function moveTaskIntoBlockAcrossDays(
 
 /**
  * Same-day drop on empty time: take the task out of its block and give it a new
- * block at `time` (see `NewBlockMode`). Unchanged when the task can't be lifted.
+ * block at `time` holding it. Unchanged when the task can't be lifted.
  */
 export function scheduleTaskInNewBlock(
   blocks: Block[],
   owner: Block,
   target: Task,
   time: TimeRange,
-  mode: NewBlockMode,
   assoc?: Association | null,
   title?: string,
 ): Block[] {
   const lifted = liftTask(blocks, owner, target, assoc);
   if (!lifted) return blocks;
   const path = owner.source.path;
-  return [...lifted.without, blockForTask(lifted.task, time, path, mode, title)];
+  return [...lifted.without, blockForTask(lifted.task, time, path, title)];
 }
 
 /**
@@ -961,7 +885,6 @@ export function scheduleTaskInNewBlockAcrossDays(
   target: Task,
   toPath: string,
   time: TimeRange,
-  mode: NewBlockMode,
   assoc?: Association | null,
   title?: string,
 ): CrossDayTaskMove {
@@ -969,7 +892,7 @@ export function scheduleTaskInNewBlockAcrossDays(
   if (!lifted) return { from: fromBlocks, to: toBlocks };
   return {
     from: lifted.without,
-    to: [...toBlocks, blockForTask(lifted.task, time, toPath, mode, title)],
+    to: [...toBlocks, blockForTask(lifted.task, time, toPath, title)],
   };
 }
 
@@ -998,11 +921,10 @@ export function copyTaskIntoNewBlock(
   assoc: Association | null,
   toPath: string,
   time: TimeRange,
-  mode: NewBlockMode,
   title?: string,
 ): Block[] {
   const copy = cloneTask(task, toPath, task.source.line, assoc);
-  return [...toBlocks, blockForTask(copy, time, toPath, mode, title)];
+  return [...toBlocks, blockForTask(copy, time, toPath, title)];
 }
 
 /** Return a copy of `blocks` with every block in `targets` removed. */

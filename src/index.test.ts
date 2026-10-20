@@ -23,6 +23,7 @@ import {
 	type IndexPaths,
 } from "./index";
 import { parseSchedule } from "./parser";
+import { serialize } from "./serializer";
 import { addTaskToUnscheduled, makeBlock } from "./writer";
 import type { BacklogEntry } from "./types";
 
@@ -115,6 +116,12 @@ describe("daySignature", () => {
 		expect(daySignature(base)).not.toBe(daySignature(done));
 		expect(daySignature(base)).not.toBe(daySignature(assoc));
 	});
+
+	it("matches a legacy checkbox block line and the two-line form it's written as", () => {
+		const legacy = parseSchedule(note("- [x] 07:00 - 08:00 Gym [Fitness]\n\t- [ ] Stretch"), "x");
+		const written = parseSchedule(serialize(legacy), "x");
+		expect(daySignature(written)).toBe(daySignature(legacy));
+	});
 });
 
 // ─── pure reindex ──────────────────────────────────────────────
@@ -163,9 +170,9 @@ describe("deriveLookups", () => {
 			1,
 		);
 		s = deriveLookups(s);
-		// task one inherits [Alpha]; the checkable Errand block surfaces as a
-		// task owning [D:Life]. A non-checkable childless block would contribute
-		// no task (only time), so it would not bucket here — see resolver.
+		// task one inherits [Alpha]; the legacy checkbox on the Errand line is
+		// read as a task inside it, which inherits [D:Life]. A childless block
+		// contributes no task (only time), so it would not bucket here.
 		expect(s.byProject.get("Alpha")).toBeTruthy();
 		expect(s.byDomain.get("Life")).toBeTruthy();
 	});
@@ -471,6 +478,31 @@ describe("KairosIndex", () => {
 		// Same schedule, different whitespace + later mtime (a write echo).
 		idx.onFileChanged(path, note("-  09:00 - 10:00 Work  "), 9);
 		expect(notifications).toBe(baseline); // no extra notification
+	});
+
+	it("keeps a block ending at midnight timed when its write echoes back", async () => {
+		const idx = new KairosIndex(deps);
+		const date = "2026-07-31";
+		const path = dayPath(date);
+		idx.seed([]);
+		const store = idx.day(date);
+
+		idx.applyDayEdit(date, path, [makeBlock({ start: 1380, end: 1440 }, path, "Sleep")]);
+		await vi.advanceTimersByTimeAsync(500);
+		const written = writes[0]?.content ?? "";
+		expect(written).toContain("- 23:00 - 24:00 Sleep");
+
+		let notifications = 0;
+		store.subscribe(() => notifications++);
+		const baseline = notifications;
+
+		idx.onFileChanged(path, written, 2000);
+		expect(notifications).toBe(baseline); // an echo, not an external change
+		expect(get(store)?.blocks[0]).toMatchObject({
+			title: "Sleep",
+			scheduled: true,
+			time: { start: 1380, end: 1440 },
+		});
 	});
 
 	it("notifies on a real external change", () => {

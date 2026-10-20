@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { carryOver, previousDay } from "./carry";
+import { parseSchedule } from "./parser";
+import { serialize } from "./serializer";
 import type { Block, Day } from "./types";
 
 function day(path: string): Block[] {
@@ -10,7 +12,6 @@ function day(path: string): Block[] {
 			assoc: { kind: "project", id: "Kairos" },
 			scheduled: true,
 			time: { start: 540, end: 600 },
-			status: " ",
 			tasks: [
 				{ source: { path, line: 3 }, text: "Open", status: " " },
 				{ source: { path, line: 4 }, text: "Done", status: "x" },
@@ -50,11 +51,38 @@ describe("carryOver", () => {
 		expect(inbox.tasks.find((t) => t.text === "Half")?.status).toBe("/");
 	});
 
-	it("never carries blocks, even a checkable one left open", () => {
+	it("never carries blocks", () => {
 		const { from, to } = carryOver(day("mon.md"), [], "tue.md");
 		expect(from[0]?.title).toBe("Deep work");
-		expect(from[0]?.status).toBe(" ");
+		expect(from[0]?.time).toEqual({ start: 540, end: 600 });
 		expect(to.map((b) => b.title)).toEqual(["Unscheduled"]);
+	});
+
+	it("carries the task read from a legacy checkbox block line", () => {
+		const blocks = parseSchedule("## Schedule\n\n- [ ] 18:00 - 19:00 Gym [Fitness]\n", "mon.md");
+		const { from, to, moved } = carryOver(blocks, [], "tue.md");
+		expect(moved).toBe(1);
+		expect(from[0]?.title).toBe("Gym");
+		expect(from[0]?.tasks).toEqual([]);
+		const gym = to.find((b) => b.title === "Unscheduled")!.tasks[0]!;
+		expect(gym).toMatchObject({ text: "Gym", status: " ", assoc: { kind: "project", id: "Fitness" } });
+	});
+
+	it("carries an untimed legacy checkbox line out of the inbox, leaving no block of its name", () => {
+		const blocks = parseSchedule("## Schedule\n\n- 09:00 - 10:00 Work\n- [ ] Call mom [D:Home]\n", "mon.md");
+		const { from, to, moved } = carryOver(blocks, [], "tue.md");
+		expect(moved).toBe(1);
+		expect(serialize(from)).toBe("## Schedule\n\n- 09:00 - 10:00 Work\n- Unscheduled\n");
+		expect(to.find((b) => b.title === "Unscheduled")!.tasks[0]).toMatchObject({
+			text: "Call mom",
+			assoc: { kind: "domain", id: "Home" },
+		});
+	});
+
+	it("keeps a note beside the done task it followed after the task above it carries", () => {
+		const md = "## Schedule\n- [ ] 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n";
+		const { from } = carryOver(parseSchedule(md, "mon.md"), [], "tue.md");
+		expect(serialize(from)).toBe("## Schedule\n\n- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n");
 	});
 
 	it("materializes an inherited association and keeps an explicit one", () => {

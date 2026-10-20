@@ -16,22 +16,35 @@ interface LongpressOptions {
 	duration?: number;
 	/** Called when the press matures — an alternative to listening for the event. */
 	onLongpress?: () => void;
+	/**
+	 * Presses this returns true for never start the timer (e.g. ones on a
+	 * control inside the node that has a hold of its own).
+	 */
+	ignore?: (event: PointerEvent) => boolean;
 }
 
 type LongpressParam = number | LongpressOptions;
 
+const never = () => false;
+
 function normalize(param: LongpressParam): Required<LongpressOptions> {
-	if (typeof param === "number") return { duration: param, onLongpress: () => {} };
-	return { duration: param.duration ?? 500, onLongpress: param.onLongpress ?? (() => {}) };
+	if (typeof param === "number") return { duration: param, onLongpress: () => {}, ignore: never };
+	return {
+		duration: param.duration ?? 500,
+		onLongpress: param.onLongpress ?? (() => {}),
+		ignore: param.ignore ?? never,
+	};
 }
 
 export function longpress(node: HTMLElement, param: LongpressParam = 500) {
-	let { duration, onLongpress } = normalize(param);
+	let { duration, onLongpress, ignore } = normalize(param);
 	let timer: number | undefined;
 	let fired = false;
 
-	function start() {
+	function start(event: PointerEvent) {
+		cancel();
 		fired = false;
+		if (ignore(event)) return;
 		timer = window.setTimeout(() => {
 			fired = true;
 			node.dispatchEvent(new CustomEvent("longpress"));
@@ -64,7 +77,7 @@ export function longpress(node: HTMLElement, param: LongpressParam = 500) {
 
 	return {
 		update(next: LongpressParam) {
-			({ duration, onLongpress } = normalize(next));
+			({ duration, onLongpress, ignore } = normalize(next));
 		},
 		destroy() {
 			cancel();

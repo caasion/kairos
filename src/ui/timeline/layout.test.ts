@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dropRange, type TimelineGeometry } from "./layout";
+import { parseSchedule } from "../../parser";
+import { serialize } from "../../serializer";
 
 const geo: TimelineGeometry = { startHour: 6, endHour: 24, hourHeight: 60, topPad: 8 };
 
@@ -15,6 +17,14 @@ describe("dropRange", () => {
 
 	it("shifts earlier rather than running past the last hour", () => {
 		expect(dropRange(23 * 60 + 50, geo)).toEqual({ start: 1410, end: 1440 });
+	});
+
+	it("gives a range at the end of the day that survives a write and reparse", () => {
+		const time = dropRange(23 * 60 + 50, geo);
+		const md = serialize([
+			{ source: { path: "x", line: -1 }, title: "Late", scheduled: true, time, tasks: [] },
+		]);
+		expect(parseSchedule(md, "x")[0]?.time).toEqual(time);
 	});
 
 	it("fits a day shorter than the block", () => {

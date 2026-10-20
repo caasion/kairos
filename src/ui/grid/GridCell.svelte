@@ -6,35 +6,35 @@
 	// the day's blocks and persists through the index. That keeps all task
 	// read/write logic in one place and this component purely presentational.
 	//
-	// Two layouts:
-	//   • Grouped by block (`blockGroups`, the "Group by block" setting): tasks sit
-	//     under their block's header, in time order with Unscheduled last. A
-	//     checkable block's own task is its header. The header does what the
-	//     per-task badge did: Ctrl/Cmd+click opens the block in the Day view,
-	//     pointing at it lights the block in other views, and a task dropped on it
-	//     nests there. Nothing renders under a task (decision 72).
-	//   • Flat: on a domain row, `tasks` are the domain's own tasks and render
-	//     first with no header; `groups` are the rolled-up projects' tasks (#11),
-	//     each under a small project header naming it. Ctrl/Cmd+click a header to
-	//     open the project note. Scheduled tasks carry the block badge.
+	// Tasks sit under their block's header, in time order with Unscheduled last,
+	// and a timed block shows in its own row even with no tasks there (decision
+	// 95). The header does what the
+	// old per-task badge did: Ctrl/Cmd+click opens the block in the Day view,
+	// pointing at it lights the block in other views, and a task dropped on it
+	// nests there. Nothing renders under a task (decision 72).
+	//
+	// A block's header carries the block's own actions too, as on the timeline:
+	// its context menu (shared via blockMenu.ts), an action stack in its corner
+	// (add task, association, delete), a click on the title to rename it, and a long-press to
+	// drag it to another row or day.
 
+	import { Menu } from "obsidian";
 	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
-	import { isUnscheduledBlock, type BlockGroup, type CellGroup } from "../../gridModel";
+	import { isUnscheduledBlock, sourceKey, type BlockGroup } from "../../gridModel";
+	import { formatClock } from "../../parser";
 	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
 	import { requestRepeat } from "../../routines/repeat";
+	import { addBlockMenuItems } from "../blockMenu";
+	import { actionZone } from "../actions/actionZone";
+	import { grabOnHold } from "../actions/grabOnHold";
+	import { tooltip } from "../actions/tooltip";
 
 	interface Props {
-		/** The row's own tasks (headerless, first). */
-		tasks: ResolvedTask[];
-		/** Rolled-up projects' tasks, one header each (domain rows only). */
-		groups?: CellGroup[];
 		resolve: Resolver;
 		/** Row tint, applied to task checkboxes for a domain-colored accent. */
 		color?: string;
-		/** True on the Unassigned row, where "+" would have no association. */
-		allowCreate: boolean;
 		/**
 		 * The row's entity was inactive/archived on this day: the cell is history,
 		 * shown dimmed and read-only (existing tasks visible, no "+" to add work to
@@ -47,53 +47,56 @@
 		onEditAssoc: (task: ResolvedTask, anchor: DOMRect) => void;
 		onNavigate: (assoc: Association) => void;
 		onCreate: () => void;
-		// Jump to this task's block in the Day view (badge ctrl+click).
+		// Jump to this task's block in the Day view.
 		onReveal: (task: ResolvedTask) => void;
+		// Jump to a block in the Day view (its header's ctrl+click).
+		onRevealBlock: (block: Block) => void;
 		// Open the block picker to change a nested task's parent block, anchored at
-		// `rect`. Wired only for non-colocated tasks (a checkable block can't move).
+		// `rect`.
 		onNest: (task: ResolvedTask, anchor: DOMRect) => void;
-		// Move a task off this day and back into the backlog. Wired only for
-		// non-colocated tasks — a colocated task is a block, which can't leave
-		// its line.
+		// Move a task off this day and back into the backlog.
 		onMoveToBacklog: (task: ResolvedTask) => void;
 		// A long-press on a regular task began a grid drag-to-reschedule.
 		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
-		// A long-press on a colocated task (checkable block) began a block drag.
-		onBlockGrab?: (task: ResolvedTask, event: PointerEvent) => void;
-		// While a drag is live: dim the source item. dragTaskLine for task drags,
-		// dragBlockLine for block drags (matches the block's source line = colocated task line).
-		dragTaskLine?: number;
-		dragBlockLine?: number;
+		// A long-press on a block's header began a block drag.
+		onBlockGrab?: (block: Block, event: PointerEvent) => void;
+		// While a drag is live: dim the source item. dragTaskKey for task drags,
+		// dragBlockKey for block drags. Both are "path:line" (sourceKey), so the same line in another day's
+		// note doesn't dim too.
+		dragTaskKey?: string;
+		dragBlockKey?: string;
 		// True only when THIS cell is the live drop target (not just any drag).
 		isDropTarget?: boolean;
 		// Hover link (viewLinks.ts): how a task is lit (its block, or itself), and
 		// the report of the pointer entering/leaving one here.
 		highlightOf?: (task: ResolvedTask) => Highlight;
 		onHover?: (task: ResolvedTask, on: boolean) => void;
-		// Grouped by block: the cell's groups (replaces `tasks` and `groups`) and
-		// the chip naming a rolled-up task's project. Each group is a drop target
+		// The cell's block groups and the chip naming a rolled-up task's project.
+		// Each group is a drop target
 		// (see taskDrag's `hitTestGridGroup`): `dropGroup` is the one a live drag
 		// would land in (a block line, or "unscheduled"), and `unscheduledSlot`
 		// shows an empty Unscheduled group to drop into while a drag is live.
-		blockGroups?: BlockGroup[];
+		blockGroups: BlockGroup[];
 		chipFor?: (task: ResolvedTask) => string | undefined;
 		date?: ISODate;
 		dropGroup?: number | "unscheduled";
 		unscheduledSlot?: boolean;
-		// Grouped by block: add a new task to a group's block (its "+").
+		// Add a new task to a group's block (its "+").
 		onCreateInBlock?: (block: Block) => void;
 		// Hover link for the block headers: whether a block is lit (pointed at in
 		// some row or view), and a header coming under / leaving the pointer.
 		isBlockLinked?: (block: Block) => boolean;
 		onBlockHover?: (block: Block, on: boolean) => void;
+		// A block's own edits, from its header's menu and action stack: the
+		// association picker anchored at `rect`, delete, rename.
+		onEditBlockAssoc?: (block: Block, anchor: DOMRect) => void;
+		onDeleteBlock?: (block: Block) => void;
+		onSetBlockTitle?: (block: Block, title: string) => void;
 	}
 
 	let {
-		tasks,
-		groups = [],
 		resolve,
 		color,
-		allowCreate,
 		inactive = false,
 		onSetStatus,
 		onSetText,
@@ -102,12 +105,13 @@
 		onNavigate,
 		onCreate,
 		onReveal,
+		onRevealBlock,
 		onNest,
 		onMoveToBacklog,
 		onTaskGrab,
 		onBlockGrab,
-		dragTaskLine,
-		dragBlockLine,
+		dragTaskKey,
+		dragBlockKey,
 		isDropTarget = false,
 		highlightOf,
 		onHover,
@@ -119,14 +123,17 @@
 		onCreateInBlock,
 		isBlockLinked,
 		onBlockHover,
+		onEditBlockAssoc,
+		onDeleteBlock,
+		onSetBlockTitle,
 	}: Props = $props();
 
-	const canCreate = $derived(allowCreate && !inactive);
+	const canCreate = $derived(!inactive);
 	// Grouped, each group carries its own "+", and an Unscheduled group's adds
 	// to Unscheduled; the cell's corner "+" stays only for a cell without one.
 	const showCellAdd = $derived(
 		canCreate &&
-			!(blockGroups?.some((g) => isUnscheduledBlock(g.block)) ?? false),
+			!blockGroups.some((g) => isUnscheduledBlock(g.block)),
 	);
 
 	// The value `dropGroup` takes when a drag is over this group.
@@ -134,15 +141,12 @@
 		return isUnscheduledBlock(group.block) ? "unscheduled" : group.block.source.line;
 	}
 
-	const grouped = $derived(blockGroups !== undefined);
-
-	// Each block group's offset into the cell's flat task order (its own task
-	// first, then its nested ones), so `data-task-index` runs across the cell.
+	// Each block group's offset into the cell's flat task order, so `data-task-index` runs across the cell.
 	const blockOffsets = $derived.by(() => {
 		let n = 0;
-		return (blockGroups ?? []).map((g) => {
+		return blockGroups.map((g) => {
 			const at = n;
-			n += (g.head ? 1 : 0) + g.tasks.length;
+			n += g.tasks.length;
 			return at;
 		});
 	});
@@ -154,13 +158,7 @@
 	}
 
 	function headerLabel(block: Block): string {
-		return block.time ? `${fmtTime(block.time.start)} ${block.title}` : block.title;
-	}
-
-	// The date and a representative task of a group, for the drop hit-test and
-	// the Day view reveal (every task in a group shares its block and day).
-	function anyTask(group: BlockGroup): ResolvedTask | undefined {
-		return group.head ?? group.tasks[0];
+		return block.time ? `${formatClock(block.time.start)} ${block.title}` : block.title;
 	}
 
 	// A header removed while the pointer is on it (its last task dropped
@@ -180,30 +178,64 @@
 
 	function onBlockHeaderClick(e: MouseEvent, group: BlockGroup) {
 		if (!(e.ctrlKey || e.metaKey) || !group.block.time) return;
-		const task = anyTask(group);
-		if (!task) return;
 		e.preventDefault();
 		e.stopPropagation();
-		onReveal(task);
+		onRevealBlock(group.block);
 	}
 
-	// A scheduled task shows a badge = its block's time + title. "Scheduled" here
-	// means nested in a *timed* block (a task in Unscheduled is not). You schedule
-	// blocks, not tasks — this badge surfaces the block a task borrows time from.
-	function isNested(task: ResolvedTask): boolean {
-		return task.scheduled && task.block.time !== undefined;
+	// ── Block actions (a header's menu and stack) ──
+
+	// Each block header, by group key: the association picker's anchor (the
+	// stack may be portaled out of the header, so a button can't find it).
+	const headerEls: Record<string, HTMLElement> = {};
+
+	function editBlockAssoc(group: BlockGroup) {
+		const rect = headerEls[group.key]?.getBoundingClientRect();
+		if (rect) onEditBlockAssoc?.(group.block, rect);
 	}
 
-	function fmtTime(min: number): string {
-		const h = Math.floor(min / 60);
-		const m = min % 60;
-		return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+	function openBlockMenu(e: MouseEvent, group: BlockGroup) {
+		// A right-click in the rename input keeps the input's own menu.
+		if ((e.target as Partial<Element> | null)?.closest?.("input, textarea")) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const block = group.block;
+		const menu = new Menu();
+		addBlockMenuItems(menu, block, {
+			onAddTask: canCreate && onCreateInBlock ? () => onCreateInBlock(block) : undefined,
+			onEditAssoc: () => editBlockAssoc(group),
+			onDelete: () => onDeleteBlock?.(block),
+			onReveal: block.time ? () => onRevealBlock(block) : undefined,
+		});
+		menu.showAtMouseEvent(e);
 	}
 
-	function badgeLabel(task: ResolvedTask): string {
-		const t = task.block.time;
-		const time = t ? fmtTime(t.start) : "";
-		return `${time} ${task.block.title}`.trim();
+	// Rename: a click on a header's title edits it in place, like a task's text.
+	let renaming = $state<string | null>(null);
+	let titleDraft = $state("");
+	let titleInputEl = $state<HTMLInputElement>();
+
+	function beginRename(e: MouseEvent, group: BlockGroup) {
+		// Ctrl/Cmd+click is "open in Day view" (the header's own handler).
+		if (e.ctrlKey || e.metaKey || !onSetBlockTitle) return;
+		titleDraft = group.block.title;
+		renaming = group.key;
+		queueMicrotask(() => titleInputEl?.focus());
+	}
+	function commitRename(block: Block) {
+		if (renaming === null) return;
+		renaming = null;
+		const next = titleDraft.trim();
+		if (next.length > 0 && next !== block.title) onSetBlockTitle?.(block, next);
+	}
+	function onRenameKeydown(e: KeyboardEvent, block: Block) {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			commitRename(block);
+		} else if (e.key === "Escape") {
+			e.preventDefault();
+			renaming = null;
+		}
 	}
 
 	// `Task` speaks in bare `Task`s; our callbacks want the `ResolvedTask` (it
@@ -221,27 +253,7 @@
 	function grabOf(task: Task, event: PointerEvent) {
 		if (onTaskGrab) onTaskGrab(task as ResolvedTask, event);
 	}
-	function blockGrabOf(task: Task, event: PointerEvent) {
-		if (onBlockGrab) onBlockGrab(task as ResolvedTask, event);
-	}
 
-	// Each group's offset into the cell's flat task order (own tasks first), so
-	// `data-task-index` stays a single running index across the whole cell.
-	const groupOffsets = $derived.by(() => {
-		let n = tasks.length;
-		return groups.map((g) => {
-			const at = n;
-			n += g.tasks.length;
-			return at;
-		});
-	});
-
-	function onHeaderClick(e: MouseEvent, name: string) {
-		if (!(e.ctrlKey || e.metaKey)) return;
-		e.preventDefault();
-		e.stopPropagation();
-		onNavigate({ kind: "project", id: name });
-	}
 </script>
 
 <div class="grid-cell" class:drop-target={isDropTarget} class:inactive>
@@ -250,11 +262,11 @@
 		     dim/hatch reads the column as past context, not a place to add work. -->
 		<div class="grid-cell-inactive-badge" title="Not active on this day"></div>
 	{/if}
-	{#snippet taskItem(task: ResolvedTask, i: number, lead?: string, addInside?: () => void, addLabel?: string)}
+	{#snippet taskItem(task: ResolvedTask, i: number)}
 		{@const tr = task.owner ? resolve(task.owner) : undefined}
 		<div
 			class="grid-cell-item"
-			class:dragging-origin={dragTaskLine === task.source.line || (task.colocated && dragBlockLine === task.block.source.line)}
+			class:dragging-origin={dragTaskKey === sourceKey(task.source)}
 			data-task-index={i}
 		>
 			<Task_
@@ -270,161 +282,171 @@
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
-				onNest={!task.colocated && onNest ? (rect) => onNest(task, rect) : undefined}
+				onNest={(rect) => onNest(task, rect)}
 				nestLabel="Change parent block"
-				onMoveToBacklog={task.colocated
-					? undefined
-					: () => onMoveToBacklog(task)}
+				onMoveToBacklog={() => onMoveToBacklog(task)}
 				onRepeat={() => requestRepeat(task, task.block)}
-				meta={grouped ? undefined : task.colocated ? blockBadge : isNested(task) ? nestedBadge : undefined}
-				{lead}
-				onAddInside={addInside}
-				addInsideLabel={addLabel}
-				trailing={grouped ? chipFor?.(task) : undefined}
-				onGrab={task.colocated
-					? onBlockGrab ? (e) => blockGrabOf(task, e) : undefined
-					: onTaskGrab ? (e) => grabOf(task, e) : undefined}
+				trailing={chipFor?.(task)}
+				onGrab={onTaskGrab ? (e) => grabOf(task, e) : undefined}
 				highlight={highlightOf?.(task) ?? null}
 				onHoverChange={onHover ? (on: boolean) => onHover(task, on) : undefined}
 			/>
-
-			<!-- The block-nesting badge renders inside the Task (via its `meta`
-			     snippet) so it shares the row's hover region and lines up with the
-			     association line. It wears the shared `.kairos-meta` classes from
-			     styles.css — the same rules the association line uses — because a
-			     snippet is compiled here, not in `Task`, so Task's scoped styles
-			     can never reach it. That is what the old hand-copied
-			     `.grid-cell-badge` block was working around. -->
-			{#snippet blockBadge()}
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
-					class="kairos-meta is-linked"
-					title="Ctrl+click to open in Day view"
-					onclick={(e) => { if (e.ctrlKey || e.metaKey) onReveal(task); }}
-				>
-					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-					<span class="kairos-meta-label">{badgeLabel(task)}</span>
-					<!-- How many other tasks sit in that block. Its own element beside
-					     the label, not inside it: nested in the ellipsizing label it was
-					     the first thing truncation ate. -->
-					{#if task.block.tasks.length > 0}
-						<span class="kairos-meta-count">+{task.block.tasks.length}</span>
-					{/if}
-				</div>
-			{/snippet}
-			{#snippet nestedBadge()}
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
-					class="kairos-meta is-linked"
-					title="Ctrl+click to open in Day view"
-					onclick={(e) => { if (e.ctrlKey || e.metaKey) onReveal(task); }}
-				>
-					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-					<span class="kairos-meta-label">{badgeLabel(task)}</span>
-				</div>
-			{/snippet}
 		</div>
 	{/snippet}
 
-	{#if blockGroups}
-		{#each blockGroups as group, g (group.key)}
-			{@const at = blockOffsets[g] ?? 0}
-			<!-- The whole group (header and tasks) is one drop target: a task
-			     dropped anywhere on it nests in this block. The Unscheduled group
-			     carries no block line, so a drop there takes a task out of its
-			     block instead. -->
-			<div
-				class="grid-cell-block-group"
-				class:drop-target={dropGroup === dropKey(group)}
-				data-grid-drop-date={date}
-				data-grid-drop-block={isUnscheduledBlock(group.block) ? undefined : group.block.source.line}
-			>
-				{#if group.head}
-					<!-- A checkable block heads its own group: its task row, with the
-					     start time before the title. -->
-					<!-- Its "+" lives in the row's own action bar, in the top-right
-					     corner, so it doesn't fight the row's corner zone. -->
-					{@render taskItem(
-						group.head,
-						at,
-						group.block.time ? fmtTime(group.block.time.start) : undefined,
-						canCreate && onCreateInBlock ? () => onCreateInBlock(group.block) : undefined,
-						`Add task to ${group.block.title}`,
-					)}
-				{:else}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
+	{#each blockGroups as group, g (group.key)}
+		{@const at = blockOffsets[g] ?? 0}
+		<!-- The whole group (header and tasks) is one drop target: a task
+		     dropped anywhere on it nests in this block. The Unscheduled group
+		     carries no block line, so a drop there takes a task out of its
+		     block instead. -->
+		<div
+			class="grid-cell-block-group"
+			class:drop-target={dropGroup === dropKey(group)}
+			data-grid-drop-date={date}
+			data-grid-drop-block={isUnscheduledBlock(group.block) ? undefined : group.block.source.line}
+		>
+			{#if isUnscheduledBlock(group.block)}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="grid-cell-group-header grid-cell-block-header unscheduled"
+					class:linked={isBlockLinked?.(group.block) ?? false}
+					style:--kairos-link-color={blockColor(group.block)}
+					onpointerenter={() => onBlockHover?.(group.block, true)}
+					onpointerleave={() => onBlockHover?.(group.block, false)}
+					use:leaveOnRemove={() => onBlockHover?.(group.block, false)}
+				>
+					{headerLabel(group.block)}
+				</div>
+			{:else}
+				{@const block = group.block}
+				<!-- A plain block's header: it does what the timeline block does
+				     (menu, corner stack, rename, drag), and Ctrl/Cmd+click opens it
+				     in the Day view. -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="grid-cell-group-header grid-cell-block-header actionable"
+					class:linked={isBlockLinked?.(block) ?? false}
+					class:dragging-origin={dragBlockKey === group.key}
+					style:--kairos-link-color={blockColor(block)}
+					title={block.time ? "Ctrl+click to open in Day view" : undefined}
+					bind:this={headerEls[group.key]}
+					onclick={(e) => onBlockHeaderClick(e, group)}
+					oncontextmenu={(e) => openBlockMenu(e, group)}
+					onpointerenter={() => onBlockHover?.(block, true)}
+					onpointerleave={() => onBlockHover?.(block, false)}
+					use:leaveOnRemove={() => onBlockHover?.(block, false)}
+					use:actionZone={{ layout: "stack" }}
+					use:grabOnHold={onBlockGrab ? (e) => onBlockGrab(block, e) : undefined}
+				>
+					<!-- Action stack, woken from the header's top-right corner: the
+					     block's "+" in the corner, then delete and association. A press
+					     here never arms the header's drag: grabOnHold skips presses
+					     on the bar and the rename input (a stopPropagation here
+					     can't, as Svelte delegates pointerdown to the root). -->
 					<div
-						class="grid-cell-group-header grid-cell-block-header"
-						class:unscheduled={isUnscheduledBlock(group.block)}
-						class:linked={isBlockLinked?.(group.block) ?? false}
-						style:--kairos-link-color={blockColor(group.block)}
-						title={group.block.time ? "Ctrl+click to open in Day view" : undefined}
-						onclick={(e) => onBlockHeaderClick(e, group)}
-						onpointerenter={() => onBlockHover?.(group.block, true)}
-						onpointerleave={() => onBlockHover?.(group.block, false)}
-						use:leaveOnRemove={() => onBlockHover?.(group.block, false)}
+						class="grid-cell-block-actions kairos-action-bar"
+						onpointerdown={(e) => e.stopPropagation()}
 					>
-						{headerLabel(group.block)}
+						{#if canCreate && onCreateInBlock}
+							<button
+								class="grid-cell-block-action grid-cell-block-action-add"
+								aria-label={`Add task to ${block.title}`}
+								use:tooltip={`Add task to ${block.title}`}
+								onclick={() => onCreateInBlock(block)}
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+							</button>
+						{/if}
+						<button
+							class="grid-cell-block-action"
+							aria-label={block.assoc ? "Edit association" : "Add association"}
+							use:tooltip={block.assoc ? "Edit association" : "Add association"}
+							onclick={() => editBlockAssoc(group)}
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+						</button>
+						<button
+							class="grid-cell-block-action grid-cell-block-action-danger"
+							aria-label="Delete block"
+							use:tooltip={"Delete block"}
+							onclick={() => onDeleteBlock?.(block)}
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+						</button>
 					</div>
-				{/if}
-				{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
-					{@render taskItem(task, at + (group.head ? 1 : 0) + j)}
-				{/each}
-				{#if canCreate && onCreateInBlock && !group.head}
-					<!-- A plain header's "+", at the right end of the header line. -->
-					<button
-						class="grid-cell-group-add"
-						title={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
-						aria-label={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
-						onclick={() => onCreateInBlock(group.block)}
-					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-					</button>
-				{/if}
-			</div>
-		{/each}
-		{#if unscheduledSlot}
-			<!-- While a task is being dragged, a cell with no Unscheduled group
-			     offers an empty one, so a task can always be dropped out of its
-			     block. -->
-			<div
-				class="grid-cell-block-group grid-cell-unscheduled-slot"
-				class:drop-target={dropGroup === "unscheduled"}
-				data-grid-drop-date={date}
-			>
-				<div class="grid-cell-group-header grid-cell-block-header unscheduled">Unscheduled</div>
-			</div>
-		{/if}
+					{#if renaming === group.key}
+						<div class="grid-cell-block-edit">
+							{#if block.time}<span>{formatClock(block.time.start)}</span>{/if}
+							<input
+								class="grid-cell-block-input kairos-inline-input"
+								type="text"
+								bind:value={titleDraft}
+								bind:this={titleInputEl}
+								onpointerdown={(e) => e.stopPropagation()}
+								onkeydown={(e) => onRenameKeydown(e, block)}
+								onblur={() => commitRename(block)}
+							/>
+						</div>
+					{:else}
+						<span class="grid-cell-block-label">
+							{#if block.time}<span class="grid-cell-block-time">{formatClock(block.time.start)}</span>{/if}<span
+								class="grid-cell-block-title"
+								role="textbox"
+								tabindex="0"
+								onclick={(e) => beginRename(e, group)}
+							>{block.title}</span>
+						</span>
+					{/if}
+				</div>
+			{/if}
+			{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
+				{@render taskItem(task, at + j)}
+			{/each}
+			{#if canCreate && onCreateInBlock && isUnscheduledBlock(group.block)}
+				<!-- Unscheduled's "+", at the right end of its header line (a
+				     block's own "+" is in its header's action stack). -->
+				<button
+					class="grid-cell-group-add"
+					title={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
+					aria-label={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
+					onclick={() => onCreateInBlock(group.block)}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+				</button>
+			{/if}
+		</div>
+	{/each}
+	{#if unscheduledSlot}
+		<!-- While a task is being dragged, a cell with no Unscheduled group
+		     offers an empty one, so a task can always be dropped out of its
+		     block. -->
+		<div
+			class="grid-cell-block-group grid-cell-unscheduled-slot"
+			class:drop-target={dropGroup === "unscheduled"}
+			data-grid-drop-date={date}
+		>
+			<div class="grid-cell-group-header grid-cell-block-header unscheduled">Unscheduled</div>
+		</div>
 	{/if}
 
-	{#each grouped ? [] : tasks as task, i (task.source.path + ":" + task.source.line)}
-		{@render taskItem(task, i)}
-	{/each}
-
-	{#each grouped ? [] : groups as group, g (group.name)}
-		<!-- A rolled-up project's header: names the project once for its group,
-		     since Grid tasks carry no association line. Shown even for a lone
-		     group, so it never reads as the domain's own tasks. -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="grid-cell-group-header"
-			title="Ctrl+click to open {group.name}"
-			onclick={(e) => onHeaderClick(e, group.name)}
+	{#if showCellAdd && !unscheduledSlot}
+		<!-- No Unscheduled group here yet, so the cell's "+" wears the header that
+		     group would have: it says where a new task goes. Shown on hover only.
+		     In an empty cell it sits where the group would; under other groups
+		     it floats over the cell's bottom edge, so it takes no room. -->
+		<button
+			class="grid-cell-add"
+			class:floating={blockGroups.length > 0}
+			title="Add task to Unscheduled"
+			aria-label="Add task to Unscheduled"
+			onclick={onCreate}
 		>
-			{group.name}
-		</div>
-		{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
-			{@render taskItem(task, (groupOffsets[g] ?? 0) + j)}
-		{/each}
-	{/each}
-
-	{#if showCellAdd}
-		<button class="grid-cell-add" title="Add task" aria-label="Add task" onclick={onCreate}>
-			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+			<span class="grid-cell-add-label">Unscheduled</span>
+			<span class="grid-cell-add-icon">
+				<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+			</span>
 		</button>
 	{/if}
 </div>
@@ -474,8 +496,8 @@
 		opacity: 0.4;
 	}
 
-	/* A rolled-up project's group header (#11): small and muted, so it labels
-	   the tasks below it without competing with them. */
+	/* A group header: small and muted, so it labels the tasks below it without
+	   competing with them. */
 	.grid-cell-group-header {
 		padding: 0 2px;
 		font-size: var(--font-ui-smaller);
@@ -486,10 +508,6 @@
 		min-width: 0;
 		cursor: default;
 	}
-	/* A little air between one group's tasks and the next header. */
-	.grid-cell-item + .grid-cell-group-header {
-		margin-top: 4px;
-	}
 	.grid-cell-group-header:hover {
 		color: var(--text-normal);
 	}
@@ -499,18 +517,112 @@
 	   Tabular digits keep the times lined up down a column. */
 	.grid-cell-block-header {
 		/* Start the header where task text starts (the row's 4px padding plus the
-		   checkbox and its gap), so its time lines up with a checkable block's
-		   time and with the task text under it. */
+		   checkbox and its gap), so its time lines up with the task text under it. */
 		padding-left: calc(4px + var(--kairos-meta-indent));
 		/* Room at the right end for the group's "+", so it never covers the title. */
 		padding-right: 24px;
-		/* The same type as a checkable block's time and the task text. */
+		/* The same type as the task text. */
 		font-size: 12px;
 		line-height: 1.4;
 		font-variant-numeric: tabular-nums;
 	}
 	.grid-cell-block-header.unscheduled {
 		font-style: italic;
+	}
+	/* A block's own header: it anchors its action stack, and a long-press on
+	   it lifts the block, so no text selection paints under the press. */
+	.grid-cell-block-header.actionable {
+		position: relative;
+		overflow: visible;
+		user-select: none;
+	}
+	/* Wrap to two lines like a task: a block with no tasks here is the
+	   cell's item, not just a label. (On an inner span, so the action stack
+	   isn't caught in the clamp.) */
+	.grid-cell-block-label {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		overflow: hidden;
+		white-space: normal;
+		overflow-wrap: anywhere;
+		touch-action: none;
+	}
+	.grid-cell-block-time {
+		margin-right: 0.3em;
+	}
+	/* A click on the title renames the block, as on a task or the timeline. */
+	.grid-cell-block-title {
+		cursor: text;
+	}
+	/* A matured hold: tinted so the press reads as registered before the
+	   pointer moves to drag (Task.svelte's `.held`). */
+	.grid-cell-block-header:global(.held) {
+		border-radius: var(--radius-s);
+		background: var(--background-modifier-hover);
+	}
+	/* The block is being dragged. */
+	.grid-cell-block-header.dragging-origin {
+		opacity: 0.35;
+	}
+	.grid-cell-block-edit {
+		display: flex;
+		align-items: baseline;
+		gap: 4px;
+		min-width: 0;
+	}
+	.grid-cell-block-input {
+		flex: 1;
+		min-width: 0;
+		margin: 0;
+		padding: 0;
+		font-size: 12px;
+		line-height: 1.4;
+		font-family: inherit;
+		color: var(--text-normal);
+	}
+
+	/* The header's action stack (shown/hidden by the shared .kairos-action-bar
+	   rules in styles.css), dressed like a task row's (Task.svelte). */
+	.grid-cell-block-actions {
+		position: absolute;
+		top: 0;
+		right: 0;
+		display: flex;
+		gap: 2px;
+		padding: 2px;
+		background: var(--background-primary);
+		z-index: 2;
+	}
+	/* Stack layout: the "+" takes the corner, then delete; association rises
+	   above them. */
+	.grid-cell-block-actions:global(.kairos-action-stack) .grid-cell-block-action-add {
+		order: -2;
+	}
+	.grid-cell-block-actions:global(.kairos-action-stack) .grid-cell-block-action-danger {
+		order: -1;
+	}
+	.grid-cell-block-action {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 20px;
+		height: 20px;
+		padding: 0;
+		border: none;
+		box-shadow: none;
+		background: transparent;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+	.grid-cell-block-action:hover {
+		color: var(--text-normal);
+		background: var(--background-modifier-hover);
+		box-shadow: none;
+	}
+	.grid-cell-block-action-danger:hover {
+		color: var(--text-error);
 	}
 	/* Hover link: this block, or a task in it, is under the pointer in some row
 	   or view (this header included). Tinted like the tasks under it, so the
@@ -560,29 +672,30 @@
 		opacity: 0.35;
 	}
 
-	/* The add affordance floats in the cell's bottom-right corner, so it takes
-	   no room in the layout: a cell is only as tall as its tasks. It stays
-	   hidden until the cell is hovered, so a dense grid doesn't read as a wall
-	   of buttons. Tasks carry their own action bar at their top-right, so the
-	   "+" stands down (hidden and click-through) while any task's bar in the
-	   cell is awake — the two never compete for the same spot, and hovering the
-	   body of a task leaves the "+" alone. */
+	/* The cell's "+", dressed as the Unscheduled header it adds to: the same
+	   italic label in the same place, with the "+" at the right end where a
+	   group's "+" sits. It stays hidden until the cell is hovered, so a dense
+	   grid doesn't read as a wall of buttons. Tasks carry their own action bar
+	   at their top-right, so it stands down (hidden and click-through) while
+	   any task's bar in the cell is awake. */
 	.grid-cell-add {
-		position: absolute;
-		bottom: 2px;
-		right: 4px;
-		z-index: 3;
 		display: flex;
 		align-items: center;
-		justify-content: center;
-		width: 18px;
-		height: 18px;
-		padding: 0;
+		gap: 4px;
+		width: 100%;
+		height: auto;
+		min-height: 18px;
+		/* Lined up with a real group header (see .grid-cell-block-header). */
+		padding: 0 4px 0 calc(4px + var(--kairos-meta-indent));
 		border: none;
 		border-radius: var(--radius-s);
 		color: var(--text-muted);
-		background: var(--background-primary);
+		background: transparent;
 		box-shadow: none;
+		font-size: 12px;
+		line-height: 1.4;
+		font-weight: normal;
+		text-align: left;
 		cursor: pointer;
 		opacity: 0;
 		/* Hidden means inert: an invisible "+" must not catch the pointer. It sits
@@ -591,15 +704,54 @@
 		pointer-events: none;
 		transition: opacity 0.1s;
 	}
+	/* Under other groups: over the cell's bottom edge, out of the layout, so a
+	   cell is only as tall as its tasks. Opaque, since it can cover the end of
+	   the last task — it only shows while the pointer is off every group. */
+	.grid-cell-add.floating {
+		position: absolute;
+		left: 4px;
+		right: 4px;
+		bottom: 2px;
+		width: auto;
+		z-index: 3;
+		background: var(--background-primary);
+	}
+	:global(.grid-datacell.today) .grid-cell-add.floating {
+		background: color-mix(
+			in srgb,
+			var(--interactive-accent) 5%,
+			var(--background-primary)
+		);
+	}
+	.grid-cell-add-label {
+		flex: 1;
+		min-width: 0;
+		font-style: italic;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.grid-cell-add-icon {
+		flex: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		border-radius: var(--radius-s);
+		opacity: 0.75;
+	}
 
 	.grid-cell:hover .grid-cell-add {
-		opacity: 0.75;
+		opacity: 1;
 		pointer-events: auto;
 	}
 
 	.grid-cell-add:hover {
-		opacity: 1;
 		color: var(--text-normal);
+	}
+	.grid-cell-add:hover .grid-cell-add-icon {
+		opacity: 1;
 		background: var(--background-modifier-hover);
 	}
 
@@ -610,10 +762,10 @@
 		pointer-events: none;
 	}
 
-	/* A block group's "+", in the group's top-right corner on its header line. It
-	   shows while the pointer is on that group, and stands down while a task's
-	   action bar is awake. (A checkable block's group has no header line; its
-	   "+" is in its own row's action bar instead.) */
+	/* The Unscheduled group's "+", in the group's top-right corner on its header
+	   line. It shows while the pointer is on that group, and stands down while a
+	   task's action bar is awake. (A block's "+" is in its header's action
+	   stack.) */
 	.grid-cell-group-add {
 		position: absolute;
 		top: 0;
@@ -662,6 +814,18 @@
 			opacity: 0.45;
 			pointer-events: auto;
 		}
+		/* Just the "+" on touch, in the corner: a label always showing in every
+		   cell would be noise. */
+		.grid-cell-add {
+			justify-content: flex-end;
+			padding: 0;
+		}
+		.grid-cell-add-label {
+			display: none;
+		}
+		.grid-cell-add.floating {
+			left: auto;
+		}
 		.grid-cell-block-group:has(:global(.k-task:hover)) > .grid-cell-group-add {
 			opacity: 0;
 			pointer-events: none;
@@ -675,16 +839,9 @@
 		}
 	}
 
-	/* ── Nested-task block badge ── */
 	.grid-cell-item {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
 	}
-
-	/* The block badge itself carries no local styling: it is a `.kairos-meta`
-	   item (styles.css), the same rule the association line uses, rendered inside
-	   Task's meta row — which supplies the alignment past the checkbox. Ctrl+click
-	   reveals it in the Day view, signalled by `.is-linked` exactly as the
-	   association line signals it. */
 </style>

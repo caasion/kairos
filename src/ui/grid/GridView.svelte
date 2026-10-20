@@ -32,11 +32,13 @@
 		addTaskToUnscheduled,
 		copyBlockIntoDay,
 		copyTaskIntoDay,
+		deleteBlock,
 		deleteTask,
 		moveBlockAcrossDays,
 		moveTaskAcrossDays,
 		nestTaskUnderBlock,
 		setBlockAssoc,
+		setBlockTitle,
 		setTaskStatus,
 		setTaskText,
 		unnestTask,
@@ -60,15 +62,15 @@
 		blockGroups,
 		isUnscheduledBlock,
 		buildRows,
-		cellGroups,
 		dayStatus,
+		blockDropAssociation,
 		dropAssociation,
 		ownerRowKey,
+		sourceKey,
 		rolledUpProjectOf,
 		rolledUpProjects,
 		rowAssociation,
 		type BlockGroup,
-		type CellGroup,
 		type GridRow,
 	} from "../../gridModel";
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
@@ -140,10 +142,9 @@
 	let dayViewDate = $state<ISODate | null>(null);
 	let hovered = $state<HoverTarget | null>(null);
 
-	// A Grid task's hover identity. A checkable block's own task *is* the block,
-	// so it reports the block — which also lights it in the timelines.
+	// A Grid task's hover identity.
 	function hoverTargetOf(task: ResolvedTask): HoverTarget {
-		return task.colocated ? hoverBlockTarget(task.block) : hoverTaskTarget(task, task.block);
+		return hoverTaskTarget(task, task.block);
 	}
 	function onTaskHover(task: ResolvedTask, on: boolean) {
 		const target = hoverTargetOf(task);
@@ -287,17 +288,11 @@
 		return !nextIsChild;
 	}
 
-	// A cell's own tasks plus, on a domain row, its rolled-up projects' groups.
-	// Grouped by block (the setting), block groups replace both.
-	function cellFor(
-		row: GridRow,
-		day: GridDay,
-	): { own: ResolvedTask[]; groups: CellGroup[]; blocks?: BlockGroup[] } {
-		if (!snapshot) return { own: [], groups: [] };
-		if (settings.gridGroupByBlock) {
-			return { own: [], groups: [], blocks: blockGroups(row, day.tasks, snapshot) };
-		}
-		return cellGroups(row, day.tasks, snapshot);
+	// A cell's blocks and tasks, grouped by block: every timed block in its own
+	// row, and each block's tasks in theirs.
+	function cellFor(row: GridRow, day: GridDay): { blocks: BlockGroup[] } {
+		if (!snapshot) return { blocks: [] };
+		return { blocks: blockGroups(row, day.tasks, snapshot, day.blocks) };
 	}
 
 	// The project chip on a rolled-up task's line (domain rows, when on).
@@ -327,12 +322,12 @@
 	// cell offers an empty one to drop into, so a task can always leave its block.
 	// Only the cell under the pointer grows, so the rest of the grid holds still.
 	function wantsUnscheduledSlot(
-		cell: { blocks?: BlockGroup[] },
+		cell: { blocks: BlockGroup[] },
 		inactive: boolean,
 		date: ISODate,
 		row: GridRow,
 	): boolean {
-		if (taskDrag === null || inactive || !cell.blocks) return false;
+		if (taskDrag === null || inactive) return false;
 		if (cell.blocks.some((g) => isUnscheduledBlock(g.block))) return false;
 		const overCell =
 			(taskDrop?.date === date && taskDrop.rowKey === row.key) ||
@@ -340,11 +335,6 @@
 		return overCell;
 	}
 
-	function setGroupByBlock(on: boolean) {
-		updateSettings((s) => {
-			s.gridGroupByBlock = on;
-		});
-	}
 	function setHighlightAcrossViews(on: boolean) {
 		updateSettings((s) => {
 			s.highlightAcrossViews = on;
@@ -462,9 +452,24 @@
 		commit(task.date, day.path, deleteTask(day.blocks, task.block, task));
 	}
 
-	// Send a task back to the backlog (task context menu). Only offered on genuine
-	// nested tasks — a colocated task is a block, which can't leave its line. The
-	// shared helper lifts the task's text + materialized association into a fresh
+	// ── Block edits (a block group's header) ──
+	// The same actions as a timeline block's menu and action bar (blockMenu.ts),
+	// each a pure writer transform on the block's day, committed like a task's.
+
+	function editBlock(date: ISODate, edit: (blocks: Block[]) => Block[]) {
+		focusDay(date);
+		const day = dayOf(date);
+		if (!day || day.path === null) return;
+		commit(date, day.path, edit(day.blocks));
+	}
+	function onDeleteBlock(date: ISODate, block: Block) {
+		editBlock(date, (blocks) => deleteBlock(blocks, block));
+	}
+	function onSetBlockTitle(date: ISODate, block: Block, title: string) {
+		editBlock(date, (blocks) => setBlockTitle(blocks, block, title));
+	}
+
+	// Send a task back to the backlog (task context menu). The shared helper lifts the task's text + materialized association into a fresh
 	// entry and commits the day removal + backlog append as one optimistic unit.
 	function onMoveToBacklog(task: ResolvedTask) {
 		const day = dayOf(task.date);
@@ -588,7 +593,6 @@
 			ghostY: event.clientY,
 			label: task.text,
 			duplicate: event.ctrlKey || event.metaKey,
-			timebox: event.altKey,
 		};
 		// Show the task's day in the Day view, so its blocks are there to drop on.
 		focusDay(task.date);
@@ -604,7 +608,6 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			duplicate: event.ctrlKey || event.metaKey,
-			timebox: event.altKey,
 		};
 		hitTestDrag(event);
 	}
@@ -625,13 +628,12 @@
 			drop: timelineDrop ?? groupDrop?.drop ?? null,
 			label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
 			duplicate: drag.duplicate,
-			timebox: drag.timebox,
 		});
 	}
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
 	function dropMods(drag: GridTaskDrag) {
-		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: settings.dropBlockTitle };
+		return { duplicate: drag.duplicate, blockTitle: settings.dropBlockTitle };
 	}
 
 	// Holding a drag on a column header shows that day in the Day view, so one
@@ -823,7 +825,7 @@
 			drag.owner,
 			drag.task,
 			at.drop,
-			{ duplicate: drag.duplicate, timebox: false },
+			{ duplicate: drag.duplicate },
 			assoc,
 		);
 	}
@@ -848,23 +850,24 @@
 	}
 
 	// ── Block drag (grid block DnD) ──
-	// Long-press on a colocated task (checkable block) lifts the whole block —
-	// its time, title, and all child tasks — and drops it onto a new (date, row).
+	// Long-press on a block's header lifts the
+	// whole block — its time, title, and all child tasks — and drops it onto a
+	// new (date, row).
 	// Same-day drop: association-only change via setBlockAssoc.
 	// Cross-day drop: full block move via moveBlockAcrossDays + applyCrossDayMove.
 	let blockDrag = $state<BlockDragState | null>(null);
 	let blockDrop = $state<GridDropSlot | null>(null);
 
-	function onBlockGrab(task: ResolvedTask, event: PointerEvent) {
+	function onBlockGrab(block: Block, date: ISODate, rowKey: string, event: PointerEvent) {
 		lastPointerX = event.clientX;
 		lastPointerY = event.clientY;
-		const block = task.block;
 		const childCount = block.tasks.length;
 		const label = childCount > 0 ? `${block.title} (+${childCount})` : block.title;
 		// Stash the source date on the drag state so onBlockDragUp can find the day.
 		blockDrag = {
 			block,
-			sourceDate: task.date,
+			sourceDate: date,
+			sourceRowKey: rowKey,
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			label,
@@ -900,12 +903,13 @@
 		if (!sourceDay || sourceDay.path === null) return;
 
 		// Resolve the target row's association (same rule as a task drop: the row
-		// the block already renders on keeps the block's own association).
+		// the block already renders on keeps the block's own association, and so
+		// does the row it was lifted from, which may only be a label row).
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
 		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
 		const target = snapshot
-			? dropAssociation(targetRow, drag.block.assoc, snapshot)
+			? blockDropAssociation(targetRow, drag.sourceRowKey, drag.block.assoc, snapshot)
 			: undefined;
 		const newAssoc: Association | null | undefined = target?.assoc;
 		const sameRow = target?.sameRow ?? false;
@@ -977,22 +981,41 @@
 	}
 
 	// ── Association picker (parent-owned so it isn't clipped by a cell) ──
-	let pickerTask = $state<ResolvedTask | null>(null);
+	// It edits a task's association, or a block's (from its header), like the
+	// Day and Week views' pickers.
+	type PickerTarget =
+		| { kind: "task"; task: ResolvedTask }
+		| { kind: "block"; date: ISODate; block: Block };
+	let pickerTarget = $state<PickerTarget | null>(null);
 	let pickerAnchor = $state<DOMRect | null>(null);
+	const pickerCurrent = $derived(
+		pickerTarget?.kind === "block" ? pickerTarget.block.assoc : pickerTarget?.task.assoc,
+	);
 
 	function openTaskAssoc(task: ResolvedTask, anchor: DOMRect) {
 		focusDay(task.date);
-		pickerTask = task;
+		pickerTarget = { kind: "task", task };
+		pickerAnchor = anchor;
+	}
+	function openBlockAssoc(date: ISODate, block: Block, anchor: DOMRect) {
+		focusDay(date);
+		pickerTarget = { kind: "block", date, block };
 		pickerAnchor = anchor;
 	}
 	function closeAssocPicker() {
-		pickerTask = null;
+		pickerTarget = null;
 		pickerAnchor = null;
 	}
 	function onPickAssoc(assoc: Association | null) {
-		const task = pickerTask;
+		const target = pickerTarget;
 		closeAssocPicker();
-		if (!task) return;
+		if (!target) return;
+		if (target.kind === "block") {
+			const { block } = target;
+			editBlock(target.date, (blocks) => setBlockAssoc(blocks, block, assoc));
+			return;
+		}
+		const { task } = target;
 		const day = dayOf(task.date);
 		if (!day || day.path === null) return;
 		// Reassociation is a per-task field edit: rebuild the day's blocks with the
@@ -1000,10 +1023,6 @@
 		// rather than adding a writer helper, mirroring how the timeline applies it.
 		const blocks = day.blocks.map((b) => {
 			if (b.source.line !== task.block.source.line) return b;
-			// Colocated task shares the block line.
-			if (b.status !== undefined && b.source.line === task.source.line) {
-				return assoc ? { ...b, assoc } : stripAssoc(b);
-			}
 			return {
 				...b,
 				tasks: b.tasks.map((t) =>
@@ -1246,12 +1265,8 @@
 						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
 					</label>
 					<label class="controls-field">
-						<span class="controls-label">Group by block</span>
-						<input type="checkbox" checked={settings.gridGroupByBlock} onchange={(e) => setGroupByBlock(e.currentTarget.checked)} />
-					</label>
-					<label class="controls-field">
 						<span class="controls-label">Show projects on rolled-up tasks</span>
-						<input type="checkbox" checked={settings.gridShowRollupProjects} disabled={!settings.gridGroupByBlock} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
+						<input type="checkbox" checked={settings.gridShowRollupProjects} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
 					</label>
 					<label class="controls-field">
 						<span class="controls-label">Highlight across views</span>
@@ -1369,11 +1384,8 @@
 						{#if day}
 							{@const cell = cellFor(row, day)}
 							<GridCell
-								tasks={cell.own}
-								groups={cell.groups}
 								{resolve}
 								color={"color" in row ? row.color : undefined}
-								allowCreate={row.kind !== "unassigned"}
 								{inactive}
 								onSetStatus={onSetStatus}
 								onSetText={onSetText}
@@ -1381,13 +1393,17 @@
 								onEditAssoc={openTaskAssoc}
 								{onNavigate}
 								{onReveal}
+								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
 								onCreate={() => void onCreate(row, date)}
 								onTaskGrab={onTaskGrab}
-								onBlockGrab={onBlockGrab}
-								dragTaskLine={taskDrag?.task.source.line}
-								dragBlockLine={blockDrag?.block.source.line}
+								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, row.key, e)}
+								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}
+								onDeleteBlock={(block: Block) => onDeleteBlock(date, block)}
+								onSetBlockTitle={(block: Block, title: string) => onSetBlockTitle(date, block, title)}
+								dragTaskKey={taskDrag ? sourceKey(taskDrag.task.source) : undefined}
+								dragBlockKey={blockDrag ? sourceKey(blockDrag.block.source) : undefined}
 								isDropTarget={isDropTargetFor(date, row.key)}
 								{highlightOf}
 								onHover={onTaskHover}
@@ -1407,19 +1423,19 @@
 				{/each}
 			{/each}
 
-			{#if rows.length === 0}
+			{#if rows.every((r) => r.kind === "unassigned")}
 				<div class="grid-empty" style={`grid-column: 1 / span ${windowSize + 1};`}>
-					No projects or domains yet. Create a project or domain file, or tag a task, to see rows here.
+					No projects or domains yet. Create a project or domain file, or tag a task, to give it a row of its own.
 				</div>
 			{/if}
 		</div>
 	</div>
 </div>
 
-{#if pickerTask && pickerAnchor}
+{#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		current={pickerTask.assoc}
+		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
 		onClose={closeAssocPicker}

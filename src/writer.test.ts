@@ -4,12 +4,19 @@ import {
 	copyBlockIntoDay,
 	deleteBlock,
 	makeBlock,
+	notesWithAdded,
+	notesWithText,
 	moveBlockAcrossDays,
 	nestTaskUnderBlock,
 	retimeBlock,
+	deleteTask,
 	setBlockTitle,
+	setTaskStatus,
+	setTaskText,
 	unnestTask,
 } from "./writer";
+import { parseSchedule } from "./parser";
+import { serialize } from "./serializer";
 import type { Block, Task } from "./types";
 
 // A timed block with an explicit project association and two child tasks: one
@@ -179,25 +186,6 @@ describe("unnestTask", () => {
 		expect(inbox.source.line).toBeLessThan(0); // not yet on disk
 	});
 
-	it("is a no-op for a colocated task (a checkable block isn't unnestable)", () => {
-		// A checkable block: its own line carries the checkbox, so the 'task' the
-		// UI hands back shares the block's source line — it is not in `tasks`.
-		const block: Block = {
-			source: { path: "mon.md", line: 3 },
-			title: "Gym",
-			status: " ",
-			scheduled: true,
-			time: { start: 540, end: 600 },
-			tasks: [],
-		};
-		const colocated: Task = {
-			source: { path: "mon.md", line: 3 },
-			text: "Gym",
-			status: " ",
-		};
-		expect(unnestTask([block], block, colocated, "mon.md")).toEqual([block]);
-	});
-
 	it("does not mutate the input array", () => {
 		const block = sampleBlock("mon.md");
 		const input = [block];
@@ -313,25 +301,6 @@ describe("nestTaskUnderBlock", () => {
 		);
 		const outBlock = out.find((b) => b.title === "Deep work")!;
 		expect(outBlock.tasks.map((t) => t.text)).toEqual(["Emails", "Design"]);
-	});
-
-	it("is a no-op for a colocated task (a checkable block isn't liftable)", () => {
-		const block: Block = {
-			source: { path: "mon.md", line: 3 },
-			title: "Gym",
-			status: " ",
-			scheduled: true,
-			time: { start: 540, end: 600 },
-			tasks: [],
-		};
-		const dest = otherBlock("mon.md");
-		const colocated: Task = {
-			source: { path: "mon.md", line: 3 },
-			text: "Gym",
-			status: " ",
-		};
-		const input = [block, dest];
-		expect(nestTaskUnderBlock(input, block, colocated, dest)).toBe(input);
 	});
 
 	it("is a no-op when the destination block isn't in the array", () => {
@@ -591,5 +560,137 @@ describe("a new block alongside the Unscheduled inbox", () => {
 		// No task shares a line with a block either.
 		const all = [...day.map((b) => b.source.line), ...taskLines];
 		expect(new Set(all).size).toBe(all.length);
+	});
+});
+
+describe("notes", () => {
+	const block: Block = {
+		source: { path: "mon.md", line: 3 },
+		title: "Lunch",
+		scheduled: true,
+		time: { start: 720, end: 780 },
+		tasks: [{ source: { path: "mon.md", line: 4 }, text: "Book the room", status: " " }],
+		notes: [{ text: "Ran into Sam", at: 0 }],
+	};
+
+	it("adds a note after the block's tasks", () => {
+		expect(notesWithAdded(block, "Ate outside")).toEqual([
+			{ text: "Ran into Sam", at: 0 },
+			{ text: "Ate outside", at: 1 },
+		]);
+	});
+
+	it("edits a note's text, and deletes it when cleared", () => {
+		expect(notesWithText(block, 0, "Ran into Sam and Ana")).toEqual([{ text: "Ran into Sam and Ana", at: 0 }]);
+		expect(notesWithText(block, 0, "  ")).toEqual([]);
+	});
+
+	it("leaves notes behind when a block is copied to another day", () => {
+		const [copy] = copyBlockIntoDay([], block, "tue.md");
+		expect(copy?.notes).toBeUndefined();
+	});
+});
+
+// A legacy checkbox block line ("- [x] 07:00 - 08:00 Gym") reads as a block
+// holding a task that shares the block's line. Every task edit must reach only
+// that task, never the block.
+describe("a task read from a legacy checkbox block line", () => {
+	const md = "## Schedule\n\n- [ ] 07:00 - 08:00 Gym [Fitness] (legs)\n\t- [ ] Stretch\n- 09:00 - 10:00 Deep work\n";
+	const day = () => parseSchedule(md, "mon.md");
+	const gymOf = (blocks: Block[]) => blocks.find((b) => b.time?.start === 420)!;
+	const blockFields = (b: Block) => ({ title: b.title, time: b.time, assoc: b.assoc, metadata: b.metadata });
+
+	it("sets its status and text without touching the block", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const legacy = gym.tasks[0]!;
+		const done = gymOf(setTaskStatus(blocks, gym, legacy, "x"));
+		expect(done.tasks.map((t) => [t.text, t.status])).toEqual([["Gym", "x"], ["Stretch", " "]]);
+		expect(blockFields(done)).toEqual(blockFields(gym));
+		const renamed = gymOf(setTaskText(blocks, gym, legacy, "Leg day"));
+		expect(renamed.tasks.map((t) => t.text)).toEqual(["Leg day", "Stretch"]);
+		expect(blockFields(renamed)).toEqual(blockFields(gym));
+	});
+
+	it("deletes it and keeps the block", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const next = gymOf(deleteTask(blocks, gym, gym.tasks[0]!));
+		expect(next.tasks.map((t) => t.text)).toEqual(["Stretch"]);
+		expect(blockFields(next)).toEqual(blockFields(gym));
+	});
+
+	it("nests it under another block, carrying the association it inherited", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const deep = blocks[1]!;
+		const next = nestTaskUnderBlock(blocks, gym, gym.tasks[0]!, deep);
+		expect(gymOf(next).tasks.map((t) => t.text)).toEqual(["Stretch"]);
+		expect(blockFields(gymOf(next))).toEqual(blockFields(gym));
+		expect(next[1]!.tasks).toEqual([
+			{ source: gym.source, text: "Gym", status: " ", assoc: { kind: "project", id: "Fitness" } },
+		]);
+	});
+
+	it("unnests it to Unscheduled, carrying the association it inherited", () => {
+		const blocks = day();
+		const gym = gymOf(blocks);
+		const next = unnestTask(blocks, gym, gym.tasks[0]!, "mon.md");
+		expect(blockFields(gymOf(next))).toEqual(blockFields(gym));
+		expect(gymOf(next).tasks.map((t) => t.text)).toEqual(["Stretch"]);
+		const inbox = next.find((b) => b.title === "Unscheduled")!;
+		expect(inbox.tasks).toMatchObject([{ text: "Gym", assoc: { kind: "project", id: "Fitness" } }]);
+	});
+});
+
+// A note's `at` counts the tasks before it, so moving a task in or out of a
+// block must keep every note beside the tasks it was written next to.
+describe("notes when a task leaves or joins a block", () => {
+	const md = [
+		"## Schedule",
+		"- 07:00 - 08:00 Gym",
+		"\t- [ ] Warm up",
+		"\t- felt tired",
+		"\t- [x] Stretch",
+		"\t- done by eight",
+		"- 09:00 - 10:00 Work",
+		"\t- [ ] Email",
+		"\t- inbox zero",
+		"",
+	].join("\n");
+	const day = () => parseSchedule(md, "mon.md");
+	const section = (blocks: Block[]) => serialize(blocks).split("\n").slice(2).join("\n");
+
+	it("keeps a note under the task before it when a task is deleted", () => {
+		const blocks = day();
+		const gym = blocks[0]!;
+		expect(section(deleteTask(blocks, gym, gym.tasks[0]!))).toBe(
+			"- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n\t- done by eight\n" +
+				"- 09:00 - 10:00 Work\n\t- [ ] Email\n\t- inbox zero\n",
+		);
+	});
+
+	it("keeps notes in place when a task moves to another block or to Unscheduled", () => {
+		const blocks = day();
+		const [gym, work] = blocks as [Block, Block];
+		const nested = nestTaskUnderBlock(blocks, gym, gym.tasks[0]!, work, 0);
+		expect(section(nested)).toBe(
+			"- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n\t- done by eight\n" +
+				"- 09:00 - 10:00 Work\n\t- [ ] Warm up\n\t- [ ] Email\n\t- inbox zero\n",
+		);
+		const unnested = unnestTask(blocks, gym, gym.tasks[0]!, "mon.md");
+		expect(unnested[0]!.notes).toEqual([
+			{ text: "felt tired", at: 0 },
+			{ text: "done by eight", at: 1 },
+		]);
+	});
+
+	it("keeps a note after its task when another task is reordered past it", () => {
+		const blocks = day();
+		const gym = blocks[0]!;
+		const next = nestTaskUnderBlock(blocks, gym, gym.tasks[0]!, gym, 1);
+		expect(section(next).split("\n- 09:00")[0]).toBe(
+			"- 07:00 - 08:00 Gym\n\t- felt tired\n\t- [x] Stretch\n\t- done by eight\n\t- [ ] Warm up",
+		);
 	});
 });

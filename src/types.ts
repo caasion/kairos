@@ -40,29 +40,35 @@ interface ResolvedTask extends Task {
   block: Block; // a reference to the parent block
   owner?: Association; // assoc ?? block.assoc ?? none
   scheduled: boolean; // true iff inside a block that isn't Unscheduled
-  colocated: boolean; // shares its line with a block
+}
+
+// ─── note ──────────────────────────────────────────────────────
+
+// A bullet without a checkbox nested under a block: a record of what happened
+// in that time, not something to do (decision 96). Kept verbatim. `at` is how
+// many of the block's tasks come before it, so a note is written back where
+// it was. Notes are addressed by their index in `Block.notes`.
+interface Note {
+  text: string;
+  at: number;
 }
 
 // ─── block ─────────────────────────────────────────────────────
 
-// A block is a task with scheduling: it carries the same intrinsic fields a
-// task does (title/text, status, association, metadata) plus a time range and
-// child tasks. The only things distinguishing a block from a task are time and
-// scheduling — a block is checkable in its own right when `status` is present.
+// A block is a span of time: a title, an association, metadata, a time range,
+// and the tasks and notes inside it. Time belongs to blocks and work belongs to
+// tasks (spec §1), so a block has no status — it happens, or it is deleted. To
+// track whether something timed got done, put a task inside the block.
 interface Block {
   source: SourceRef;
   title: string;
   assoc?: Association;
   metadata?: string; // freeform user data, same as a task's
   tasks: Task[];
-  status?: TaskStatus; // present iff the block line carries a checkbox
+  notes?: Note[]; // checkbox-less bullets under the block, in note order
   scheduled: boolean;
   time?: TimeRange;
 }
-
-type CheckableBlock = Block & { status: TaskStatus };
-
-const isCheckable = (b: Block): b is CheckableBlock => b.status !== undefined;
 
 const minutesOf = (b: Block): Minutes =>
   b.time ? b.time.end - b.time.start : -1;
@@ -182,7 +188,7 @@ export type {
   TaskStatus,
   Task,
   Block,
-  CheckableBlock,
+  Note,
   Day,
   LifecycleState,
   StatusRecord,
@@ -195,4 +201,4 @@ export type {
   Index,
 };
 
-export { isCheckable, minutesOf };
+export { minutesOf };

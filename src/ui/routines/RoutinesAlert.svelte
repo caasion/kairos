@@ -16,6 +16,7 @@
 
 	import type { Routine } from "../../routines/routinesFile";
 	import type { RoutineItem, RoutineList } from "../../routines/preview";
+	import { formatTimeRange } from "../../parser";
 
 	interface Props {
 		list: RoutineList;
@@ -134,12 +135,6 @@
 	});
 	$effect(() => () => clearTimer());
 
-	function hhmm(minutes: number): string {
-		const h = Math.floor(minutes / 60);
-		const m = minutes % 60;
-		return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-	}
-
 	const summary = $derived(`${list.count} routine${list.count === 1 ? "" : "s"} to add`);
 </script>
 
@@ -237,7 +232,7 @@
 					<div class="ra-item">
 						<div class="ra-row">
 							{@render arrow(item, block.title)}
-							<span class="ra-time">{hhmm(block.time.start)}–{hhmm(block.time.end)}</span>
+							<span class="ra-time">{formatTimeRange(block.time)}</span>
 							<span class="ra-text">{block.title}</span>
 						</div>
 						{#each item.tasks as task (task.line)}

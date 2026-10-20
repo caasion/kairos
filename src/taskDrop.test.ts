@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { newBlockLabel, planTaskDrop, type DayBlocks, type DragSource } from "./taskDrop";
 import type { Block } from "./types";
 
-const plain = { duplicate: false, timebox: false };
+const plain = { duplicate: false };
 
 function wed(): DayBlocks {
 	const blocks: Block[] = [
@@ -81,19 +81,10 @@ describe("planTaskDrop", () => {
 		expect(out.day.blocks.at(-1)!.title).toBe("Focus");
 	});
 
-	it("time-boxes with Option held", () => {
-		const day = wed();
-		const out = planTaskDrop(launchFrom(day), day, { kind: "time", date: day.date, time: { start: 840, end: 870 } }, { duplicate: false, timebox: true });
-		if (out?.kind !== "day") throw new Error("expected a same-day edit");
-		const created = out.day.blocks.at(-1)!;
-		expect(created.title).toBe("Launch post");
-		expect(created.status).toBe(" ");
-	});
-
 	it("copies to the target only with Ctrl/Cmd held", () => {
 		const source = launchFrom(wed());
 		const target = thu();
-		const out = planTaskDrop(source, target, { kind: "block", date: target.date, blockLine: 3, index: 0 }, { duplicate: true, timebox: false });
+		const out = planTaskDrop(source, target, { kind: "block", date: target.date, blockLine: 3, index: 0 }, { duplicate: true });
 		if (out?.kind !== "day") throw new Error("expected only the target to change");
 		expect(out.day.date).toBe(target.date);
 		expect(out.day.blocks[0]!.tasks[0]!.assoc).toEqual({ kind: "project", id: "Kairos" });
@@ -104,18 +95,21 @@ describe("planTaskDrop", () => {
 		expect(planTaskDrop(launchFrom(day), day, { kind: "block", date: day.date, blockLine: 42, index: 0 }, plain)).toBeNull();
 	});
 
-	it("returns null for a checkable block's own checkbox", () => {
+	it("moves a task read from a legacy checkbox block line, leaving the block", () => {
+		// "- [ ] 07:00 - 07:30 Run": the task shares the block's line.
+		const task = { source: { path: "wed.md", line: 2 }, text: "Run", status: " " as const };
 		const block: Block = {
 			source: { path: "wed.md", line: 2 },
 			title: "Run",
-			status: " ",
 			scheduled: true,
 			time: { start: 420, end: 450 },
-			tasks: [],
+			tasks: [task],
 		};
 		const day: DayBlocks = { date: "2026-10-07", path: "wed.md", blocks: [block] };
-		const source: DragSource = { day, owner: block, task: { source: block.source, text: "Run", status: " " } };
-		expect(planTaskDrop(source, thu(), { kind: "time", date: "2026-10-08", time: { start: 840, end: 870 } }, plain)).toBeNull();
+		const out = planTaskDrop({ day, owner: block, task }, thu(), { kind: "time", date: "2026-10-08", time: { start: 840, end: 870 } }, plain);
+		if (out?.kind !== "cross") throw new Error("expected a cross-day move");
+		expect(out.from.blocks).toEqual([{ ...block, tasks: [] }]);
+		expect(out.to.blocks.at(-1)!.tasks.map((t) => t.text)).toEqual(["Run"]);
 	});
 });
 
@@ -132,7 +126,6 @@ describe("newBlockLabel", () => {
 		const owner = day.blocks[0]!;
 		expect(newBlockLabel(owner.tasks[0]!, owner, plain)).toBe("Kairos");
 		expect(newBlockLabel({ ...owner.tasks[0]! }, { ...owner, assoc: undefined }, plain)).toBe("New block");
-		expect(newBlockLabel(owner.tasks[0]!, owner, { duplicate: false, timebox: true })).toBe("Fix carry bug");
 	});
 });
 

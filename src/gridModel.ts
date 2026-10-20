@@ -1,8 +1,8 @@
 // Grid view row model — the pure shape behind the Grid.
 //
-// The Grid's first-class objects are tasks and checkable blocks (spec §5),
-// arranged as: rows = associations (projects and domains), columns = days,
-// cells = the tasks associated with that row on that day. This module turns a
+// The Grid's first-class objects are blocks and tasks (spec §5), arranged as:
+// rows = associations (projects and domains), columns = days, cells = the
+// blocks and tasks associated with that row on that day. This module turns a
 // reactive `GridSnapshot` (from the index) into a flat, ordered `GridRow[]`,
 // and buckets each day's resolved tasks into cells.
 //
@@ -15,8 +15,9 @@
 //        · the domain row itself holds tasks tagged [D:Domain] directly, plus
 //          the tasks of every *rolled-up* project under it (see below)
 //        · a child row per project under the domain that isn't rolled up
-//   3. unassigned row     — tasks with no owner, or an owner with no row
-//                           (always last, only if non-empty)
+//   3. unassigned row     — tasks and timed blocks with no owner, or an owner
+//                           with no row (always present, always last), so
+//                           there is always somewhere to add a loose task
 //
 // Rollup (#11): a project with `rollup: true` and a domain is "not worth its
 // own row". It contributes no row; its tasks render on its domain's row, in a
@@ -79,18 +80,6 @@ export type RowAssociation =
 	| { kind: "domain"; id: string }
 	| undefined;
 
-// ─── canonical task identity ───────────────────────────────────
-
-function ownerIdentity(
-	task: ResolvedTask,
-	snap: GridSnapshot,
-): { kind: "project" | "domain"; name: string } | null {
-	const owner = task.owner;
-	if (!owner) return null;
-	const resolved = snap.resolve(owner);
-	return { kind: owner.kind, name: resolved.displayName || owner.id };
-}
-
 // ─── rollup (#11) ──────────────────────────────────────────────
 
 function domainById(snap: GridSnapshot, id: string): Domain | undefined {
@@ -143,17 +132,22 @@ export function ownerRowKey(
 
 // ─── window-aware visibility ───────────────────────────────────
 
-/** Does any task, on any visible day, name this project/domain as its owner? */
+/**
+ * Does any task or timed block, on any visible day, name this project/domain as
+ * its owner?
+ */
 function hasTaskInWindow(
 	entity: Project | Domain,
 	kind: "project" | "domain",
 	snap: GridSnapshot,
 ): boolean {
-	return snap.days.some((day) =>
-		day.tasks.some((t) => {
-			const id = ownerIdentity(t, snap);
-			return id?.kind === kind && id.name === entity.name;
-		}),
+	const names = (owner: Association | undefined) =>
+		owner?.kind === kind &&
+		(snap.resolve(owner).displayName || owner.id) === entity.name;
+	return snap.days.some(
+		(day) =>
+			day.tasks.some((t) => names(t.owner)) ||
+			day.blocks.some((b) => b.time !== undefined && names(b.assoc)),
 	);
 }
 
@@ -273,19 +267,16 @@ export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 		}
 	}
 
-	// 3. Unassigned row, only if some day has a task with no row of its own:
-	//    untagged, or tagged with something that has no row (`ownerRowKey`).
-	const hasUnassigned = snap.days.some((day) =>
-		day.tasks.some((t) => ownerRowKey(t.owner, snap) === "unassigned"),
-	);
-	if (hasUnassigned) {
-		rows.push({
-			kind: "unassigned",
-			key: "unassigned",
-			name: "Unassigned",
-			depth: 0,
-		});
-	}
+	// 3. Unassigned row, always: it holds tasks and timed blocks with no row of
+	//    their own (untagged, or tagged with something that has no row —
+	//    `ownerRowKey`), and it is where a task with no project or domain is
+	//    added, so it can't wait for one to exist first.
+	rows.push({
+		kind: "unassigned",
+		key: "unassigned",
+		name: "Unassigned",
+		depth: 0,
+	});
 
 	return rows;
 }
@@ -352,26 +343,22 @@ export function cellTasks(
 	return [...own, ...groups.flatMap((g) => g.tasks)];
 }
 
-// ─── block groups (spec §5, decisions 70–74) ───────────────────
+// ─── block groups (spec §5, decisions 70–74, 95) ───────────────
 //
-// With "Group by block" on, a cell's tasks sit under the block they live in, so
-// the Grid says what (rows), when (block groups) and, on a domain row that folds
-// in rolled-up projects, which project (an optional chip on the task's line).
-// Block groups then replace the rolled-up project groups above.
+// A cell's tasks sit under the block they live in, and every timed block shows
+// in its own row even with no tasks there, so the Grid says what (rows), when
+// (block groups) and, on a domain row that folds in rolled-up projects, which
+// project (an optional chip on the task's line).
 
-/** One block's slice of a cell: the block's tasks that render on this row. */
+/**
+ * One block's slice of a cell: the block's tasks that render on this row. A
+ * block with none here still has a group in its own row, with no tasks.
+ */
 export interface BlockGroup {
 	/** Stable key for keyed rendering: the block's note path and line. */
 	key: string;
 	block: Block;
-	/**
-	 * The checkable block's own task, when it renders on this row. It is then
-	 * the group's header (checkbox, time, title). A checkable block whose own
-	 * task belongs to another row gets a plain header here, so there's only one
-	 * checkbox to tick.
-	 */
-	head?: ResolvedTask;
-	/** The block's nested tasks on this row, in note order. */
+	/** The block's tasks on this row, in note order. */
 	tasks: ResolvedTask[];
 }
 
@@ -383,27 +370,41 @@ export function isUnscheduledBlock(block: Block): boolean {
 }
 
 /**
- * A cell's tasks grouped by block: one group per block with tasks on this row,
- * timed blocks by start time, then other untimed blocks, then Unscheduled last.
- * A block whose tasks carry different associations appears in each of those
- * rows (decision 73): the header is a label, not ownership.
+ * A cell's blocks and tasks grouped by block: one group per block with tasks on
+ * this row, plus every timed block of the day (`blocks`) whose own association
+ * renders on this row, tasks or not. Timed blocks by start time, then other
+ * untimed blocks, then Unscheduled last. A block whose tasks carry different
+ * associations also appears in each of those rows (decision 73): there the
+ * header is a label, not ownership.
  */
+/** A task's or block's place in its note, "path:line": unique across days. */
+export function sourceKey(source: { path: string; line: number }): string {
+	return `${source.path}:${source.line}`;
+}
+
 export function blockGroups(
 	row: GridRow,
 	tasks: ResolvedTask[],
 	snap: GridSnapshot,
+	blocks: Block[] = [],
 ): BlockGroup[] {
 	const groups = new Map<string, BlockGroup>();
 	for (const t of tasks) {
 		if (ownerRowKey(t.owner, snap) !== row.key) continue;
-		const key = `${t.block.source.path}:${t.block.source.line}`;
+		const key = sourceKey(t.block.source);
 		let group = groups.get(key);
 		if (!group) {
 			group = { key, block: t.block, tasks: [] };
 			groups.set(key, group);
 		}
-		if (t.colocated) group.head = t;
-		else group.tasks.push(t);
+		group.tasks.push(t);
+	}
+	// A block is time spent on its own row's area, so it shows there even when
+	// none of its tasks do (decision 95).
+	for (const b of blocks) {
+		if (!b.time || ownerRowKey(b.assoc, snap) !== row.key) continue;
+		const key = sourceKey(b.source);
+		if (!groups.has(key)) groups.set(key, { key, block: b, tasks: [] });
 	}
 	return [...groups.values()].sort((a, b) => blockRank(a.block) - blockRank(b.block) || byTime(a.block, b.block));
 }
@@ -494,4 +495,23 @@ export function dropAssociation(
 	}
 	const assoc = rowAssociation(target);
 	return { assoc: assoc ? { kind: assoc.kind, id: assoc.id } : null, sameRow: false };
+}
+
+/**
+ * `dropAssociation` for a block dragged by a header on row `fromRowKey`. A
+ * block's header also shows, as a label, in each row one of its tasks belongs
+ * to (decision 73). Dropping it back on the row it was lifted from keeps its
+ * own association, as on its own row: the label row is the task's, and filing
+ * the whole block there would take every task inheriting its area with it.
+ */
+export function blockDropAssociation(
+	target: GridRow | undefined,
+	fromRowKey: string | undefined,
+	owner: Association | undefined,
+	snap: GridSnapshot,
+): { assoc: Association | null; sameRow: boolean } | undefined {
+	if (target && fromRowKey !== undefined && target.key === fromRowKey) {
+		return { assoc: owner ? { ...owner } : null, sameRow: true };
+	}
+	return dropAssociation(target, owner, snap);
 }

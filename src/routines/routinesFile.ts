@@ -9,7 +9,7 @@
 //   ## Weekdays
 //   - 07:30 - 08:00 Morning Routine          ← block routine
 //   	- [ ] Take meds                        ← task, homed in "Morning Routine"
-//   - [ ] 18:00 - 19:00 Gym [Fitness] 🔁 Tue, Thu   ← checkable block, own rule
+//   - 18:00 - 19:00 Gym [Fitness] 🔁 Tue, Thu     ← block routine, own rule
 //
 //   ## Daily
 //   - [ ] Water the plants [D:Home]           ← task, lands in Unscheduled
@@ -17,7 +17,8 @@
 //   	- [ ] Journal                          ← task, homed in "Night Routine"
 //
 // So the line shape decides what a routine makes, with no extra syntax:
-//   • a timed top-level line makes a block (a checkbox makes it checkable);
+//   • a timed top-level line makes a block (a block has no status, so a
+//     checkbox on it, left from when blocks could be checked, is ignored);
 //   • an untimed top-level line WITH a checkbox makes a task for the day's list;
 //   • an untimed top-level line WITHOUT a checkbox is a home — it names a block
 //     and makes nothing itself; the tasks under it go into the day's block of
@@ -36,9 +37,15 @@ export interface BlockRoutine {
 	rule: Rule;
 	title: string;
 	time: TimeRange;
-	checkable: boolean;
 	assoc?: Association;
 	metadata?: string;
+	/**
+	 * The line still has the checkbox a block could once carry. It changes
+	 * nothing the routine makes; it only keeps the routines hash such a line
+	 * had (see `canonical` in apply.ts), so days set up from it don't go stale.
+	 * Editing the routine rewrites the line without it.
+	 */
+	legacyCheckbox?: true;
 	line: number;
 }
 
@@ -73,6 +80,8 @@ export const LIST_ITEM = /^([ \t]*)[-*+]\s+(?:\[(.)\]\s+)?(.*)$/;
 export const HEADING = /^#{1,6}\s+(.*)$/;
 // `🔁 rule` up to the next `[` or `(` (an association or note) or the end.
 export const REPEAT = /\s*🔁\s*([^[(]*?)\s*(?=[[(]|$)/u;
+// A leading "HH:MM - HH:MM", valid or not.
+const LOOKS_TIMED = /^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\s/;
 
 interface Parent {
 	indent: number;
@@ -146,11 +155,20 @@ export function parseRoutines(markdown: string): ParsedRoutines {
 				rule,
 				title: time.title,
 				time: time.range,
-				checkable: checked,
 				...(assoc ? { assoc } : {}),
 				...(metadata ? { metadata } : {}),
+				...(checked ? { legacyCheckbox: true as const } : {}),
 				line: i,
 			});
+			continue;
+		}
+
+		// A time range that doesn't parse ("25:00 - 26:00", "10:00 - 09:00") makes
+		// no block; report it rather than let the routine silently vanish. Lines
+		// under it stay homed by its text, as under any untimed line.
+		if (LOOKS_TIMED.test(title)) {
+			parent = { indent, rule, home: title, ...(assoc ? { assoc } : {}) };
+			problems.push({ line: i, message: `"${title}" has an invalid time range` });
 			continue;
 		}
 

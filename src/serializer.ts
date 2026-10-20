@@ -12,12 +12,13 @@
 //
 // Line grammar produced (mirrors the parser's, metadata right of the title):
 //
-//   <indent> "- " [ "[" status "] " ] [ HH:MM " - " HH:MM " " ] title
-//            [ " [" Assoc "]" ] [ " (" tag ")" ]
+//   block:  "- " [ HH:MM " - " HH:MM " " ] title [ " [" Assoc "]" ] [ " (" tag ")" ]
+//   task:   "\t- [" status "] " text [ " [" Assoc "]" ] [ " (" tag ")" ]
+//   note:   "\t- " text
 //
-// Associations serialize as `[Project]` or `[D:Domain]`; a checkbox on a block
-// line comes from that block's colocated `task`. Nested tasks are indented one
-// tab under their block.
+// Associations serialize as `[Project]` or `[D:Domain]`. A block has no status,
+// so a block line never carries a checkbox. Nested tasks and notes are
+// indented one tab under their block, each note after the tasks it followed.
 //
 // Fidelity note: the parser strips a trailing `[...]` or `(...)` off any title,
 // so a title/text that itself *ends* with a bracketed or parenthesised token
@@ -26,6 +27,7 @@
 
 import type { Association, Block, Task, TaskStatus } from "./types";
 import { DEFAULT_HEADING, normalizeHeading } from "./section";
+import { formatTimeRange } from "./parser";
 
 // ─── configuration ─────────────────────────────────────────────
 
@@ -56,14 +58,11 @@ export { serialize, serializeBlock, serializeTask };
 function serializeBlock(block: Block): string[] {
   const lines: string[] = [];
 
-  // The block line. `status` (the checkbox) is present iff the block is
-  // checkable; `metadata` is the trailing paren note. Both live directly on the
-  // block now, so there is a single source for the line's text — no title/text
-  // pair to drift apart.
+  // The block line: time, title, association and the trailing paren note
+  // (`metadata`). No checkbox — that belongs to tasks.
   lines.push(
     "- " +
       renderBody({
-        status: block.status,
         time: block.time,
         title: block.title,
         assoc: block.assoc,
@@ -71,10 +70,16 @@ function serializeBlock(block: Block): string[] {
       }),
   );
 
-  // Nested tasks, one indent step deeper.
-  for (const task of block.tasks) {
+  // Nested tasks and notes, one indent step deeper. A note goes after the
+  // `at` tasks it followed; one past the end goes last.
+  const notes = block.notes ?? [];
+  const notesAt = (i: number) =>
+    notes.filter((n) => Math.min(n.at, block.tasks.length) === i);
+  block.tasks.forEach((task, i) => {
+    for (const note of notesAt(i)) lines.push(INDENT + "- " + note.text);
     lines.push(INDENT + "- " + serializeTask(task));
-  }
+  });
+  for (const note of notesAt(block.tasks.length)) lines.push(INDENT + "- " + note.text);
 
   return lines;
 }
@@ -107,7 +112,9 @@ interface Body {
 function renderBody(b: Body): string {
   let out = "";
   if (b.status !== undefined) out += `[${b.status}] `;
-  if (b.time) out += `${formatTime(b.time.start)} - ${formatTime(b.time.end)} `;
+  // An end at midnight (1440) writes as "24:00", which reads back as the end
+  // of the day.
+  if (b.time) out += `${formatTimeRange(b.time, " - ")} `;
   out += b.title;
   if (b.assoc) out += ` [${formatAssoc(b.assoc)}]`;
   if (b.metadata !== undefined) out += ` (${b.metadata})`;
@@ -119,13 +126,3 @@ function formatAssoc(assoc: Association): string {
   return assoc.kind === "domain" ? `D:${assoc.id}` : assoc.id;
 }
 
-/** Minutes-since-midnight → `HH:MM`, zero-padded. */
-function formatTime(minutes: number): string {
-  const hh = Math.floor(minutes / 60);
-  const mm = minutes % 60;
-  return `${pad(hh)}:${pad(mm)}`;
-}
-
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}

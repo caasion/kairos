@@ -7,7 +7,7 @@
     TaskStatus,
     TimeRange,
   } from "../../types";
-  import { isCheckable } from "../../types";
+  import { formatTimeRange, parseTimeRangeText } from "../../parser";
   import {
     blockLit,
     hoverBlockTarget,
@@ -17,12 +17,13 @@
   } from "../../viewLinks";
   import type { Resolver } from "../../index";
   import { peek } from "../actions/peek";
-  import { Menu } from "obsidian";
+  import { Menu, Notice } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
-  import { blockLineTask, requestRepeat } from "../../routines/repeat";
-  import TaskCheckbox from "../task/TaskCheckbox.svelte";
+  import { requestRepeat } from "../../routines/repeat";
+  import { addBlockMenuItems } from "../blockMenu";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
+  import { afterLeave, pressInBlock } from "./blockGrow";
 
   interface Props {
     block: Block;
@@ -77,11 +78,12 @@
 		// Block field write-back.
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
-		onSetBlockStatus: (block: Block, status: TaskStatus) => void;
-		// Toggle whether the block is a checkable task (adds/removes its checkbox).
-		onToggleCheckable: (block: Block) => void;
 		// Create a new child task inside this block.
 		onAddTask: (block: Block) => void;
+		// Notes (decision 96): add one at the end, or set note `index`'s text
+		// (blank deletes it).
+		onAddNote: (block: Block, text: string) => void;
+		onSetNoteText: (block: Block, index: number, text: string) => void;
 		// Open the association picker for this block, anchored at `rect`.
 		onEditAssoc: (block: Block, rect: DOMRect) => void;
 		// Hover link (viewLinks.ts): the item under the pointer in any view, so
@@ -117,9 +119,9 @@
 		dragActive = false,
 		onSetBlockTitle,
 		onSetBlockTime,
-		onSetBlockStatus,
-		onToggleCheckable,
 		onAddTask,
+		onAddNote,
+		onSetNoteText,
 		onEditAssoc,
 		hover = null,
 		onHoverEnter,
@@ -159,30 +161,85 @@
   // task strip.
   const isDropTarget = $derived(dropIndex !== undefined);
 
-  function fmt(minutes: number): string {
-    const hh = Math.floor(minutes / 60);
-    const mm = minutes % 60;
-    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-  }
+  const timeLabel = $derived(block.time ? formatTimeRange(block.time) : "");
 
-  const timeLabel = $derived(
-    block.time ? `${fmt(block.time.start)}–${fmt(block.time.end)}` : "",
-  );
-
-  const checkable = $derived(isCheckable(block));
-  const blockChecked = $derived(block.status === "x");
-
-  // Domain color for the block's accent — the left border and the colocated
-  // checkbox. Undefined when the association is a project with no domain, or
+  // Domain color for the block's accent — the left border. Undefined when the association is a project with no domain, or
   // unresolved; the accent then falls back to the theme. The association *tag*
   // stays plain; only the accent carries the color.
   const accentColor = $derived(
     block.assoc ? resolve(block.assoc).color : undefined,
   );
 
-  // The colocated task is represented by the block header itself, so it is not
-  // repeated in the chip list.
-  const chips = $derived(tasks.filter((t) => !t.colocated));
+  const chips = $derived(tasks);
+  const notes = $derived(block.notes ?? []);
+
+  // ── Notes (decision 96) ──
+  // A note is edited in place like a task's text; clearing it deletes it. A
+  // new note starts as an empty row and is only written once it has text.
+  let editingNote = $state<number | null>(null);
+  let addingNote = $state(false);
+  let noteDraft = $state("");
+
+  function focusOnMount(node: HTMLInputElement) {
+    queueMicrotask(() => node.focus());
+  }
+
+  function beginNoteEdit(index: number) {
+    noteDraft = notes[index]?.text ?? "";
+    addingNote = false;
+    editingNote = index;
+  }
+
+  function beginNoteAdd() {
+    noteDraft = "";
+    editingNote = null;
+    addingNote = true;
+    // Grow the block so the new row is in view.
+    expand();
+  }
+
+  function commitNote() {
+    const text = noteDraft.trim();
+    if (addingNote) {
+      addingNote = false;
+      if (text) onAddNote(block, text);
+    } else if (editingNote !== null) {
+      const index = editingNote;
+      editingNote = null;
+      if (text !== notes[index]?.text) onSetNoteText(block, index, text);
+    }
+  }
+
+  function cancelNote() {
+    addingNote = false;
+    editingNote = null;
+  }
+
+  function onNoteKeydown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitNote();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelNote();
+    }
+  }
+
+  function openNoteMenu(event: MouseEvent, index: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    const menu = new Menu();
+    menu.addItem((item) =>
+      item.setTitle("Edit note").setIcon("pencil").onClick(() => beginNoteEdit(index)),
+    );
+    menu.addItem((item) =>
+      item
+        .setTitle("Delete note")
+        .setIcon("trash")
+        .onClick(() => onSetNoteText(block, index, "")),
+    );
+    menu.showAtMouseEvent(event);
+  }
 
   // Horizontal lane geometry: equal-width columns within the block's cluster.
   // Blocks occupy a left band (BAND%) of the row, leaving a gutter on the right
@@ -236,74 +293,52 @@
     }
   }
 
-  // ── Time editing (native time inputs; reject end ≤ start) ────────
+  // ── Time editing (the label becomes a text input, in place) ──────
+  // The range is typed as text ("09:00–10:30") and checked by the same rules
+  // as a note's time (parseTimeRangeText). Enter on an invalid range keeps the
+  // editor open and says what's wrong; leaving it then puts the old time back.
 
   let editingTime = $state(false);
-  let startDraft = $state(""); // "HH:MM"
-  let endDraft = $state("");
+  let timeDraft = $state("");
+  // The draft was rejected and hasn't been changed since.
+  let timeInvalid = $state(false);
+  let timeInputEl = $state<HTMLInputElement>();
 
   function beginTimeEdit() {
     if (!block.time || editingTime) return;
-    startDraft = fmt(block.time.start);
-    endDraft = fmt(block.time.end);
+    timeDraft = timeLabel;
+    timeInvalid = false;
     editingTime = true;
+    queueMicrotask(() => timeInputEl?.focus());
   }
 
-  // Parse an "HH:MM" value from a native time input to minutes-since-midnight.
-  function parseHHMM(value: string): number | undefined {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(value);
-    if (!m) return undefined;
-    const hh = Number(m[1]);
-    const mm = Number(m[2]);
-    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return undefined;
-    return hh * 60 + mm;
-  }
-
-  function commitTimeEdit() {
+  // Save a valid, changed range and close. An invalid one stays open, marked,
+  // with a notice; `revert` closes it unsaved instead (the notice still shows
+  // unless Enter already showed it for this text).
+  function commitTimeEdit(revert: boolean) {
     if (!editingTime) return;
-    const start = parseHHMM(startDraft);
-    const end = parseHHMM(endDraft);
-    // Only persist a valid range; a block can't have zero/negative minutes
-    // (spec §2.1). An invalid entry just closes the editor unchanged.
-    if (start !== undefined && end !== undefined && end > start) {
-      if (!block.time || start !== block.time.start || end !== block.time.end) {
-        onSetBlockTime(block, { start, end });
-      }
+    const parsed = parseTimeRangeText(timeDraft);
+    if (!parsed.ok) {
+      if (!timeInvalid) new Notice(parsed.error);
+      if (revert) editingTime = false;
+      else timeInvalid = true;
+      return;
     }
     editingTime = false;
+    const { start, end } = parsed.range;
+    if (!block.time || start !== block.time.start || end !== block.time.end) {
+      onSetBlockTime(block, { start, end });
+    }
   }
 
   function onTimeKeydown(event: KeyboardEvent) {
     if (event.key === "Enter") {
       event.preventDefault();
-      commitTimeEdit();
+      commitTimeEdit(false);
     } else if (event.key === "Escape") {
       event.preventDefault();
       editingTime = false;
     }
-  }
-
-  // ── Block checkbox (checkable block) ─────────────────────────────
-
-  function nextStatus(status: TaskStatus): TaskStatus {
-    switch (status) {
-      case " ":
-        return "/";
-      case "/":
-        return "x";
-      default:
-        return " ";
-    }
-  }
-
-  function cycleBlockStatus() {
-    if (block.status === undefined) return;
-    onSetBlockStatus(block, nextStatus(block.status));
-  }
-
-  function cancelBlockStatus() {
-    if (block.status === undefined) return;
-    onSetBlockStatus(block, "-");
   }
 
   // ── Block context menu ───────────────────────────────────────────
@@ -348,20 +383,28 @@
     return () => ro.disconnect();
   });
 
-  // How many task rows the block has room for (none when compact).
+  // How many rows the block has room for (none when compact). Rows are its
+  // tasks, then its notes, then a note being added.
   const capacity = $derived(
     compact ? 0 : Math.max(0, Math.floor((taskAreaHeight + 0.5) / rowHeight)),
   );
+  const rowCount = $derived(chips.length + notes.length + (addingNote ? 1 : 0));
   // During a drag every block shows all its rows: they are the drop slots.
-  const overflowing = $derived(!dragActive && chips.length > capacity);
-  const shownChips = $derived(
-    overflowing && !expanded ? chips.slice(0, Math.max(0, capacity - 1)) : chips,
-  );
-  const hiddenCount = $derived(overflowing ? chips.length - Math.max(0, capacity - 1) : 0);
+  const overflowing = $derived(!dragActive && rowCount > capacity);
+  const room = $derived(overflowing && !expanded ? Math.max(0, capacity - 1) : rowCount);
+  const shownChips = $derived(chips.slice(0, room));
+  const shownNotes = $derived(notes.slice(0, Math.max(0, room - chips.length)));
+  const hiddenCount = $derived(overflowing ? rowCount - Math.max(0, capacity - 1) : 0);
+  // What's hidden: tasks (they come first) when no note is, notes when no task
+  // is, else both.
+  const hiddenNoun = $derived.by(() => {
+    const one = hiddenCount === 1;
+    if (shownChips.length + hiddenCount <= chips.length) return one ? "task" : "tasks";
+    if (shownChips.length === chips.length) return one ? "note" : "notes";
+    return "items";
+  });
   const moreLabel = $derived(
-    capacity <= 1
-      ? `${hiddenCount} ${hiddenCount === 1 ? "task" : "tasks"}`
-      : `${hiddenCount} more`,
+    capacity <= 1 ? `${hiddenCount} ${hiddenNoun}` : `${hiddenCount} more`,
   );
   // A compact block that grows lays out like a full one, so its tasks show.
   const compactLayout = $derived(compact && !expanded);
@@ -376,6 +419,9 @@
   }
   function collapse() {
     cancelExpandTimer();
+    // Shrinking a compact block takes its time line away, and an input that
+    // is removed gets no blur: settle a time edit in it first.
+    if (compact && editingTime) timeInputEl?.blur();
     expanded = false;
   }
   // Hover drives it for a mouse only. A touch "leaves" the moment the finger
@@ -394,21 +440,36 @@
   }
   function onBlockLeave(event: PointerEvent) {
     if (event.pointerType !== "mouse" || !expanded) return;
+    scheduleCollapse();
+  }
+  // Shrink once the pointer has been gone a moment, but not while the block
+  // is still in use from outside its box (see blockGrow.ts): the pointer on a
+  // task's action stack, portaled to the body, or a menu or picker a task
+  // opened. Shrinking then would unmount the very task in use. Wait until
+  // that's done instead. Keep it, too, while something in it has focus (a task
+  // being edited); a press elsewhere shrinks it then. Focus on a portaled
+  // stack's button only waits: putting the stack back drops that focus.
+  function scheduleCollapse() {
     cancelExpandTimer();
     expandTimer = window.setTimeout(() => {
-      // Keep it while something in it has focus (a task being edited).
-      if (blockEl?.contains(blockEl.ownerDocument.activeElement)) return;
-      expanded = false;
+      expandTimer = undefined;
+      const el = blockEl;
+      if (!el) return;
+      const next = afterLeave(el);
+      if (next === "wait") scheduleCollapse();
+      else if (next === "shrink") expanded = false;
     }, COLLAPSE_MS);
   }
   // While grown: a press anywhere else shrinks it (the way back on touch), and
-  // so does leaving a focused task once the pointer is gone.
+  // so does leaving a focused task once the pointer is gone. A press on its
+  // tasks' portaled stacks, menus or pickers isn't elsewhere: shrinking on the
+  // pointerdown would unmount the button before its click.
   $effect(() => {
     const el = blockEl;
     if (!expanded || !el) return;
     const win = el.ownerDocument.defaultView ?? window;
     const onPress = (e: PointerEvent) => {
-      if (!el.contains(e.target as Node)) collapse();
+      if (!pressInBlock(el, e.target)) collapse();
     };
     win.addEventListener("pointerdown", onPress, true);
     return () => win.removeEventListener("pointerdown", onPress, true);
@@ -430,71 +491,12 @@
   function openContextMenu(event: MouseEvent) {
     event.preventDefault();
     const menu = new Menu();
-
-    menu.addItem((item) =>
-      item
-        .setTitle("Add task")
-        .setIcon("list-plus")
-        .onClick(() => onAddTask(block)),
-    );
-
-    menu.addItem((item) =>
-      item
-        .setTitle(block.assoc ? "Edit association" : "Add association")
-        .setIcon("folder-symlink")
-        .onClick(() => requestEditAssoc()),
-    );
-
-    if (block.time) {
-      menu.addItem((item) =>
-        item
-          .setTitle("Repeat…")
-          .setIcon("repeat")
-          .onClick(() => requestRepeat(blockLineTask(block), block)),
-      );
-    }
-
-    menu.addSeparator();
-
-    // Convert the block to/from a checkable task. When it's already checkable,
-    // offer the same status changes a task's context menu does.
-    menu.addItem((item) =>
-      item
-        .setTitle(checkable ? "Convert to block" : "Convert to task")
-        .setIcon(checkable ? "square" : "check-square")
-        .onClick(() => onToggleCheckable(block)),
-    );
-
-    if (checkable) {
-      menu.addItem((item) =>
-        item
-          .setTitle(blockChecked ? "Mark open" : "Mark done")
-          .setIcon("check")
-          .onClick(() => onSetBlockStatus(block, blockChecked ? " " : "x")),
-      );
-      menu.addItem((item) =>
-        item
-          .setTitle("Mark half-done")
-          .setIcon("clock")
-          .onClick(() => onSetBlockStatus(block, "/")),
-      );
-      menu.addItem((item) =>
-        item
-          .setTitle("Mark cancelled")
-          .setIcon("x")
-          .onClick(() => onSetBlockStatus(block, "-")),
-      );
-    }
-
-    menu.addSeparator();
-
-    menu.addItem((item) =>
-      item
-        .setTitle("Delete block")
-        .setIcon("trash")
-        .onClick(() => onDelete(block)),
-    );
-
+    addBlockMenuItems(menu, block, {
+      onAddTask: () => onAddTask(block),
+      onAddNote: () => beginNoteAdd(),
+      onEditAssoc: () => requestEditAssoc(),
+      onDelete: () => onDelete(block),
+    });
     menu.showAtMouseEvent(event);
   }
 </script>
@@ -508,7 +510,7 @@
     class:pill
     style={pill ? undefined : `height: ${rowHeight}px;`}
     bind:this={moreEl}
-    aria-label={`Show all ${chips.length} tasks`}
+    aria-label={`Show all ${rowCount} rows`}
     aria-expanded={expanded}
     onpointerdown={(e) => e.stopPropagation()}
     onpointerenter={onMoreEnter}
@@ -580,10 +582,10 @@
     }}
   ></div>
 
-	<!-- Action bar: add-task + delete, top-right corner. Woken from the
-	     top-right corner zone (see actions/actionZone.ts), not on any hover.
+	<!-- Action bar: add-task + add-note + delete, top-right corner. Woken from
+	     the top-right corner zone (see actions/actionZone.ts), not on any hover.
 	     On a mouse wake it's a vertical stack: delete stays in the corner and
-	     add-task rises above it (above the block). Touch keeps the bar. -->
+	     the rest rise above it (above the block). Touch keeps the bar. -->
 	<div class="tl-actions kairos-action-bar">
 		<button
 			type="button"
@@ -597,6 +599,19 @@
 			}}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
+		</button>
+		<button
+			type="button"
+			class="tl-action-btn"
+			aria-label="Add note"
+			use:tooltip={"Add note"}
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={(e) => {
+				e.stopPropagation();
+				beginNoteAdd();
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg>
 		</button>
 		<button
 			type="button"
@@ -617,24 +632,10 @@
   <div
     class="tl-content"
     class:compact={compactLayout}
-    class:checked={blockChecked}
     class:drop-target={isDropTarget}
     style={accentColor ? `border-left-color:${accentColor};` : ""}
   >
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="tl-block-header">
-      {#if checkable}
-        <!-- The colocated task's checkbox. Stop pointerdown so pressing it
-             doesn't also start a block move. -->
-        <span class="tl-check-wrap" onpointerdown={(e) => e.stopPropagation()}>
-          <TaskCheckbox
-            status={block.status ?? " "}
-            color={accentColor}
-            onToggle={cycleBlockStatus}
-            onCancel={cancelBlockStatus}
-          />
-        </span>
-      {/if}
       {#if editingTitle}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <input
@@ -663,34 +664,26 @@
     </div>
 
     {#if !compactLayout}
-      {#if editingTime}
-        <!-- Commit on focusout only when focus leaves the whole editor, so
-             tabbing between the two inputs doesn't close it early. -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="tl-time-edit"
-          onpointerdown={(e) => e.stopPropagation()}
-          onfocusout={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node)) commitTimeEdit();
-          }}
-        >
+      <!-- Time and the association share one line, separated by a dot. -->
+      <div class="kairos-meta-row" bind:this={metaEl}>
+        {#if editingTime}
+          <!-- Stop pointerdown so pressing in the input doesn't also start a
+               block move. -->
           <input
-            class="tl-time-input"
-            type="time"
-            bind:value={startDraft}
+            class="tl-time tl-time-input kairos-inline-input"
+            type="text"
+            aria-label="Block time"
+            aria-invalid={timeInvalid ? "true" : undefined}
+            placeholder="09:00–10:30"
+            bind:value={timeDraft}
+            bind:this={timeInputEl}
+            onpointerdown={(e) => e.stopPropagation()}
+            onfocus={(e) => e.currentTarget.select()}
+            oninput={() => (timeInvalid = false)}
             onkeydown={onTimeKeydown}
+            onblur={() => commitTimeEdit(true)}
           />
-          <span class="tl-time-dash">–</span>
-          <input
-            class="tl-time-input"
-            type="time"
-            bind:value={endDraft}
-            onkeydown={onTimeKeydown}
-          />
-        </div>
-      {:else}
-        <!-- Time and the association share one line, separated by a dot. -->
-        <div class="kairos-meta-row" bind:this={metaEl}>
+        {:else}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <span
             class="tl-time kairos-meta kairos-meta-label"
@@ -699,42 +692,42 @@
             onpointerdown={(e) => e.stopPropagation()}
             onclick={beginTimeEdit}
           >{timeLabel}</span>
-          {#if block.assoc}
-            {@const r = resolve(block.assoc)}
-            <!-- An SVG dot separator: fixed-size so it can't affect line-height
-                 or row height the way a text glyph would. -->
-            <svg
-              class="kairos-meta-dot"
-              width="3"
-              height="3"
-              viewBox="0 0 3 3"
-              aria-hidden="true"
-            ><circle cx="1.5" cy="1.5" r="1.5" fill="currentColor" /></svg>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <span
-              class="kairos-meta"
-              class:is-linked={r.resolved}
-              title={r.resolved ? "Ctrl+click to open" : undefined}
-              onpointerdown={(e) => e.stopPropagation()}
-              onclick={(e) => {
-                if (e.ctrlKey || e.metaKey) {
-                  e.stopPropagation();
-                  onNavigate(block.assoc!);
-                }
-              }}
-            >
-              {#if block.assoc.kind === "domain"}
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-              {:else}
-                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-              {/if}
-              <span class="kairos-meta-label">{r.displayName}</span>
-            </span>
-          {/if}
-        </div>
-      {/if}
-      {#if chips.length > 0 || dragActive}
+        {/if}
+        {#if block.assoc}
+          {@const r = resolve(block.assoc)}
+          <!-- An SVG dot separator: fixed-size so it can't affect line-height
+               or row height the way a text glyph would. -->
+          <svg
+            class="kairos-meta-dot"
+            width="3"
+            height="3"
+            viewBox="0 0 3 3"
+            aria-hidden="true"
+          ><circle cx="1.5" cy="1.5" r="1.5" fill="currentColor" /></svg>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <span
+            class="kairos-meta"
+            class:is-linked={r.resolved}
+            title={r.resolved ? "Ctrl+click to open" : undefined}
+            onpointerdown={(e) => e.stopPropagation()}
+            onclick={(e) => {
+              if (e.ctrlKey || e.metaKey) {
+                e.stopPropagation();
+                onNavigate(block.assoc!);
+              }
+            }}
+          >
+            {#if block.assoc.kind === "domain"}
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
+            {:else}
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+            {/if}
+            <span class="kairos-meta-label">{r.displayName}</span>
+          </span>
+        {/if}
+      </div>
+      {#if rowCount > 0 || dragActive}
         <!-- Editable tasks. A press here must not start a block move/resize, so
              the container swallows pointerdown before it reaches the block.
              `data-drop-block` lets the parent's drag hit-test find this list —
@@ -765,6 +758,45 @@
               {@render chip(task, tr)}
             </div>
           {/each}
+          {#each shownNotes as note, n (n)}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="tl-note" oncontextmenu={(e) => openNoteMenu(e, n)}>
+              <span class="tl-note-bullet" aria-hidden="true"></span>
+              {#if editingNote === n}
+                <input
+                  class="tl-note-text tl-note-input kairos-inline-input"
+                  type="text"
+                  bind:value={noteDraft}
+                  use:focusOnMount
+                  onkeydown={onNoteKeydown}
+                  onblur={commitNote}
+                />
+              {:else}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <span
+                  class="tl-note-text"
+                  role="textbox"
+                  tabindex="0"
+                  onclick={() => beginNoteEdit(n)}
+                  use:peek={{ text: note.text }}
+                >{note.text}</span>
+              {/if}
+            </div>
+          {/each}
+          {#if addingNote && (!overflowing || expanded)}
+            <div class="tl-note">
+              <span class="tl-note-bullet" aria-hidden="true"></span>
+              <input
+                class="tl-note-text tl-note-input kairos-inline-input"
+                type="text"
+                placeholder="What happened?"
+                bind:value={noteDraft}
+                use:focusOnMount
+                onkeydown={onNoteKeydown}
+                onblur={commitNote}
+              />
+            </div>
+          {/if}
           <!-- Trailing drop zone: carries the append indicator inside a padded,
                non-clipped element so a line at the list's bottom edge isn't cut. -->
           {#if overflowing && !expanded}
@@ -842,10 +874,6 @@
     box-shadow: 0 0 0 1px var(--interactive-accent);
   }
 
-  .tl-content.checked {
-    opacity: 0.6;
-  }
-
   /* Hover link: this block, or a task in it, is under the pointer in some view
      (this one included). Outlined and tinted in its domain color (the theme
      accent without one); the task itself is marked on its chip. */
@@ -914,7 +942,7 @@
     bottom: 2px;
   }
 
-	/* Hover action bar (add-task + delete), top-right corner. */
+	/* Hover action bar (add-task + add-note + delete), top-right corner. */
 	.tl-actions {
 		position: absolute;
 		top: 4px;
@@ -972,12 +1000,6 @@
     min-width: 0;
   }
 
-  .tl-check-wrap {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-  }
-
   .tl-title {
     font-size: 12px;
     font-weight: 600;
@@ -986,10 +1008,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     cursor: text;
-  }
-
-  .checked .tl-title {
-    text-decoration: line-through;
   }
 
   /* Title edit input: indistinguishable from the static title. */
@@ -1033,30 +1051,25 @@
     flex-shrink: 0;
   }
 
-  /* ── Time editor (native time inputs) ── */
-  .tl-time-edit {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-  }
-
-  .tl-time-input {
-    font-size: 10px;
+  /* The time editor: the label's type, in a box just wide enough for a range,
+     in the normal text colour while editing. `input[type]` outranks the
+     shared .kairos-inline-input reset, which sets width and box-shadow. */
+  input[type].tl-time-input.kairos-inline-input {
+    width: 12ch;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
     font-family: inherit;
+    font-size: var(--kairos-meta-font-size);
     font-variant-numeric: tabular-nums;
-    padding: 0 2px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 0;
-    background: var(--background-primary);
+    line-height: inherit;
     color: var(--text-normal);
-    min-height: 0;
-    height: auto;
-    box-shadow: none;
   }
 
-  .tl-time-dash {
-    font-size: 10px;
-    color: var(--text-muted);
+  /* A rejected range: error-coloured and underlined until it is changed. */
+  input[type].tl-time-input.kairos-inline-input[aria-invalid="true"] {
+    color: var(--text-error);
+    box-shadow: inset 0 -1px 0 var(--text-error);
   }
 
   /* ── Showing every task ── */
@@ -1138,6 +1151,45 @@
   /* ── Task drag-to-nest ── */
   .tl-task-wrap {
     min-width: 0;
+  }
+
+  /* A note: a task row's box and type, with a small dot where the checkbox
+     would be and muted text, so it reads as a record, not something to do. */
+  .tl-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 2px 4px;
+  }
+  .tl-note-bullet {
+    flex: none;
+    width: 18px;
+    display: flex;
+    justify-content: center;
+  }
+  .tl-note-bullet::before {
+    content: "";
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--text-faint);
+  }
+  .tl-note-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text;
+  }
+  input.tl-note-input {
+    padding: 0;
+    font-family: inherit;
+    color: var(--text-normal);
   }
 
   /* The origin row dims while its task is being dragged elsewhere. */

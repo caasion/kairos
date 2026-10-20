@@ -1,15 +1,16 @@
 // Routines wiring — everything the plugin registers for routines, kept out of
-// main.ts: the Routines view and its command, and the "Repeat…" handler the
-// task rows call through `requestRepeat`.
+// main.ts: the Routines view and its command, and the "Repeat…" handler that
+// task rows reach through `requestRepeat` and block menus through
+// `requestRepeatBlock`.
 
 import { Notice, type WorkspaceLeaf } from "obsidian";
 import type Kairos from "../main";
 import type { Block, Task } from "../types";
 import { KAIROS_ROUTINES_VIEW_TYPE, KairosRoutinesView } from "../KairosRoutinesView";
 import { RuleModal } from "../ui/routines/RuleModal";
-import { isBlockLine, repeatDraft, setRepeatHandler } from "./repeat";
-import { addRoutine } from "./routinesWriter";
-import { parseRule, ruleSentence } from "./rules";
+import { blockRepeatDraft, repeatDraft, setRepeatHandler } from "./repeat";
+import { addRoutine, type RoutineDraft } from "./routinesWriter";
+import { parseRule, ruleSentence, type Rule } from "./rules";
 
 export function registerRoutines(plugin: Kairos): void {
 	plugin.registerView(KAIROS_ROUTINES_VIEW_TYPE, (leaf) => new KairosRoutinesView(leaf, plugin));
@@ -20,7 +21,7 @@ export function registerRoutines(plugin: Kairos): void {
 		callback: () => void activateRoutinesView(plugin),
 	});
 
-	setRepeatHandler((task, block) => openRepeat(plugin, task, block));
+	setRepeatHandler((block, task) => openRepeat(plugin, block, task));
 	plugin.register(() => setRepeatHandler(undefined));
 }
 
@@ -35,23 +36,34 @@ export async function activateRoutinesView(plugin: Kairos): Promise<void> {
 	void workspace.revealLeaf(leaf);
 }
 
-function openRepeat(plugin: Kairos, task: Task, block: Block): void {
-	const blockLine = isBlockLine(task, block);
-	const name = blockLine ? block.title : task.text;
-	const where = blockLine
-		? block.time
-			? "as a block at the same time"
-			: "on the day's list"
-		: block.time
-			? `in ${block.title}`
-			: "on the day's list";
+/** "Repeat…" on `task` in `block`, or on the block itself when `task` is absent. */
+function openRepeat(plugin: Kairos, block: Block, task?: Task): void {
+	if (task) {
+		const where = block.time ? `in ${block.title}` : "on the day's list";
+		openRuleModal(plugin, task.text, where, (rule) => repeatDraft(task, block, rule));
+		return;
+	}
+	// Only a timed block repeats as a block; the views offer it on no other.
+	const time = block.time;
+	if (!time) return;
+	openRuleModal(plugin, block.title, "as a block at the same time", (rule) =>
+		blockRepeatDraft(block, time, rule),
+	);
+}
+
+function openRuleModal(
+	plugin: Kairos,
+	name: string,
+	where: string,
+	draftFor: (rule: Rule) => RoutineDraft,
+): void {
 	new RuleModal(plugin.app, {
 		title: `Repeat “${name}”`,
 		description: `It's added to your routines ${where}. This one stays as the first.`,
 		initial: parseRule("daily")!,
 		confirm: "Repeat",
 		onConfirm: (rule) => {
-			const draft = repeatDraft(task, block, rule);
+			const draft = draftFor(rule);
 			void plugin.routines.edit((md) => addRoutine(md, draft)).then((ok) => {
 				if (ok) new Notice(`“${name}” now repeats ${ruleSentence(rule)}.`);
 			});

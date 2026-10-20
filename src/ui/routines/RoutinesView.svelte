@@ -29,6 +29,7 @@
 	import type { OwnerActive } from "../../routines/owners";
 	import { routineAssoc } from "../../routines/apply";
 	import { todayISO } from "../../dayNote";
+	import { formatClock, formatTimeRange, parseTimeRangeText } from "../../parser";
 	import {
 		type ParsedRoutines,
 		type Routine,
@@ -87,7 +88,7 @@
 	async function add(rule: Rule, kind: "task" | "block", home?: string) {
 		const draft: RoutineDraft =
 			kind === "block"
-				? { kind, rule, title: NEW_BLOCK, time: { start: 540, end: 600 }, checkable: false }
+				? { kind, rule, title: NEW_BLOCK, time: { start: 540, end: 600 } }
 				: { kind, rule, text: NEW_TASK, ...(home ? { home } : {}) };
 		await store.edit((md) => addRoutine(md, draft));
 	}
@@ -124,17 +125,16 @@
 		void update(r, draft.kind === "block" ? { ...draft, title: name } : { ...draft, text: name });
 	}
 
-	const TIME = /^(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})$/;
-
 	function setTime(r: Routine, value: string) {
 		if (r.kind !== "block") return;
-		const m = TIME.exec(value.trim());
-		const start = m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
-		const end = m ? Number(m[3]) * 60 + Number(m[4]) : NaN;
-		if (!m || !(start >= 0 && end <= 24 * 60 && end > start) || Number(m[2]) > 59 || Number(m[4]) > 59) {
-			new Notice("Write the time like 09:00 - 10:00, ending after it starts.");
+		// Same rules as a block's time in a note, so an end at midnight ("24:00"
+		// or "00:00") works.
+		const parsed = parseTimeRangeText(value);
+		if (!parsed.ok) {
+			new Notice(parsed.error);
 			return;
 		}
+		const { start, end } = parsed.range;
 		if (start === r.time.start && end === r.time.end) return;
 		void update(r, { ...(draftOf(r) as Extract<RoutineDraft, { kind: "block" }>), time: { start, end } });
 	}
@@ -153,11 +153,6 @@
 		});
 	}
 
-	function toggleCheckable(r: Routine) {
-		if (r.kind !== "block") return;
-		void update(r, { ...(draftOf(r) as Extract<RoutineDraft, { kind: "block" }>), checkable: !r.checkable });
-	}
-
 	function changeRule(r: Routine) {
 		new RuleModal(app, {
 			title: "Change when it repeats",
@@ -170,14 +165,8 @@
 		}).open();
 	}
 
-	function formatTime(minutes: number): string {
-		const h = Math.floor(minutes / 60);
-		const m = minutes % 60;
-		return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-	}
-
 	function timeText(r: Routine): string {
-		return r.kind === "block" ? `${formatTime(r.time.start)} - ${formatTime(r.time.end)}` : "";
+		return r.kind === "block" ? formatTimeRange(r.time, " - ") : "";
 	}
 
 	// ── Association picker ──
@@ -227,7 +216,7 @@
 			return {
 				block: { source: { path: store.filePath, line: key }, title, tasks: [], scheduled: time !== undefined, ...(time ? { time } : {}) },
 				title,
-				...(time ? { timeLabel: `${formatTime(time.start)}–${formatTime(time.end)}` } : {}),
+				...(time ? { timeLabel: formatTimeRange(time) } : {}),
 				start: time ? time.start : Number.MAX_SAFE_INTEGER,
 				untimed: time === undefined,
 			};
@@ -403,19 +392,16 @@
 								<RoutineGroupHeader
 									kind="block"
 									title={b.title}
-									start={formatTime(b.time.start)}
+									start={formatClock(b.time.start)}
 									timeText={timeText(b)}
-									checkable={b.checkable}
 									assocLabel={b.assoc ? ba?.displayName || b.assoc.id : undefined}
 									assocColor={ba?.color}
-									color={ba?.color}
 									paused={isPaused(b)}
 									onAdd={() => void add(group.rule, "task", b.title)}
 									onRename={(title) => setName(b, title)}
 									onSetTime={(text) => setTime(b, text)}
 									onChangeRule={() => changeRule(b)}
 									onEditAssoc={(rect) => openAssoc(b, rect)}
-									onToggleCheckable={() => toggleCheckable(b)}
 									onDelete={() => void remove(b)}
 								/>
 							{:else}

@@ -11,7 +11,8 @@ Your day is built from time blocks, and work lives as tasks inside them. A real,
 	- [ ] Fix timeline scroll perf
 - 11:00 - 12:30 Study [D:School]
 	- [ ] Review linear algebra for the midterm
-- [x] 13:00 - 14:00 Swim [Fitness]
+- 13:00 - 14:00 Swim [Fitness]
+	- [x] Swim
 ```
 
 Your notes remain the source of truth, and they stay readable with or without Kairos.

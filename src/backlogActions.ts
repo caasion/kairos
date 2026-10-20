@@ -42,9 +42,6 @@ export async function insertEntry(
  * Materialize-on-move (spec §4.3): a task that was only *inheriting* its block's
  * association would land in the backlog unassociated, so the inherited owner is
  * pinned onto the new entry.
- *
- * Colocated tasks (a checkable block's own line) are not liftable — that task
- * *is* a block — so callers only offer this on genuine nested tasks.
  */
 export function moveTaskToBacklog(
 	index: KairosIndex,

@@ -354,11 +354,6 @@ body {
 	z-index: 5;
 	overflow: hidden;
 }
-/* Option/Alt: time-box — the task itself becomes a checkable block. */
-.kairos-drop-preview.timebox {
-	border-color: var(--color-purple);
-	background: color-mix(in srgb, var(--color-purple) 12%, transparent);
-}
 /* Ctrl/Cmd: a copy, matching the drag ghost's green. */
 .kairos-drop-preview.duplicate {
 	border-color: var(--color-green);

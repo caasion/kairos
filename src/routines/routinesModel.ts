@@ -43,7 +43,7 @@ export function groupRoutines(routines: Routine[]): RoutineGroup[] {
  */
 export interface RoutineBlockGroup {
 	key: string;
-	/** A timed block routine heading the group (a checkable one is its own row). */
+	/** A timed block routine heading the group. */
 	block?: BlockRoutine;
 	/** An untimed home with no block routine of its own here ("Night routine"). */
 	home?: string;

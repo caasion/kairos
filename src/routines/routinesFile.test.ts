@@ -33,7 +33,6 @@ describe("parseRoutines", () => {
 		expect(morning).toMatchObject({
 			kind: "block",
 			time: { start: 450, end: 480 },
-			checkable: false,
 			rule: { kind: "weekly", days: [1, 2, 3, 4, 5] },
 		});
 	});
@@ -47,8 +46,9 @@ describe("parseRoutines", () => {
 		const stretch = routines.find((r) => r.kind === "task" && r.text === "Stretch");
 		expect(stretch).toMatchObject({ rule: { days: [0, 1, 2, 3, 4, 5, 6] } });
 		const gym = routines.find((r) => r.kind === "block" && r.title === "Gym");
+		// A checkbox on a timed line is ignored: a block has no status.
+		expect(gym).not.toHaveProperty("checkable");
 		expect(gym).toMatchObject({
-			checkable: true,
 			assoc: { kind: "project", id: "Fitness" },
 			rule: { kind: "weekly", days: [2, 4] },
 		});
@@ -72,6 +72,23 @@ describe("parseRoutines", () => {
 	it("reports lines under a heading that isn't a rule", () => {
 		expect(routines.some((r) => r.kind === "task" && r.text === "Orphan line")).toBe(false);
 		expect(problems.map((p) => p.message)).toEqual(['"Orphan line" has no repeat rule']);
+	});
+
+	it("reads a block routine that ends at midnight", () => {
+		const r = parseRoutines("## Daily\n- 22:00 - 24:00 Wind down\n- 23:00 - 00:00 Sleep\n");
+		expect(r.problems).toEqual([]);
+		expect(r.routines).toMatchObject([
+			{ kind: "block", title: "Wind down", time: { start: 1320, end: 1440 } },
+			{ kind: "block", title: "Sleep", time: { start: 1380, end: 1440 } },
+		]);
+	});
+
+	it("reports a time range it can't read instead of dropping the line", () => {
+		const r = parseRoutines("## Daily\n- 10:00 - 09:00 Backwards\n\t- [ ] Inside\n");
+		expect(r.routines.some((x) => x.kind === "block")).toBe(false);
+		expect(r.problems.map((p) => p.message)).toEqual([
+			'"10:00 - 09:00 Backwards" has an invalid time range',
+		]);
 	});
 
 	it("reports an unknown 🔁 rule", () => {
