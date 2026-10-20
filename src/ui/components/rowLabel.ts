@@ -24,6 +24,12 @@ export interface RowLabelInfo {
 	/** End of the current span; null → still open ("ongoing"). */
 	until: ISODate | null;
 	/**
+	 * Grid rows only: the 0–5 intensity on `on`, the first visible day, drawn as
+	 * pips beside the name. Absent when the row has no level that day. The Grid
+	 * marks later changes in its cells, so the label is the starting point.
+	 */
+	intensity?: { level: number; on: ISODate };
+	/**
 	 * Grid domain rows only: the projects rolled up onto this row (#11), by
 	 * name. Absent/empty when none — they have no row of their own, so the
 	 * domain's label is where they stay visible.

@@ -1,7 +1,8 @@
 <script lang="ts">
 	// A Grid/Gantt row label: the entity name, top-left aligned, with its status
-	// note as a muted subline (hidden when empty) and — for domains — the domain
-	// icon on the right, tinted the domain's color. Hovering the label opens a
+	// note as a muted subline (hidden when empty), intensity pips beside the name
+	// when the caller supplies a level, and — for domains — the domain icon on the
+	// right, tinted the domain's color. Hovering the label opens a
 	// portaled info card (description, status + note, active since/until) so the
 	// full context is one hover away without cluttering the compact row.
 	//
@@ -64,6 +65,7 @@
 		info.description.trim() !== "" ||
 			info.note.trim() !== "" ||
 			info.since !== null ||
+			info.intensity !== undefined ||
 			rolledUp.length > 0,
 	);
 </script>
@@ -77,7 +79,19 @@
 	onmouseleave={close}
 >
 	<div class="row-label-text">
-		<span class="row-label-name" title={info.name}>{info.name}</span>
+		<span class="row-label-line">
+			<span class="row-label-name" title={info.name}>{info.name}</span>
+			{#if info.intensity}
+				<span
+					class="row-label-pips"
+					style={info.color ? `color: ${info.color};` : undefined}
+				>
+					{#each [1, 2, 3, 4, 5] as l (l)}
+						<span class="row-label-pip" class:on={info.intensity.level >= l}></span>
+					{/each}
+				</span>
+			{/if}
+		</span>
 		{#if info.note.trim() !== ""}
 			<span class="row-label-note" title={info.note}>{info.note}</span>
 		{/if}
@@ -129,6 +143,9 @@
 					<span class="rlc-status-note">{info.note}</span>
 				{/if}
 			</div>
+			{#if info.intensity}
+				<div class="rlc-span">Intensity {info.intensity.level} on {fmtDate(info.intensity.on)}</div>
+			{/if}
 			{#if rolledUp.length > 0}
 				<div class="rlc-rollup">Also shown here: {rolledUpText}</div>
 			{/if}
@@ -162,6 +179,31 @@
 		gap: 1px;
 		min-width: 0;
 		flex: 1;
+	}
+
+	/* Name and intensity pips share the first line; the name gives way first. */
+	.row-label-line {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		max-width: 100%;
+		min-width: 0;
+	}
+	.row-label-pips {
+		display: inline-flex;
+		gap: 2px;
+		flex-shrink: 0;
+		/* currentColor is the row's accent, set inline; faint without one. */
+		color: var(--text-faint);
+	}
+	.row-label-pip {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		border: 1px solid currentColor;
+	}
+	.row-label-pip.on {
+		background: currentColor;
 	}
 
 	.row-label-name {

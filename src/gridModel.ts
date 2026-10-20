@@ -42,9 +42,10 @@ import type {
 	LifecycleState,
 	Project,
 	ResolvedTask,
+	StatusRecord,
 } from "./types";
 import type { GridSnapshot } from "./index";
-import { effectiveStatus, projectStatusOn } from "./projectFile";
+import { effectiveRecord, effectiveStatus, projectStatusOn } from "./projectFile";
 import { rowLabelInfo, type RowLabelInfo } from "./ui/components/rowLabel";
 
 // ─── row types ─────────────────────────────────────────────────
@@ -458,6 +459,70 @@ export function dayStatus(
 	if (!project) return "active";
 	const domain = project.domain ? domainById(snap, project.domain) : undefined;
 	return projectStatusOn(project, domain, date);
+}
+
+/** The row entity's own status history; undefined for the unassigned row. */
+function rowHistory(row: GridRow, snap: GridSnapshot): StatusRecord[] | undefined {
+	if (row.kind === "unassigned") return undefined;
+	const entity =
+		row.kind === "domain" ? snap.domains.get(row.name) : snap.projects.get(row.name);
+	return entity?.history;
+}
+
+/**
+ * The row's 0–5 intensity on a given day: the level on the entity's own record
+ * in effect that day, or null when that record isn't active or carries none.
+ * A project's intensity is its own; its domain's doesn't bleed into it.
+ */
+export function intensityOn(
+	row: GridRow,
+	date: ISODate,
+	snap: GridSnapshot,
+): number | null {
+	const history = rowHistory(row, snap);
+	if (!history) return null;
+	const rec = effectiveRecord(history, date);
+	return rec.status === "active" ? rec.intensity : null;
+}
+
+/**
+ * The intensity change a record dated exactly `date` makes, or null when no
+ * record starts that day or the level doesn't move. The Grid labels each row
+ * with its intensity on the first visible day and marks these changes in the
+ * cells after it. Going to no level (inactive, or unrated) isn't a change worth
+ * marking: an inactive day is already dimmed.
+ */
+export function intensityChange(
+	row: GridRow,
+	date: ISODate,
+	snap: GridSnapshot,
+): { from: number | null; to: number } | null {
+	const history = rowHistory(row, snap);
+	if (!history?.some((r) => r.date === date)) return null;
+	const to = intensityOn(row, date, snap);
+	if (to === null) return null;
+	const prev = history.filter((r) => r.date < date).at(-1);
+	const from = prev?.status === "active" ? (prev.intensity ?? null) : null;
+	return from === to ? null : { from, to };
+}
+
+/**
+ * The new intention a record dated exactly `date` sets, or null when no record
+ * starts that day, it keeps the previous record's note, or it has none. The
+ * Grid's label shows today's intention (prose doesn't fit a starting-point
+ * glyph the way five pips do), so a change anywhere in the window is marked in
+ * its cell instead. Like intensity, clearing the intention isn't marked.
+ */
+export function intentionChange(
+	row: GridRow,
+	date: ISODate,
+	snap: GridSnapshot,
+): string | null {
+	const history = rowHistory(row, snap);
+	const rec = history?.find((r) => r.date === date);
+	if (!history || !rec?.note) return null;
+	const prev = history.filter((r) => r.date < date).at(-1);
+	return prev?.note === rec.note ? null : rec.note;
 }
 
 /** The association a create-in-cell applies for this row. */
