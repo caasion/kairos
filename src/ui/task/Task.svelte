@@ -17,6 +17,7 @@
 	import type { Snippet } from "svelte";
 	import { autogrow, singleLine } from "../actions/autogrow";
 	import type { Association, Task, TaskStatus } from "../../types";
+	import type { Highlight } from "../../viewLinks";
 	import type { ResolvedAssociation } from "../../association";
 	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
@@ -64,6 +65,9 @@
 		// its line (a colocated/checkable-block task) or where there is no backlog
 		// to move it to (the backlog view itself).
 		onMoveToBacklog?: () => void;
+		// Turn this task into a routine ("Repeat…"): opens the rule picker and adds
+		// a routine built from the task. The task itself stays as the first one.
+		onRepeat?: () => void;
 		// Extra metadata rendered inside the row, beneath the text on the same line
 		// as the association (so it shares the row's hover region). The grid uses
 		// this for the block-nesting badge. Snippet content is compiled in the
@@ -78,6 +82,28 @@
 		// ellipsis. 1 (the default) keeps the compact single-line row; roomier
 		// views like the grid pass 2.
 		lines?: number;
+		// Hover link (viewLinks.ts): "block" when the block this task sits in is
+		// under the pointer somewhere, "task" when this task is. `onHoverChange`
+		// reports the pointer entering (true) or leaving (false) this row.
+		highlight?: Highlight;
+		onHoverChange?: (hovering: boolean) => void;
+		// Short muted labels on the task's own line. `lead` sits before the text
+		// (the Grid puts a checkable block's start time there); `trailing` after it
+		// (the Grid's rolled-up project chip), and gives way first when the line is
+		// tight, so the task text keeps its room.
+		lead?: string;
+		trailing?: string;
+		// This row is a checkable block's own task, standing for the block (the
+		// Grid's block groups): offer "add a task to this block" in its action
+		// bar, in the corner, and in its menu.
+		onAddInside?: () => void;
+		addInsideLabel?: string;
+		// A routine template (the Routines view), not a task in a day: it looks
+		// like every other task, but its checkbox is inert and it has no status
+		// to set, since a template is never done.
+		template?: boolean;
+		// Menu/tooltip label for `onRepeat` ("Change when it repeats" on a routine).
+		repeatLabel?: string;
 		onSetStatus: (task: Task, status: TaskStatus) => void;
 		onSetText: (task: Task, text: string) => void;
 		onDelete: (task: Task) => void;
@@ -100,9 +126,18 @@
 		onNest,
 		nestLabel = "Nest under block",
 		onMoveToBacklog,
+		onRepeat,
 		meta,
 		onGrab,
 		lines = 1,
+		highlight = null,
+		onHoverChange,
+		lead,
+		trailing,
+		onAddInside,
+		addInsideLabel = "Add task to block",
+		template = false,
+		repeatLabel = "Repeat…",
 		onSetStatus,
 		onSetText,
 		onDelete,
@@ -113,6 +148,19 @@
 	const assocLabel = $derived(resolved?.displayName ?? association?.id ?? "");
 	// The association button's tooltip and accessible name.
 	const assocAction = $derived(association ? "Edit association" : "Add association");
+
+	// ── Hover link ──────────────────────────────────────────────────
+	// Reported on enter/leave. A row removed while the pointer is on it gets no
+	// leave event, so it reports leaving on teardown — otherwise its stale
+	// path/line would keep glowing on whatever lands on that line next.
+	let hovering = false;
+	function setHovering(on: boolean) {
+		hovering = on;
+		onHoverChange?.(on);
+	}
+	$effect(() => () => {
+		if (hovering) onHoverChange?.(false);
+	});
 
 	// ── Status / checkbox ───────────────────────────────────────────
 	// Behaviour matches Holos (see TaskCheckbox): click cycles
@@ -305,6 +353,15 @@
 			);
 		}
 
+		if (onAddInside) {
+			menu.addItem((item) =>
+				item
+					.setTitle(addInsideLabel)
+					.setIcon("plus")
+					.onClick(() => onAddInside()),
+			);
+		}
+
 		if (onMoveToBacklog) {
 			menu.addItem((item) =>
 				item
@@ -314,26 +371,37 @@
 			);
 		}
 
-		menu.addSeparator();
+		if (onRepeat) {
+			menu.addItem((item) =>
+				item
+					.setTitle(repeatLabel)
+					.setIcon("repeat")
+					.onClick(() => onRepeat()),
+			);
+		}
 
-		menu.addItem((item) =>
-			item
-				.setTitle(done ? "Mark open" : "Mark done")
-				.setIcon("check")
-				.onClick(() => onSetStatus(task, done ? " " : "x")),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Mark half-done")
-				.setIcon("clock")
-				.onClick(() => onSetStatus(task, "/")),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Mark cancelled")
-				.setIcon("x")
-				.onClick(() => onSetStatus(task, "-")),
-		);
+		if (!template) {
+			menu.addSeparator();
+
+			menu.addItem((item) =>
+				item
+					.setTitle(done ? "Mark open" : "Mark done")
+					.setIcon("check")
+					.onClick(() => onSetStatus(task, done ? " " : "x")),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Mark half-done")
+					.setIcon("clock")
+					.onClick(() => onSetStatus(task, "/")),
+			);
+			menu.addItem((item) =>
+				item
+					.setTitle("Mark cancelled")
+					.setIcon("x")
+					.onClick(() => onSetStatus(task, "-")),
+			);
+		}
 
 		if (!checkable) {
 			menu.addSeparator();
@@ -352,23 +420,39 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="k-task"
+	class:template
 	class:checkable
 	class:done
 	class:half
 	class:cancelled
+	class:lit-block={highlight === "block"}
+	class:lit-task={highlight === "task"}
+	style:--kairos-link-color={color}
 	bind:this={rowEl}
 	oncontextmenu={openContextMenu}
+	onpointerenter={() => setHovering(true)}
+	onpointerleave={() => setHovering(false)}
 	use:actionZone={{ layout: "stack" }}
 >
 	<!-- Action bar. Shown only while the pointer is in a triangle at the row's
 	     top-right corner (see actions/actionZone.ts), not on any hover. On a
 	     mouse wake it is a vertical stack one button wide (`layout: "stack"`):
 	     delete stays in the row's top-right corner and the other actions rise
-	     above it, most used nearest: association, then nest. It hangs below
-	     instead when there's no room above. Touch keeps the horizontal bar.
+	     above it, most used nearest: association, then nest, then repeat. It
+	     hangs below instead when there's no room above. Touch keeps the horizontal bar.
 	     DOM (= tab) order is unchanged; CSS `order` sets the visual order.
 	     Tooltips open to the left of the stack (actions/tooltip.ts). -->
 	<div class="k-task-actions kairos-action-bar">
+		{#if onAddInside}
+			<button
+				class="k-task-action k-task-action-add"
+				aria-label={addInsideLabel}
+				use:tooltip={addInsideLabel}
+				onclick={() => onAddInside()}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+			</button>
+		{/if}
 		<button
 			class="k-task-action"
 			aria-label={assocAction}
@@ -387,6 +471,16 @@
 				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 12H9"/><path d="m9 12 3-3"/><path d="m9 12 3 3"/></svg>
 			</button>
 		{/if}
+		{#if onRepeat}
+			<button
+				class="k-task-action"
+				aria-label={repeatLabel}
+				use:tooltip={repeatLabel}
+				onclick={() => onRepeat()}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+			</button>
+		{/if}
 		{#if !checkable}
 			<button
 				class="k-task-action k-task-action-danger"
@@ -400,7 +494,14 @@
 	</div>
 
 	<div class="k-task-row" class:wrapped={lines > 1}>
-		<TaskCheckbox status={task.status} {color} onToggle={cycleStatus} onCancel={cancelStatus} />
+		<TaskCheckbox
+			status={task.status}
+			{color}
+			onToggle={template ? () => {} : cycleStatus}
+			onCancel={template ? () => {} : cancelStatus}
+		/>
+		<!-- Shown while editing too: the time is context, not part of the text. -->
+		{#if lead}<span class="k-task-lead">{lead}</span>{/if}
 
 		{#if editing && lines > 1}
 			<!-- Wrapped text edits in a growing textarea so it wraps exactly as the
@@ -446,6 +547,7 @@
 			>
 				{task.text}
 			</span>
+			{#if trailing}<span class="k-task-trailing" title={trailing}>{trailing}</span>{/if}
 		{/if}
 	</div>
 
@@ -486,6 +588,12 @@
 
 <style>
 	/* Rectangular by design — no rounded corners anywhere in this component. */
+	/* A routine template: the checkbox is there for the look, not to tick. */
+	.k-task.template :global(.k-checkbox) {
+		pointer-events: none;
+		opacity: 0.55;
+	}
+
 	.k-task {
 		position: relative;
 		padding: 2px 4px;
@@ -497,6 +605,25 @@
 
 	.k-task:hover {
 		background: var(--background-modifier-hover);
+	}
+
+	/* Hover link, in the task's domain color (the theme accent without one).
+	   A tint when its block is lit; a stronger tint and a bar on the left edge
+	   when it's the task itself. The same in every view. */
+	.k-task.lit-block {
+		background: color-mix(
+			in srgb,
+			var(--kairos-link-color, var(--interactive-accent)) 12%,
+			transparent
+		);
+	}
+	.k-task.lit-task {
+		background: color-mix(
+			in srgb,
+			var(--kairos-link-color, var(--interactive-accent)) 22%,
+			transparent
+		);
+		box-shadow: inset 3px 0 0 var(--kairos-link-color, var(--interactive-accent));
 	}
 
 	.k-task.checkable {
@@ -521,6 +648,11 @@
 	   delete, so association takes the corner. */
 	.k-task-actions:global(.kairos-action-stack) .k-task-action-danger {
 		order: -1;
+	}
+	/* "Add task to block" takes the corner when present: on a block's own row
+	   it's the action you reach for, in the same spot as a group header's "+". */
+	.k-task-actions:global(.kairos-action-stack) .k-task-action-add {
+		order: -2;
 	}
 
 	.k-task-action {
@@ -583,6 +715,34 @@
 	/* Keep the checkbox on the first line when the text wraps. */
 	.k-task-row.wrapped {
 		align-items: flex-start;
+	}
+
+	/* Muted labels on the task's line (lead before the text, trailing after).
+	   Same size and line height as the task text, so a wrapped row's
+	   top-aligned items share one baseline. */
+	.k-task-lead,
+	.k-task-trailing {
+		font-size: 12px;
+		line-height: 1.4;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+	.k-task-lead {
+		flex-shrink: 0;
+		font-variant-numeric: tabular-nums;
+	}
+	/* With a trailing label the text sizes to its content, and the label's huge
+	   shrink factor makes it give way (and truncate) before the text does. */
+	.k-task-text:has(+ .k-task-trailing) {
+		flex: 0 1 auto;
+	}
+	.k-task-trailing {
+		flex: 0 1000 auto;
+		min-width: 0;
+		margin-left: auto;
+		padding-left: 4px;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	.k-task-text.grabbable {

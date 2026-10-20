@@ -21,6 +21,7 @@ import {
 	setDescription,
 	setDomain,
 	setOrder,
+	setRollup,
 } from "./projectFile";
 
 // ── status history (a hands-off log; editable through the guarded views) ──
@@ -167,6 +168,17 @@ export function setProjectDomain(
 	domainId: string | undefined,
 ): void {
 	index.applyProjectEdit(setDomain(project, domainId));
+}
+
+// ── Grid rollup: show the project on its domain's row (#11) ──
+
+export function setProjectRollup(
+	index: KairosIndex,
+	project: Project,
+	rollup: boolean,
+): void {
+	if (Boolean(project.rollup) === rollup) return;
+	index.applyProjectEdit(setRollup(project, rollup));
 }
 
 // ── rename (async file move; caller must clear the guard first) ──

@@ -17,7 +17,6 @@
 	} from "../../types";
 	import {
 		copyBlockIntoDay,
-		copyTaskUnderBlock,
 		makeBlock,
 		nestTaskUnderBlock,
 	} from "../../writer";
@@ -44,15 +43,22 @@
 	import { nextDraftLine } from "../../draftLine";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import TaskRow from "../task/Task.svelte";
+	import { requestRepeat } from "../../routines/repeat";
+	import type { RoutineActions } from "../../routines/routinesFeed";
+	import { routinesToOffer } from "../../routines/preview";
+	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
+	import { dayLabel } from "../../routines/plan";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import { placeUnderAnchor } from "../floating";
 	import {
-		hitTestDropSlot,
-		type DropSlot,
+		hitTestTimeline,
 		type TaskDragState,
 	} from "./taskDrag";
+	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
+	import { dropTaskOnTimeline } from "./dropTask";
+	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		type Gesture,
 		beginBlockGesture,
@@ -85,9 +91,22 @@
 		reveal$: Readable<RevealRequest | null>;
 		// The one write path back to the plugin; it persists and republishes.
 		updateSettings: (mutate: (s: KairosSettings) => void) => void;
+		// The Grid ↔ timeline bridge: follow, drag previews, hover (viewLinks.ts).
+		links: ViewLinks;
+		// Reports the shown date, so commands like "Apply routines to this day"
+		// can act on the day the view is showing.
+		onDateChange?: (date: ISODate) => void;
+		// The shown day's missing routines, folded into a bar at the top.
+		routineActions: RoutineActions;
 	}
 
-	let { app, index, settings$, reveal$, updateSettings }: Props = $props();
+	let { app, index, settings$, reveal$, updateSettings, links, onDateChange, routineActions }: Props =
+		$props();
+
+	// Mirrors of the cross-view stores (subscribed on mount, like the resolver):
+	// the live task drag from any view, and the item under the pointer.
+	let dragPreview = $state<DragPreview | null>(null);
+	let hovered = $state<HoverTarget | null>(null);
 
 	// Local reactive view of the settings. `$store` auto-subscribes, so every
 	// derived below recomputes the instant the plugin republishes.
@@ -203,8 +222,26 @@
 	// The view owns a date, defaulting to today, independent of the active file.
 	// Navigation (arrows / calendar) changes this; nothing else does.
 	let date = $state<ISODate>(todayISO());
+	$effect(() => {
+		onDateChange?.(date);
+	});
 	// Backlog nudges surfacing on the shown day (declared here, after `date`).
 	const surfaced = $derived(surfacedOn(backlogEntries, date, todayISO()));
+	// The shown day's missing routines (preview.ts), behind the routines bar.
+	// The stores are fixed for the view's lifetime, so reading them once is right.
+	// svelte-ignore state_referenced_locally
+	const { routines$, marks$, active$ } = routineActions;
+	const offeredRoutines = $derived.by(() => {
+		const recorded = $marks$(date);
+		return routinesToOffer({
+			date,
+			today: todayISO(),
+			...(recorded !== undefined ? { recorded } : {}),
+			routines: $routines$.routines,
+			blocks,
+			active: $active$,
+		});
+	});
 	// The daily note backing `date`, or null when that day has no note yet. An
 	// empty day still renders (an empty timeline) — the note is created lazily on
 	// the first write (see `notePathForWrite`).
@@ -299,6 +336,34 @@
 		el.scrollIntoView({ behavior: "smooth", block: "center" });
 		el.classList.add("reveal-flash");
 		window.setTimeout(() => el.classList.remove("reveal-flash"), 1200);
+	}
+
+	// ── Follow the Grid ──────────────────────────────────────────────
+	// The Grid asks for focus when you act on a day there (grab, add or edit a
+	// task). With "Follow the grid" on, this view shows that day. An implicit
+	// request already waiting when the view opened is skipped, so opening the
+	// sidebar lands on today, not on an old focus. An explicit one (a header
+	// click, which may be what opened this view) is honoured either way, then
+	// consumed so a view opened later doesn't replay it. Never mid-gesture: the
+	// drag owns the timeline until it drops.
+	let lastFocusNonce: number | null = null;
+	function handleFocus(req: FocusRequest | null) {
+		const initial = lastFocusNonce === null;
+		if (!req || req.nonce === lastFocusNonce) {
+			lastFocusNonce ??= 0;
+			return;
+		}
+		lastFocusNonce = req.nonce;
+		if (req.explicit) links.consumeFocus(req.nonce);
+		else if (initial || !settings.followGrid) return;
+		if (gesture || taskDrag) return;
+		goToDate(req.date);
+	}
+
+	function toggleFollow() {
+		updateSettings((s) => {
+			s.followGrid = !s.followGrid;
+		});
 	}
 
 	function stepDay(delta: number) {
@@ -660,7 +725,51 @@
 	// because the drop target is a sibling block the task can't see. `taskDrop` is
 	// the live insertion slot passed down so the hovered block draws an indicator.
 	let taskDrag = $state<TaskDragState | null>(null);
-	let taskDrop = $state<DropSlot | null>(null);
+	let taskDrop = $state<TimelineDrop | null>(null);
+
+	// What every timeline draws for the live task drag, whichever view started
+	// it (this one, a Week column, or the Grid): the drop line in a block, the
+	// dimmed origin row, and the new-block preview over empty time.
+	const dropSlot = $derived.by(() => {
+		const drop = dragPreview?.drop;
+		return drop?.kind === "block" && drop.date === date
+			? { blockLine: drop.blockLine, index: drop.index }
+			: undefined;
+	});
+	const dragTaskLine = $derived(
+		dragPreview?.from.date === date ? dragPreview.from.line : undefined,
+	);
+	const timePreview = $derived.by(() => {
+		const p = dragPreview;
+		const drop = p?.drop;
+		if (!p || drop?.kind !== "time" || drop.date !== date) return null;
+		const top = minutesToOffset(drop.time.start, geo);
+		return {
+			top,
+			height: minutesToOffset(drop.time.end, geo) - top,
+			label: p.label,
+			timebox: p.timebox,
+			duplicate: p.duplicate,
+		};
+	});
+
+	// Hover link: report what's under the pointer; glow what another view points at.
+	function hoverEnter(target: HoverTarget) {
+		links.setHover(target);
+	}
+	function hoverLeave(target: HoverTarget) {
+		links.clearHover(target);
+	}
+	function taskHover(task: Task, on: boolean) {
+		// Only untimed (Unscheduled) rows report here, so the task lights alone.
+		const target: HoverTarget = { kind: "task", path: task.source.path, line: task.source.line };
+		if (on) hoverEnter(target);
+		else hoverLeave(target);
+	}
+	function isLinked(task: Task): boolean {
+		const h = hovered;
+		return h?.kind === "task" && h.path === task.source.path && h.line === task.source.line;
+	}
 
 	// Blocks with the live preview applied, so layout math sees the dragged
 	// position. Untimed blocks pass through untouched.
@@ -869,8 +978,11 @@
 			ghostY: event.clientY,
 			label: task.text,
 			duplicate: event.ctrlKey || event.metaKey,
+			timebox: event.altKey,
 		};
-		taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+		// Any timeline is a target: this one, a Week column, another Day view.
+		taskDrop = hitTestTimeline(event);
+		publishDrag();
 	}
 
 	function onTaskDragMove(event: PointerEvent) {
@@ -880,46 +992,49 @@
 			ghostX: event.clientX,
 			ghostY: event.clientY,
 			duplicate: event.ctrlKey || event.metaKey,
+			timebox: event.altKey,
 		};
-		taskDrop = hitTestDropSlot(event, canvasEl ? [canvasEl] : undefined);
+		taskDrop = hitTestTimeline(event);
+		publishDrag();
 	}
 
+	// What a drop applies: the drag's modifiers plus the block-name setting.
+	function dropMods(drag: TaskDragState) {
+		return { duplicate: drag.duplicate, timebox: drag.timebox, blockTitle: settings.dropBlockTitle };
+	}
+
+	function publishDrag() {
+		const drag = taskDrag;
+		links.setDrag(
+			drag
+				? {
+						from: { date, line: drag.task.source.line },
+						drop: taskDrop,
+						label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
+						duplicate: drag.duplicate,
+						timebox: drag.timebox,
+					}
+				: null,
+		);
+	}
+
+	// Released: a block nests the task (another day moves it there), empty time
+	// gives it a new block, Ctrl/Cmd drops a copy. One planner for every view
+	// (taskDrop.ts); the index publishes the result back to us via adoptDay.
 	function onTaskDragUp() {
 		if (!taskDrag) return;
 		const drag = taskDrag;
 		const drop = taskDrop;
-		taskDrag = null;
-		taskDrop = null;
-		if (!drop) return; // released off any block — cancel
-
-		const destination = blocks.find((b) => b.source.line === drop.blockLine);
-		if (!destination) return;
-		// Ctrl/Cmd-drag → nest a copy under the block; the source task stays put.
-		if (drag.duplicate) {
-			handleCopyTask(drag.owner, drag.task, destination, drop.index);
-		} else {
-			handleNestTask(drag.owner, drag.task, destination, drop.index);
-		}
-	}
-
-	// Insert a copy of `task` under `destination` (Ctrl-drag duplicate). Like
-	// handleNestTask, this is a whole-array transform (materialize-on-move lives in
-	// the writer), so we reassign `blocks` from its result and persist.
-	function handleCopyTask(
-		owner: Block,
-		task: Task,
-		destination: Block,
-		index?: number,
-	) {
-		const next = copyTaskUnderBlock(blocks, owner, task, destination, nextDraftLine(), index);
-		if (next === blocks) return;
-		blocks = next;
-		void writeToDisk();
+		cancelTaskDrag();
+		if (!drop) return; // released off any timeline — cancel
+		void dropTaskOnTimeline(index, date, drag.owner, drag.task, drop, dropMods(drag));
 	}
 
 	function cancelTaskDrag() {
+		if (!taskDrag) return;
 		taskDrag = null;
 		taskDrop = null;
+		links.setDrag(null);
 	}
 
 	// Portal the drag ghost to <body> so `position: fixed` resolves against the
@@ -991,6 +1106,15 @@
 		// React to Grid block-badge clicks: jump to the date + scroll to the block.
 		const unsubscribeReveal = reveal$.subscribe((req) => handleReveal(req));
 
+		// Follow the Grid's focus (when "Follow the grid" is on).
+		const unsubscribeFocus = links.focus$.subscribe((req) => handleFocus(req));
+		const unsubscribeDrag = links.drag$.subscribe((p) => {
+			dragPreview = p;
+		});
+		const unsubscribeHover = links.hover$.subscribe((h) => {
+			hovered = h;
+		});
+
 		// The Day view no longer follows the active file — it owns its own date
 		// (defaulting to today, navigable via the header). Genuine external edits
 		// to the shown day arrive through the day store's subscription (adoptDay).
@@ -1018,6 +1142,10 @@
 			unsubscribeResolver();
 			unsubscribeBacklog();
 			unsubscribeReveal();
+			unsubscribeFocus();
+			unsubscribeDrag();
+			unsubscribeHover();
+			cancelTaskDrag();
 			window.clearInterval(tick);
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
@@ -1095,6 +1223,21 @@
 		</div>
 
 		<span class="day-header-spacer"></span>
+		<button
+			class="icon-btn follow-btn"
+			class:on={settings.followGrid}
+			aria-pressed={settings.followGrid}
+			aria-label={settings.followGrid ? "Stop following the grid" : "Follow the grid"}
+			title={settings.followGrid
+				? "Following the grid: acting on a day there shows it here"
+				: "Follow the grid"}
+			onclick={(e) => {
+				e.stopPropagation();
+				toggleFollow();
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
+		</button>
 		<span class="day-range-label">
 			{String(geo.startHour).padStart(2, "0")}:00–{String(geo.endHour).padStart(2, "0")}:00
 		</span>
@@ -1151,13 +1294,34 @@
 		</div>
 	</div>
 
+	<!-- Routines missing from this day: one line that opens into the list on
+	     hover. Unscheduled and Resurfacing stay in full; routines fold away. -->
+	{#if offeredRoutines.count > 0}
+		<div class="day-routines">
+			<RoutinesAlert
+				list={offeredRoutines}
+				variant="bar"
+				label={dayLabel(date)}
+				showAddAll={!settings.autoApplyRoutines}
+				onAdd={(rs) => routineActions.insert(date, rs)}
+				onAddAll={() => routineActions.addAll(date)}
+			/>
+		</div>
+	{/if}
+
 	<!-- The timeline always renders, even for a day with no note yet: creating a
 	     block on an empty day lazily creates the daily note (see writeToDisk). -->
 	<div class="day-scroll" bind:this={scrollEl}>
-		{#if unscheduled.length > 0}
+		<!-- Shown during any task drag too, even when empty: dropping on it takes
+		     a task out of its block. -->
+		{#if unscheduled.length > 0 || dragPreview}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div class="day-unscheduled">
+			<div
+				class="day-unscheduled"
+				class:drop-target={dragPreview?.drop?.kind === "unscheduled" && dragPreview.drop.date === date}
+				data-unscheduled-date={date}
+			>
 				<div
 					class="us-header"
 					class:open={unscheduledOpen}
@@ -1183,10 +1347,13 @@
 								onNest={(rect) => openBlockPicker(block, task, rect)}
 								onMoveToBacklog={() =>
 									void handleMoveTaskToBacklog(block, task)}
+								onRepeat={() => requestRepeat(task, block)}
 								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
 								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
 								onDelete={(_t) => handleDeleteTask(block, task)}
 								onGrab={(e) => onTaskGrab(block, task, e)}
+								highlight={isLinked(task) ? "task" : null}
+								onHoverChange={(on: boolean) => taskHover(task, on)}
 							/>
 						{/each}
 					{/each}
@@ -1235,6 +1402,11 @@
 				<div
 					class="day-canvas"
 					class:creating={gesture?.mode === "create"}
+					data-tl-date={date}
+					data-tl-start-hour={geo.startHour}
+					data-tl-end-hour={geo.endHour}
+					data-tl-hour-height={geo.hourHeight}
+					data-tl-top-pad={geo.topPad}
 					bind:this={canvasEl}
 					onpointerdown={onCanvasPointerDown}
 				>
@@ -1277,9 +1449,12 @@
 							onEditTaskAssoc={openTaskAssocPicker}
 							onNestTask={openBlockPicker}
 							onTaskGrab={onTaskGrab}
-							dragTaskLine={taskDrag?.task.source.line}
-							dropSlot={taskDrop ?? undefined}
-							dragActive={taskDrag !== null}
+							{dragTaskLine}
+							{dropSlot}
+							dragActive={dragPreview !== null}
+							hover={hovered}
+							onHoverEnter={hoverEnter}
+							onHoverLeave={hoverLeave}
 						/>
 					{/each}
 
@@ -1288,6 +1463,18 @@
 							class="day-draft"
 							style={`top: ${draftRect.top}px; height: ${draftRect.height}px;`}
 						></div>
+					{/if}
+
+					{#if timePreview}
+						<!-- Where a task released here would land: a new block. -->
+						<div
+							class="kairos-drop-preview"
+							class:timebox={timePreview.timebox}
+							class:duplicate={timePreview.duplicate}
+							style={`top: ${timePreview.top}px; height: ${timePreview.height}px;`}
+						>
+							<span class="kairos-drop-preview-label">{timePreview.label}</span>
+						</div>
 					{/if}
 				</div>
 			</div>
@@ -1508,6 +1695,12 @@
 		color: var(--text-normal);
 	}
 
+	/* "Follow the grid" is on: the link icon takes the accent. */
+	.follow-btn.on {
+		color: var(--interactive-accent);
+		border-color: var(--interactive-accent);
+	}
+
 	/* Some themes reset `svg { width: var(--icon-size) }`, and a CSS rule beats
 	   the inline width/height attributes — collapsing the icon to 0. Pin the size
 	   back explicitly and stop flex from shrinking it. */
@@ -1642,6 +1835,11 @@
 	.day-unscheduled {
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
+	/* A live task drag would drop here, out of its block. */
+	.day-unscheduled.drop-target {
+		box-shadow: inset 0 0 0 2px var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	}
 
 	.us-header {
 		display: flex;
@@ -1675,6 +1873,12 @@
 		font-weight: 400;
 		color: var(--text-faint);
 		margin-left: 2px;
+	}
+
+	/* ── Routines (the shown day's missing routines, folded) ── */
+	.day-routines {
+		flex-shrink: 0;
+		padding: 4px 8px 0;
 	}
 
 	/* ── Resurfacing (backlog nudges due today) ── */

@@ -18,6 +18,11 @@ import {
 import { KAIROS_GANTT_VIEW_TYPE, KairosGanttView } from './KairosGanttView';
 import { IndexAdapter } from './indexAdapter';
 import { openViewMenu } from './ui/views/viewMenu';
+import { DayPreparer } from './routines/dayPrep';
+import { RoutinesStore } from './routines/routinesStore';
+import { registerRoutines } from './routines/register';
+import { RoutinesFeed } from './routines/routinesFeed';
+import { ViewLinks } from './viewLinks';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -64,6 +69,10 @@ export default class Kairos extends Plugin {
 	private setSettings!: (s: KairosSettings) => void;
 	/** The live index. Views read from `plugin.index.index`. */
 	indexAdapter!: IndexAdapter;
+	/** Carry-over and routine application (routines/dayPrep.ts). */
+	dayPreparer!: DayPreparer;
+	/** The parsed routines file and each day's recorded hash, for views. */
+	routinesFeed!: RoutinesFeed;
 	/**
 	 * Cross-view reveal channel. The Grid pushes a `RevealRequest` here (via
 	 * `revealInDayView`); the Day view subscribes and jumps + scrolls to the
@@ -83,9 +92,24 @@ export default class Kairos extends Plugin {
 	 */
 	backlogFilter$!: Readable<BacklogFilter | null>;
 	private pushBacklogFilter!: (f: BacklogFilter | null) => void;
+	/** The live routines file, read by the Routines view and "Repeat…". */
+	routines!: RoutinesStore;
+
+	/**
+	 * The Grid ↔ timeline bridge: focus (the Day view follows the Grid), the live
+	 * task drag every timeline previews, the hovered item, and the Day view's
+	 * date. Stores again, so the leaves stay decoupled. See viewLinks.ts.
+	 */
+	links = new ViewLinks();
 
 	async onload() {
 		await this.loadSettings();
+
+		// The hover link follows its setting, live.
+		const unsubscribeHover = this.settings$.subscribe((s) =>
+			this.links.setHoverEnabled(s.highlightAcrossViews),
+		);
+		this.register(unsubscribeHover);
 
 		// The cross-view reveal channel (Grid badge → Day view jump/scroll).
 		const revealStore: Writable<RevealRequest | null> = writable(null);
@@ -100,9 +124,17 @@ export default class Kairos extends Plugin {
 		// Build the index now; cold-start it once the vault is fully loaded so
 		// the seed sees every file (and doesn't race Obsidian's own indexing).
 		this.indexAdapter = new IndexAdapter(this);
+		// Carry-over + routines run when a daily note is created (routines/dayPrep.ts).
+		const preparer = new DayPreparer(this);
+		this.routines = new RoutinesStore(this);
+		this.dayPreparer = preparer;
+		this.routinesFeed = new RoutinesFeed(this, this.routines);
 		this.app.workspace.onLayoutReady(() => {
-			void this.indexAdapter.start();
+			this.routinesFeed.start();
+			void this.indexAdapter.start().then(() => preparer.start());
+			this.routines.start();
 		});
+		registerRoutines(this);
 
 		this.registerView(
 			KAIROS_VIEW_TYPE,
@@ -180,6 +212,12 @@ export default class Kairos extends Plugin {
 			callback: () => void this.activateGanttView(),
 		});
 
+		this.addCommand({
+			id: 'apply-routines-to-day',
+			name: 'Apply routines to this day',
+			callback: () => void preparer.applyToCurrentDay(),
+		});
+
 		this.addSettingTab(new KairosSettingTab(this.app, this));
 	}
 
@@ -200,7 +238,10 @@ export default class Kairos extends Plugin {
 			await leaf?.setViewState({ type: KAIROS_VIEW_TYPE, active: true });
 		}
 
-		if (leaf) void workspace.revealLeaf(leaf);
+		// Awaited: a leaf restored at startup is deferred and only mounts its view
+		// once revealed, and the reveal/focus requests pushed after this need a
+		// mounted subscriber.
+		if (leaf) await workspace.revealLeaf(leaf);
 	}
 
 	// Reveal the Week view in a main (center) leaf, reusing one if already open.
@@ -231,6 +272,17 @@ export default class Kairos extends Plugin {
 	async revealInDayView(date: ISODate, blockLine: number) {
 		await this.activateView();
 		this.pushReveal({ date, blockLine, nonce: ++this.revealNonce });
+	}
+
+	/**
+	 * Open the Day view on `date` — a Grid column header click lands here. A
+	 * direct ask, so the Day view goes there even when it isn't following the
+	 * Grid. Pushed after activating, like `revealInDayView`, so a freshly opened
+	 * Day view still receives it.
+	 */
+	async showInDayView(date: ISODate) {
+		await this.activateView();
+		this.links.focus(date, true);
 	}
 
 	// Reveal the Grid view in a main (center) leaf, reusing one if already open.

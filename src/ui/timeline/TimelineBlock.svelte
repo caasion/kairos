@@ -8,10 +8,18 @@
     TimeRange,
   } from "../../types";
   import { isCheckable } from "../../types";
+  import {
+    blockLit,
+    hoverBlockTarget,
+    hoverTaskTarget,
+    taskHighlight,
+    type HoverTarget,
+  } from "../../viewLinks";
   import type { Resolver } from "../../index";
   import { peek } from "../actions/peek";
   import { Menu } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
+  import { blockLineTask, requestRepeat } from "../../routines/repeat";
   import TaskCheckbox from "../task/TaskCheckbox.svelte";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
@@ -76,6 +84,12 @@
 		onAddTask: (block: Block) => void;
 		// Open the association picker for this block, anchored at `rect`.
 		onEditAssoc: (block: Block, rect: DOMRect) => void;
+		// Hover link (viewLinks.ts): the item under the pointer in any view, so
+		// this block or one of its chips can glow when it's that item. The two
+		// callbacks report this block or a chip coming under / leaving the pointer.
+		hover?: HoverTarget | null;
+		onHoverEnter?: (target: HoverTarget) => void;
+		onHoverLeave?: (target: HoverTarget) => void;
   }
 
   let {
@@ -107,7 +121,30 @@
 		onToggleCheckable,
 		onAddTask,
 		onEditAssoc,
+		hover = null,
+		onHoverEnter,
+		onHoverLeave,
   }: Props = $props();
+
+  // ── Hover link ──
+  // One rule for every view (viewLinks.ts): pointing at this block or at any
+  // task in it lights the block; the task pointed at is marked on its own chip.
+  const blockTarget = $derived(hoverBlockTarget(block));
+  const blockLinked = $derived(blockLit(hover, block));
+  // Leaving a chip returns the hover to the block it sits in; leaving the block
+  // (which fires after its chip's leave) then clears it.
+  function chipHover(task: Task, on: boolean) {
+    if (removed) return;
+    onHoverEnter?.(on ? hoverTaskTarget(task, block) : blockTarget);
+  }
+  // A block removed under the pointer gets no leave event, so it clears its own
+  // hover on teardown (clearHover only acts if the hover still names it). Its
+  // chips may tear down after it; `removed` stops them handing the hover back.
+  let removed = false;
+  $effect(() => () => {
+    removed = true;
+    onHoverLeave?.(blockTarget);
+  });
 
   // The drop indicator's index within this block, when the live task drag is
   // hovering here. Undefined when the drag targets another block (or none).
@@ -164,6 +201,8 @@
   ) {
     // Only the primary button drives gestures; ignore right/middle clicks.
     if (event.button !== 0) return;
+    // A move or resize works on the block's real size.
+    collapse();
     onGestureStart?.(mode, block, event);
   }
 
@@ -270,6 +309,115 @@
   // ── Block context menu ───────────────────────────────────────────
 
   let blockEl = $state<HTMLDivElement>();
+
+  // ── Showing every task ──
+  // A block shows as many of its tasks as fit. When they don't all fit, the
+  // last row it has room for becomes a "N more" row, centred at the bottom of
+  // the task list; a block with room for one row or less shows only that row
+  // ("N tasks"), and a compact block a small pill beside its title. Pointing at
+  // it (mouse) or tapping it (touch) makes the block itself grow down until all
+  // its tasks fit, over whatever is below, and shrink back once the pointer
+  // leaves the block. It stays the same block: same width, same look.
+  let tasksEl = $state<HTMLDivElement>();
+  let moreEl = $state<HTMLElement>();
+  let taskAreaHeight = $state(0);
+  // One task row's height, measured from a rendered row (a sane default until
+  // one renders).
+  let rowHeight = $state(21);
+  let expanded = $state(false);
+  let expandTimer: number | undefined;
+  // A pointer passing over on its way to the resize edge shouldn't expand it.
+  const EXPAND_MS = 250;
+  const COLLAPSE_MS = 150;
+
+  function measureTaskArea() {
+    // While grown, the list is as tall as its tasks; that isn't the room the
+    // block has, so keep the last measure.
+    const el = tasksEl;
+    if (!el || expanded) return;
+    taskAreaHeight = el.clientHeight;
+    const row = el.querySelector<HTMLElement>(".tl-task-wrap");
+    if (row && row.offsetHeight > 0) rowHeight = row.offsetHeight;
+  }
+  $effect(() => {
+    const el = tasksEl;
+    if (!el) return;
+    measureTaskArea();
+    const ro = new ResizeObserver(() => measureTaskArea());
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+
+  // How many task rows the block has room for (none when compact).
+  const capacity = $derived(
+    compact ? 0 : Math.max(0, Math.floor((taskAreaHeight + 0.5) / rowHeight)),
+  );
+  // During a drag every block shows all its rows: they are the drop slots.
+  const overflowing = $derived(!dragActive && chips.length > capacity);
+  const shownChips = $derived(
+    overflowing && !expanded ? chips.slice(0, Math.max(0, capacity - 1)) : chips,
+  );
+  const hiddenCount = $derived(overflowing ? chips.length - Math.max(0, capacity - 1) : 0);
+  const moreLabel = $derived(
+    capacity <= 1
+      ? `${hiddenCount} ${hiddenCount === 1 ? "task" : "tasks"}`
+      : `${hiddenCount} more`,
+  );
+  // A compact block that grows lays out like a full one, so its tasks show.
+  const compactLayout = $derived(compact && !expanded);
+
+  function cancelExpandTimer() {
+    window.clearTimeout(expandTimer);
+    expandTimer = undefined;
+  }
+  function expand() {
+    cancelExpandTimer();
+    expanded = true;
+  }
+  function collapse() {
+    cancelExpandTimer();
+    expanded = false;
+  }
+  // Hover drives it for a mouse only. A touch "leaves" the moment the finger
+  // lifts, so touch grows it with a tap and shrinks it with a tap elsewhere.
+  function onMoreEnter(event: PointerEvent) {
+    if (event.pointerType !== "mouse" || expanded) return;
+    cancelExpandTimer();
+    expandTimer = window.setTimeout(expand, EXPAND_MS);
+  }
+  function onMoreLeave(event: PointerEvent) {
+    // Left before it grew: don't grow.
+    if (event.pointerType === "mouse" && !expanded) cancelExpandTimer();
+  }
+  function onBlockEnter(event: PointerEvent) {
+    if (event.pointerType === "mouse" && expanded) cancelExpandTimer();
+  }
+  function onBlockLeave(event: PointerEvent) {
+    if (event.pointerType !== "mouse" || !expanded) return;
+    cancelExpandTimer();
+    expandTimer = window.setTimeout(() => {
+      // Keep it while something in it has focus (a task being edited).
+      if (blockEl?.contains(blockEl.ownerDocument.activeElement)) return;
+      expanded = false;
+    }, COLLAPSE_MS);
+  }
+  // While grown: a press anywhere else shrinks it (the way back on touch), and
+  // so does leaving a focused task once the pointer is gone.
+  $effect(() => {
+    const el = blockEl;
+    if (!expanded || !el) return;
+    const win = el.ownerDocument.defaultView ?? window;
+    const onPress = (e: PointerEvent) => {
+      if (!el.contains(e.target as Node)) collapse();
+    };
+    win.addEventListener("pointerdown", onPress, true);
+    return () => win.removeEventListener("pointerdown", onPress, true);
+  });
+  // A drag shows every row anyway, as drop slots.
+  $effect(() => {
+    if (dragActive) collapse();
+  });
+
   let metaEl = $state<HTMLDivElement>();
 
   // Open the picker anchored under the meta (time · association) line, so it
@@ -296,6 +444,15 @@
         .setIcon("folder-symlink")
         .onClick(() => requestEditAssoc()),
     );
+
+    if (block.time) {
+      menu.addItem((item) =>
+        item
+          .setTitle("Repeat…")
+          .setIcon("repeat")
+          .onClick(() => requestRepeat(blockLineTask(block), block)),
+      );
+    }
 
     menu.addSeparator();
 
@@ -342,16 +499,76 @@
   }
 </script>
 
+<!-- The "N more" control: a row in the task list, or a pill beside a compact
+     block's title. -->
+{#snippet moreButton(pill: boolean)}
+  <button
+    type="button"
+    class="tl-more"
+    class:pill
+    style={pill ? undefined : `height: ${rowHeight}px;`}
+    bind:this={moreEl}
+    aria-label={`Show all ${chips.length} tasks`}
+    aria-expanded={expanded}
+    onpointerdown={(e) => e.stopPropagation()}
+    onpointerenter={onMoreEnter}
+    onpointerleave={onMoreLeave}
+    onclick={(e) => {
+      e.stopPropagation();
+      expand();
+    }}
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    {moreLabel}
+  </button>
+{/snippet}
+
+<!-- One task chip. -->
+{#snippet chip(task: ResolvedTask, tr: ReturnType<Resolver> | undefined)}
+  <TaskComponent
+    {task}
+    association={task.owner}
+    inherited={task.assoc === undefined}
+    resolved={tr}
+    color={tr?.color}
+    onNavigate={() => task.owner && onNavigate(task.owner)}
+    onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
+    onNest={(rect) => onNestTask(block, task, rect)}
+    onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
+    onRepeat={() => requestRepeat(task, block)}
+    onGrab={(e) => {
+      collapse();
+      onTaskGrab(block, task, e);
+    }}
+    onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
+    onSetText={(t, text) => onSetTaskText(block, t, text)}
+    onDelete={(t) => onDeleteTask(block, t)}
+    highlight={taskHighlight(hover, task, block) === "task" ? "task" : null}
+    onHoverChange={(on: boolean) => chipHover(task, on)}
+  />
+{/snippet}
+
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="tl-block"
   class:selected
   class:dragging
+  class:linked={blockLinked}
+  class:expanded
+  style:--kairos-link-color={accentColor}
   data-block-line={block.source.line}
   bind:this={blockEl}
-  style={`top: ${top}px; height: ${height}px; left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
+  style={`top: ${top}px; ${expanded ? `min-height: ${height}px;` : `height: ${height}px;`} left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}
   oncontextmenu={openContextMenu}
+  onpointerenter={(e) => {
+    onHoverEnter?.(blockTarget);
+    onBlockEnter(e);
+  }}
+  onpointerleave={(e) => {
+    onHoverLeave?.(blockTarget);
+    onBlockLeave(e);
+  }}
   use:actionZone={{ layout: "stack" }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
@@ -399,7 +616,7 @@
   <!-- Inner visual container -->
   <div
     class="tl-content"
-    class:compact
+    class:compact={compactLayout}
     class:checked={blockChecked}
     class:drop-target={isDropTarget}
     style={accentColor ? `border-left-color:${accentColor};` : ""}
@@ -440,9 +657,12 @@
           use:peek={{ text: block.title }}
         >{block.title}</span>
       {/if}
+      {#if compactLayout && hiddenCount > 0}
+        {@render moreButton(true)}
+      {/if}
     </div>
 
-    {#if !compact}
+    {#if !compactLayout}
       {#if editingTime}
         <!-- Commit on focusout only when focus leaves the whole editor, so
              tabbing between the two inputs doesn't close it early. -->
@@ -525,10 +745,11 @@
         <div
           class="tl-tasks"
           class:drag-active={dragActive}
+          bind:this={tasksEl}
           data-drop-block={block.source.line}
           onpointerdown={(e) => e.stopPropagation()}
         >
-          {#each chips as task, i (task.source.line)}
+          {#each shownChips as task, i (task.source.line)}
             {@const tr = task.owner ? resolve(task.owner) : undefined}
             <!-- Drop indicator before this row when the drag targets slot `i`. -->
             {#if dropIndex === i}
@@ -541,25 +762,14 @@
               data-task-line={task.source.line}
               data-task-index={i}
             >
-              <TaskComponent
-                {task}
-                association={task.owner}
-                inherited={task.assoc === undefined}
-                resolved={tr}
-                color={tr?.color}
-                onNavigate={() => task.owner && onNavigate(task.owner)}
-                onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
-                onNest={(rect) => onNestTask(block, task, rect)}
-                onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
-                onGrab={(e) => onTaskGrab(block, task, e)}
-                onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
-                onSetText={(t, text) => onSetTaskText(block, t, text)}
-                onDelete={(t) => onDeleteTask(block, t)}
-              />
+              {@render chip(task, tr)}
             </div>
           {/each}
           <!-- Trailing drop zone: carries the append indicator inside a padded,
                non-clipped element so a line at the list's bottom edge isn't cut. -->
+          {#if overflowing && !expanded}
+            {@render moreButton(false)}
+          {/if}
           {#if dragActive}
             <div class="tl-drop-tail">
               {#if dropIndex !== undefined && dropIndex >= chips.length}
@@ -580,6 +790,7 @@
     }}
   ></div>
 </div>
+
 
 <style>
   .tl-block {
@@ -633,6 +844,18 @@
 
   .tl-content.checked {
     opacity: 0.6;
+  }
+
+  /* Hover link: this block, or a task in it, is under the pointer in some view
+     (this one included). Outlined and tinted in its domain color (the theme
+     accent without one); the task itself is marked on its chip. */
+  .tl-block.linked .tl-content {
+    box-shadow: 0 0 0 2px var(--kairos-link-color, var(--interactive-accent));
+    background: color-mix(
+      in srgb,
+      var(--kairos-link-color, var(--interactive-accent)) 12%,
+      var(--background-secondary)
+    );
   }
 
   /* Whole-block drop highlight: dropping anywhere on it appends the task. */
@@ -836,12 +1059,74 @@
     color: var(--text-muted);
   }
 
+  /* ── Showing every task ── */
+  /* The "N more" row: one task row's worth of space at the bottom of the list,
+     centred, so it's an easy target that keeps clear of the resize edges. */
+  .tl-more {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 100%;
+    padding: 0 4px;
+    border: none;
+    border-radius: var(--radius-s);
+    box-shadow: none;
+    background: transparent;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .tl-more:hover {
+    color: var(--text-normal);
+    background: var(--background-modifier-hover);
+  }
+  /* Beside a compact block's title: a small pill, centred in the space after
+     the title, clear of the action corner on the right. */
+  .tl-more.pill {
+    width: auto;
+    height: 16px;
+    margin-inline: auto;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    background: var(--background-secondary-alt);
+  }
+  .tl-more svg {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+  }
+
+  /* Grown to show every task: the block's own height gives way to its
+     content, over the blocks below, lifted a little so it reads as on top.
+     Its bottom resize edge steps aside: it would sit at the grown edge, not
+     the block's real end. */
+  .tl-block.expanded {
+    z-index: 7;
+  }
+  .tl-block.expanded .tl-content {
+    box-shadow: var(--shadow-s);
+  }
+  .tl-block.expanded .tl-tasks {
+    flex: none;
+  }
+  .tl-block.expanded .tl-resize-bottom {
+    display: none;
+  }
+
+  /* The task list takes the room left under the header, whatever it holds,
+     so its height says how many rows fit (see `capacity`). What doesn't fit
+     goes behind the "N more" row, not a scrollbar. */
   .tl-tasks {
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     gap: 0;
     min-height: 0;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   /* During a drag, stop clipping so a drop line at the list's edge shows, and

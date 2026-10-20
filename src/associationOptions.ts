@@ -12,7 +12,7 @@ import type {
 	LifecycleState,
 	Project,
 } from "./types";
-import { effectiveStatus } from "./projectFile";
+import { effectiveStatus, projectStatusOn } from "./projectFile";
 
 /** One selectable row in the association picker. */
 export interface AssociationOption {
@@ -35,14 +35,17 @@ export function associationOptions(
 	domains: Map<string, Domain>,
 ): AssociationOption[] {
 	const options: AssociationOption[] = [];
+	const domainsById = new Map([...domains.values()].map((d) => [d.id, d]));
 
 	for (const project of projects.values()) {
 		if (project.archived) continue;
+		// A project under an inactive domain is offered as inactive too.
+		const domain = project.domain ? domainsById.get(project.domain) : undefined;
 		options.push({
 			association: { kind: "project", id: project.name },
 			name: project.name,
 			kind: "project",
-			status: effectiveStatus(project.history),
+			status: projectStatusOn(project, domain),
 		});
 	}
 

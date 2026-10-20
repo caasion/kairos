@@ -115,6 +115,13 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'routinesPath': {
+				const path = normalizePath(String(value));
+				await this.plugin.updateSettings((s) => {
+					s.routinesPath = path;
+				});
+				return;
+			}
 			case 'askAssocOnBlockCreate': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {
@@ -122,10 +129,52 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'gridGroupByBlock': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.gridGroupByBlock = on;
+				});
+				return;
+			}
+			case 'gridShowRollupProjects': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.gridShowRollupProjects = on;
+				});
+				return;
+			}
+			case 'dropBlockTitle': {
+				const title = String(value).trim();
+				await this.plugin.updateSettings((s) => {
+					s.dropBlockTitle = title;
+				});
+				return;
+			}
+			case 'highlightAcrossViews': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.highlightAcrossViews = on;
+				});
+				return;
+			}
+			case 'followGrid': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.followGrid = on;
+				});
+				return;
+			}
 			case 'askAssocOnBacklogCreate': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {
 					s.askAssocOnBacklogCreate = on;
+				});
+				return;
+			}
+			case 'autoApplyRoutines': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.autoApplyRoutines = on;
 				});
 				return;
 			}

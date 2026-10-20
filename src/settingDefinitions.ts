@@ -37,6 +37,8 @@ export interface KairosSettings {
 	domainsFolder: string;
 	/** Vault path to the single global backlog file. */
 	backlogPath: string;
+	/** Vault path to the single routines file (recurring blocks and tasks). */
+	routinesPath: string;
 
 	/**
 	 * The daily-note section heading Kairos reads and writes, given verbatim with
@@ -58,6 +60,45 @@ export interface KairosSettings {
 	 * domain group answers the question by where you created it.
 	 */
 	askAssocOnBacklogCreate: boolean;
+
+	/**
+	 * Add the day's routines as soon as a new daily note is created. Off by
+	 * default: routines are pulled in deliberately from the Grid (one at a time,
+	 * or all at once from the date row) or with "Apply routines to this day".
+	 */
+	autoApplyRoutines: boolean;
+	/**
+	 * The Day and Week views follow the Grid: grabbing, adding or editing a task
+	 * in the Grid shows that day in the Day view, and in the Week view when it's
+	 * outside the window shown. Moving either view by hand still works; the next
+	 * Grid action moves it again. (Selecting a Grid column header shows its day
+	 * in the Day view whether or not this is on.)
+	 */
+	followGrid: boolean;
+	/**
+	 * Pointing at a block or task lights it up in every open view: the block as
+	 * a whole, and the task itself on top (viewLinks.ts). On by default.
+	 */
+	highlightAcrossViews: boolean;
+	/**
+	 * The title of a block made by dropping a task on empty time in the Day or
+	 * Week view. Empty: the task's project or domain name ("New block" without
+	 * one).
+	 */
+	dropBlockTitle: string;
+
+	/**
+	 * Group each Grid cell's tasks under the block they sit in, in start-time
+	 * order with Unscheduled last (decision 70). On by default: it's what ties
+	 * the Grid to the timelines. A setting because some workflows want the flat
+	 * list instead.
+	 */
+	gridGroupByBlock: boolean;
+	/**
+	 * With block groups on, show a rolled-up task's project as a muted label at
+	 * the end of its line on its domain's row (decision 74). Off by default.
+	 */
+	gridShowRollupProjects: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -69,9 +110,16 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	projectsFolder: 'Projects',
 	domainsFolder: 'Domains',
 	backlogPath: 'Backlog.md',
+	routinesPath: 'Routines.md',
 	scheduleHeading: '## Schedule',
 	askAssocOnBlockCreate: false,
 	askAssocOnBacklogCreate: false,
+	autoApplyRoutines: false,
+	followGrid: true,
+	highlightAcrossViews: true,
+	dropBlockTitle: '',
+	gridGroupByBlock: true,
+	gridShowRollupProjects: false,
 };
 
 /** Every control key is a settings property, so the default value resolver works. */
@@ -150,6 +198,77 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 	},
 	{
 		type: 'group',
+		heading: 'Grid view',
+		items: [
+			{
+				name: 'Group by block',
+				desc:
+					'Group the tasks in each grid cell under the block they sit in, ' +
+					'in time order, with unscheduled tasks last.',
+				control: {
+					type: 'toggle',
+					key: 'gridGroupByBlock',
+					defaultValue: DEFAULT_SETTINGS.gridGroupByBlock,
+				},
+			},
+			{
+				name: 'Show projects on rolled-up tasks',
+				desc:
+					'On a domain row that includes rolled-up projects, show each ' +
+					"task's project at the end of its line. Applies when grouping " +
+					'by block.',
+				control: {
+					type: 'toggle',
+					key: 'gridShowRollupProjects',
+					defaultValue: DEFAULT_SETTINGS.gridShowRollupProjects,
+				},
+			},
+		],
+	},
+	{
+		type: 'group',
+		heading: 'Grid and timelines',
+		items: [
+			{
+				name: 'Highlight across views',
+				desc:
+					'Pointing at a block or task lights it up in the grid, day and ' +
+					'week views: the whole block, and the task itself.',
+				control: {
+					type: 'toggle',
+					key: 'highlightAcrossViews',
+					defaultValue: DEFAULT_SETTINGS.highlightAcrossViews,
+				},
+			},
+			{
+				name: 'Follow the grid',
+				desc:
+					'Show the day you are working on in the grid. Grabbing, adding ' +
+					'or editing a task there moves the day view to that day, and ' +
+					'the week view when that day is out of sight.',
+				control: {
+					type: 'toggle',
+					key: 'followGrid',
+					defaultValue: DEFAULT_SETTINGS.followGrid,
+				},
+			},
+			{
+				name: 'Name for blocks made by a drop',
+				desc:
+					'Dropping a task on empty time in the day or week view makes a ' +
+					"block with the task inside. Leave empty to name it after the task's " +
+					'project or domain.',
+				control: {
+					type: 'text',
+					key: 'dropBlockTitle',
+					placeholder: "The task's project or domain",
+					defaultValue: DEFAULT_SETTINGS.dropBlockTitle,
+				},
+			},
+		],
+	},
+	{
+		type: 'group',
 		heading: 'Daily notes',
 		items: [
 			{
@@ -197,6 +316,24 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 	},
 	{
 		type: 'group',
+		heading: 'Routines',
+		items: [
+			{
+				name: 'Add routines to new daily notes',
+				desc:
+					'Add the routines due on a day as soon as its daily note is ' +
+					'created. When off, add them from the Grid or with the ' +
+					'"Apply routines to this day" command.',
+				control: {
+					type: 'toggle',
+					key: 'autoApplyRoutines',
+					defaultValue: DEFAULT_SETTINGS.autoApplyRoutines,
+				},
+			},
+		],
+	},
+	{
+		type: 'group',
 		heading: 'Folders',
 		items: [
 			{
@@ -227,6 +364,16 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					key: 'backlogPath',
 					placeholder: DEFAULT_SETTINGS.backlogPath,
 					defaultValue: DEFAULT_SETTINGS.backlogPath,
+				},
+			},
+			{
+				name: 'Routines file',
+				desc: 'Vault path to the file that lists your recurring blocks and tasks.',
+				control: {
+					type: 'text',
+					key: 'routinesPath',
+					placeholder: DEFAULT_SETTINGS.routinesPath,
+					defaultValue: DEFAULT_SETTINGS.routinesPath,
 				},
 			},
 		],
