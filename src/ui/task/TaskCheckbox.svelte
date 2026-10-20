@@ -19,11 +19,14 @@
 		// overrides `--interactive-accent`, so the border and fills all tint from
 		// one place without touching each rule.
 		color?: string;
+		// Overrides the tooltip, for a row whose click doesn't follow the cycle
+		// (a leftover's click marks it done outright).
+		label?: string;
 		onToggle: () => void;
 		onCancel: () => void;
 	}
 
-	let { status, color, onToggle, onCancel }: Props = $props();
+	let { status, color, label, onToggle, onCancel }: Props = $props();
 
 	// Unique clip-path id per instance so multiple half-done checkboxes don't
 	// share (and clobber) one another's SVG clip.
@@ -40,13 +43,14 @@
 	});
 
 	const title = $derived(
-		status === " "
+		label ??
+		(status === " "
 			? "Mark half-done"
 			: status === "/"
 				? "Mark done"
 				: status === "x"
 					? "Mark open"
-					: "Cancelled",
+					: "Cancelled"),
 	);
 </script>
 

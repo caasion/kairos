@@ -28,7 +28,6 @@ function input(over: Partial<PrepInput>): PrepInput {
 		today: THU,
 		path: PATH,
 		blocks: [],
-		carried: false,
 		routines: user.routines,
 		autoApply: true,
 		...over,
@@ -85,19 +84,13 @@ describe("planDayPrep: the auto/manual table", () => {
 		expect(plan.frontmatter).toEqual({});
 	});
 
-	it("auto leaves routines alone when the setting is off, but still carries", () => {
-		const prev = {
-			date: WED,
-			path: "wed.md",
-			blocks: blocksOf("- Unscheduled\n\t- [ ] Leftover", "wed.md"),
-		};
+	it("auto leaves routines alone when the setting is off", () => {
 		const off = planDayPrep(
-			input({ mode: "auto", date: THU, autoApply: false, previous: prev, routines: parseRoutines("## Daily\n- [ ] Read").routines }),
+			input({ mode: "auto", date: THU, autoApply: false, routines: parseRoutines("## Daily\n- [ ] Read").routines }),
 		);
 		expect(off.outcome).toBe("off");
-		expect(off.carried).toBe(1);
-		expect(texts(off.blocks)).toEqual(["Leftover"]);
-		expect(off.frontmatter).toEqual({ "kairos-carried": WED });
+		expect(off.blocks).toEqual([]);
+		expect(off.frontmatter).toEqual({});
 		// The command still applies regardless of the setting.
 		expect(planDayPrep(input({ date: NEXT_MON, autoApply: false })).outcome).toBe("added");
 	});
@@ -159,62 +152,6 @@ describe("planDayPrep: the auto/manual table", () => {
 	it("counts a done copy as present", () => {
 		const done = blocksOf("- Unscheduled\n\t- [x] Noteworthy Rehearsal [Learning]");
 		expect(planDayPrep(input({ date: NEXT_MON, blocks: done })).outcome).toBe("present");
-	});
-});
-
-describe("planDayPrep: carry-over", () => {
-	const yesterday = {
-		date: WED,
-		path: "wed.md",
-		blocks: blocksOf(
-			"- 09:00 - 10:00 Practice [Learning]\n\t- [ ] Scales\n\t- [x] Warm up\n- Unscheduled\n\t- [/] Half done\n\t- [-] Dropped",
-			"wed.md",
-		),
-	};
-
-	it("moves open and half-done tasks into today and records where from", () => {
-		const plan = planDayPrep(input({ mode: "auto", date: THU, previous: yesterday }));
-		expect(plan.carried).toBe(2);
-		expect(texts(plan.blocks)).toEqual(["Scales", "Half done"]);
-		expect(texts(plan.previous!.blocks)).toEqual(["Warm up", "Dropped"]);
-		expect(plan.frontmatter["kairos-carried"]).toBe(WED);
-		// The inherited association is written onto the moved line.
-		const scales = plan.blocks.flatMap((b) => b.tasks).find((t) => t.text === "Scales")!;
-		expect(scales.assoc).toEqual({ kind: "project", id: "Learning" });
-	});
-
-	it("doesn't carry twice into the same note", () => {
-		const plan = planDayPrep(input({ mode: "auto", date: THU, previous: yesterday, carried: true }));
-		expect(plan.carried).toBe(0);
-		expect(plan.previous).toBeUndefined();
-	});
-
-	it("doesn't carry into a future day, or on a manual run", () => {
-		expect(planDayPrep(input({ mode: "auto", date: NEXT_MON, previous: yesterday })).carried).toBe(0);
-		expect(planDayPrep(input({ mode: "manual", date: THU, previous: yesterday })).carried).toBe(0);
-	});
-
-	it("carries even when routines were already recorded for today", () => {
-		const plan = planDayPrep(
-			input({ mode: "auto", date: THU, previous: yesterday, recorded: "x" }),
-		);
-		expect(plan.carried).toBe(2);
-		expect(plan.outcome).toBe("stale");
-	});
-
-	it("doesn't stack a routine task on an open copy that carried in", () => {
-		const daily = parseRoutines("## Daily\n- [ ] Noteworthy Rehearsal [Learning]").routines;
-		const prev = {
-			date: WED,
-			path: "wed.md",
-			blocks: blocksOf("- Unscheduled\n\t- [ ] Noteworthy Rehearsal [Learning]", "wed.md"),
-		};
-		const plan = planDayPrep(
-			input({ mode: "auto", date: THU, previous: prev, routines: daily }),
-		);
-		expect(plan.carried).toBe(1);
-		expect(plan.outcome).toBe("present");
-		expect(texts(plan.blocks)).toEqual(["Noteworthy Rehearsal"]);
 	});
 });
 

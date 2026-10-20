@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { carryOver, previousDay } from "./carry";
+import { carryOver, leftovers, previousDay } from "./carry";
 import { parseSchedule } from "./parser";
 import { serialize } from "./serializer";
 import type { Block, Day } from "./types";
@@ -49,6 +49,13 @@ describe("carryOver", () => {
 		]);
 		expect(inbox.tasks.every((t) => t.source.path === "tue.md")).toBe(true);
 		expect(inbox.tasks.find((t) => t.text === "Half")?.status).toBe("/");
+	});
+
+	it("moves only the picked tasks when given a pick", () => {
+		const { from, to, moved } = carryOver(day("mon.md"), [], "tue.md", (t) => t.text === "Half");
+		expect(moved).toBe(1);
+		expect(from[0]?.tasks.map((t) => t.text)).toEqual(["Open", "Done", "Cancelled", "Own assoc"]);
+		expect(to.find((b) => b.title === "Unscheduled")!.tasks.map((t) => t.text)).toEqual(["Half"]);
 	});
 
 	it("never carries blocks", () => {
@@ -153,5 +160,27 @@ describe("previousDay", () => {
 	it("never returns the day itself or a later one", () => {
 		expect(previousDay(days, "2026-10-03")?.date).toBe("2026-10-01");
 		expect(previousDay(days, "2026-10-01")).toBeUndefined();
+	});
+});
+
+describe("leftovers", () => {
+	it("offers open and half-done tasks in file order, with their block", () => {
+		const offered = leftovers(day("mon.md"), []);
+		expect(offered.map((l) => l.task.text)).toEqual(["Open", "Half", "Own assoc", "Loose"]);
+		expect(offered[0]?.owner.title).toBe("Deep work");
+	});
+
+	it("skips a task the day already has, by text and effective association", () => {
+		const today = parseSchedule(
+			"## Schedule\n\n- Unscheduled\n\t- [ ] Open [Kairos]\n\t- [ ] Loose [D:Admin]\n",
+			"tue.md",
+		);
+		// "Open" inherits Kairos from its block, so it matches; "Loose" has no
+		// association yesterday, so the tagged copy today is a different task.
+		expect(leftovers(day("mon.md"), today).map((l) => l.task.text)).toEqual([
+			"Half",
+			"Own assoc",
+			"Loose",
+		]);
 	});
 });

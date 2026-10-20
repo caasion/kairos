@@ -39,6 +39,7 @@ import { serialize } from "./serializer";
 import { parseBacklog, serializeBacklog } from "./backlog";
 import { DEFAULT_HEADING, spliceSection } from "./section";
 import { resolveBlocks } from "./resolver";
+import { previousDay } from "./carry";
 import {
 	newDomain,
 	newProject,
@@ -474,6 +475,16 @@ export class KairosIndex {
 	/** A live store of the day for `date` (undefined when no note exists). */
 	day(date: ISODate): Readable<Day | undefined> {
 		return this.ensureDayStore(date);
+	}
+
+	/**
+	 * A live store of the most recent day before `date` that has a note: the day
+	 * whose open tasks are offered as leftovers (carry.ts). Re-derives on every
+	 * day or structure change, since a note appearing or going away can change
+	 * which day that is.
+	 */
+	dayBefore(date: ISODate): Readable<Day | undefined> {
+		return derived(this.structureVersion, () => previousDay(this.state.days, date));
 	}
 
 	backlog(): Readable<BacklogEntry[]> {
