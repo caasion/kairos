@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Domain, Project, StatusRecord } from "../types";
 import type { ProjectsDomains } from "../index";
 import { appendStatus, effectiveStatus } from "../projectFile";
-import { ACTIVE_WEIGHT, historyToSpans } from "./spans";
+import { historyToSpans } from "./spans";
 import { activeInWindow, visibleEntities } from "./rows";
 import {
 	dateToX,
@@ -54,36 +54,46 @@ describe("historyToSpans", () => {
 		expect(spans[0]).toMatchObject({ start: "2026-12-01", end: "2026-12-01" });
 	});
 
-	it("carries the note and shades only active spans", () => {
+	it("carries the note on any status", () => {
 		const spans = historyToSpans(
 			h(["2026-01-01", "active", "laundry"], ["2026-02-01", "inactive", "on hold"]),
 			"2026-08-05",
 		);
 		expect(spans[0]?.note).toBe("laundry");
-		expect(spans[0]?.intensity).toBe(ACTIVE_WEIGHT);
-		expect(spans[1]?.note).toBe("on hold"); // carried on any status
-		expect(spans[1]?.intensity).toBe(0); // non-active → no shading
+		expect(spans[1]?.note).toBe("on hold");
 	});
 
-	it("shades every active span the same, whatever the note says (#29)", () => {
-		// The note is prose describing what the phase consists of, not a keyword:
-		// a multi-word note renders exactly like a one-word one, and like none.
+	it("never reads intensity out of the note (#29)", () => {
+		// The note is the intention for the stretch, not a keyword: the old
+		// taper / baseline / hard words leave a span exactly like any other note.
 		const multi = historyToSpans(h(["2026-01-01", "active", "baseline 3x/week"]), "2026-08-05");
-		const one = historyToSpans(h(["2026-01-01", "active", "baseline"]), "2026-08-05");
-		const none = historyToSpans(h(["2026-01-01", "active"]), "2026-08-05");
-		expect(multi[0]?.intensity).toBe(one[0]?.intensity);
-		expect(one[0]?.intensity).toBe(none[0]?.intensity);
-		expect(multi[0]?.intensity).toBe(ACTIVE_WEIGHT);
-		// Identical but for the note itself — the old keyword ramp is gone.
+		const one = historyToSpans(h(["2026-01-01", "active", "hard"]), "2026-08-05");
+		expect(multi[0]?.intensity).toBeUndefined();
+		expect(one[0]?.intensity).toBeUndefined();
 		expect({ ...multi[0], note: undefined }).toEqual({ ...one[0], note: undefined });
 	});
 
-	it("leaves inactive and archived spans at 0 whatever their note", () => {
+	it("carries an active record's intensity, including 0", () => {
 		const spans = historyToSpans(
-			h(["2026-01-01", "inactive", "hard"], ["2026-02-01", "archived", "hard"]),
+			[
+				{ date: "2026-01-01", status: "active", intensity: 5 },
+				{ date: "2026-02-01", status: "active", intensity: 0 },
+				{ date: "2026-03-01", status: "active" },
+			],
 			"2026-08-05",
 		);
-		expect(spans.map((s) => s.intensity)).toEqual([0, 0]);
+		expect(spans.map((s) => s.intensity)).toEqual([5, 0, undefined]);
+	});
+
+	it("drops intensity from inactive and archived spans", () => {
+		const spans = historyToSpans(
+			[
+				{ date: "2026-01-01", status: "inactive", intensity: 3 },
+				{ date: "2026-02-01", status: "archived", intensity: 3 },
+			],
+			"2026-08-05",
+		);
+		expect(spans.map((s) => s.intensity)).toEqual([undefined, undefined]);
 	});
 
 	it("carries `why` onto the span it opens", () => {

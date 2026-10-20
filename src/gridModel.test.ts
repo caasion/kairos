@@ -8,6 +8,9 @@ import {
 	cellTasks,
 	dayStatus,
 	dropAssociation,
+	intensityChange,
+	intensityOn,
+	intentionChange,
 	ownerRowKey,
 	rolledUpProjects,
 	rolledUpProjectOf,
@@ -253,6 +256,71 @@ describe("dayStatus", () => {
 		const s = snap([], [], [task({})]);
 		const row = buildRows(s, AS_OF).find((r) => r.kind === "unassigned")!;
 		expect(dayStatus(row, "2026-08-01", s)).toBe("active");
+	});
+});
+
+describe("intensityOn / intensityChange", () => {
+	const p = project({
+		history: [
+			{ date: "2026-08-01", status: "active", intensity: 2 },
+			{ date: "2026-08-04", status: "active", intensity: 4, note: "push" },
+			{ date: "2026-08-06", status: "active", note: "unrated now" },
+			{ date: "2026-08-08", status: "inactive", intensity: 3 },
+			{ date: "2026-08-10", status: "active", intensity: 1 },
+		],
+	});
+	const s = snap([p], [], []);
+	const row = buildRows(s, AS_OF)[0]!;
+
+	it("reads the level in effect on a day, null when unrated or not active", () => {
+		expect(intensityOn(row, "2026-07-31", s)).toBeNull(); // before any record
+		expect(intensityOn(row, "2026-08-02", s)).toBe(2);
+		expect(intensityOn(row, "2026-08-05", s)).toBe(4);
+		expect(intensityOn(row, "2026-08-07", s)).toBeNull(); // unrated
+		expect(intensityOn(row, "2026-08-09", s)).toBeNull(); // inactive, level ignored
+	});
+
+	it("marks a change only on the day a record moves the level", () => {
+		expect(intensityChange(row, "2026-08-04", s)).toEqual({ from: 2, to: 4 });
+		expect(intensityChange(row, "2026-08-05", s)).toBeNull(); // no record that day
+		expect(intensityChange(row, "2026-08-06", s)).toBeNull(); // to unrated
+		expect(intensityChange(row, "2026-08-08", s)).toBeNull(); // to inactive
+		expect(intensityChange(row, "2026-08-10", s)).toEqual({ from: null, to: 1 });
+	});
+
+	it("ignores a record that keeps the level", () => {
+		const q = project({
+			history: [
+				{ date: "2026-08-01", status: "active", intensity: 3 },
+				{ date: "2026-08-04", status: "active", intensity: 3, note: "new intention" },
+			],
+		});
+		const t = snap([q], [], []);
+		expect(intensityChange(buildRows(t, AS_OF)[0]!, "2026-08-04", t)).toBeNull();
+	});
+
+	it("marks a new intention on the day its record starts, not a kept or cleared one", () => {
+		// Fixture notes: 08-04 "push", 08-06 "unrated now", others none.
+		expect(intentionChange(row, "2026-08-04", s)).toBe("push");
+		expect(intentionChange(row, "2026-08-05", s)).toBeNull(); // no record that day
+		expect(intentionChange(row, "2026-08-06", s)).toBe("unrated now");
+		expect(intentionChange(row, "2026-08-08", s)).toBeNull(); // cleared
+		const q = project({
+			history: [
+				{ date: "2026-08-01", status: "active", note: "same" },
+				{ date: "2026-08-04", status: "active", intensity: 5, note: "same" },
+			],
+		});
+		const t = snap([q], [], []);
+		const r = buildRows(t, AS_OF)[0]!;
+		expect(intentionChange(r, "2026-08-01", t)).toBe("same"); // first record counts
+		expect(intentionChange(r, "2026-08-04", t)).toBeNull(); // kept
+	});
+
+	it("gives the unassigned row no intensity", () => {
+		const t = snap([], [], [task({})]);
+		const u = buildRows(t, AS_OF).find((r) => r.kind === "unassigned")!;
+		expect(intensityOn(u, "2026-08-01", t)).toBeNull();
 	});
 });
 
