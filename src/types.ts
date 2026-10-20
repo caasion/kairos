@@ -83,11 +83,17 @@ type LifecycleState = "active" | "inactive" | "archived";
 interface StatusRecord {
   date: ISODate; // the day the change was recorded, not an effective-from date
   status: LifecycleState;
-  // What this state entails: freeform prose describing what the phase actually
-  // consists of ("getting groceries, meal planning, doing laundry"). An open
+  // The intention for the entity over this stretch: what you mean to do with it
+  // for now ("get it done this week", "occasional background work"). An open
   // label, never logic and never a keyword vocabulary — parsed and serialized
-  // verbatim, and meaningful on any status, not just `active`.
+  // verbatim, and meaningful on any status, not just `active`. A changed
+  // intention is reason enough for a new record even when the status holds.
   note?: string;
+  // How hard the entity is being pushed over this stretch, an integer 0–5. The
+  // explicit replacement for the old note keywords (#29): 0 is active with no
+  // time going in, 5 is all-in. Absent means no claim. Only drawn on `active`
+  // spans, but kept verbatim on any record.
+  intensity?: number;
   // What moved the entity into this state ("stepped down after the handoff").
   // Distinct from `note`, which says what the state entails, and from a
   // project's `description`, which says what the project entails generally.

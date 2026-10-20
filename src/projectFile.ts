@@ -115,33 +115,55 @@ const LIFECYCLE = new Set<LifecycleState>(["active", "inactive", "archived"]);
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The top of the intensity scale; the bottom is 0. */
+export const INTENSITY_MAX = 5;
+
+/**
+ * Coerce a stored intensity to an integer in 0–INTENSITY_MAX, or undefined when
+ * it isn't a number at all. A hand-typed `3.6` rounds and a `9` clamps rather
+ * than vanishing, since the user clearly meant a level; `high` is not a level.
+ */
+export function coerceIntensity(v: unknown): number | undefined {
+	const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
+	if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
+	return Math.min(INTENSITY_MAX, Math.max(0, Math.round(n)));
+}
+
 /** A status entry's fields, read out of either the bare or the object form. */
 function readEntry(value: unknown): {
 	state: unknown;
 	note: string;
 	why: string;
+	intensity: number | undefined;
 	bare: boolean;
 } {
 	if (value && typeof value === "object") {
-		const o = value as { status?: unknown; note?: unknown; why?: unknown };
+		const o = value as {
+			status?: unknown;
+			note?: unknown;
+			why?: unknown;
+			intensity?: unknown;
+		};
 		return {
 			state: o.status,
 			note: typeof o.note === "string" ? o.note.trim() : "",
 			why: typeof o.why === "string" ? o.why.trim() : "",
+			intensity: coerceIntensity(o.intensity),
 			bare: false,
 		};
 	}
-	return { state: value, note: "", why: "", bare: true };
+	return { state: value, note: "", why: "", intensity: undefined, bare: true };
 }
 
 /** The record an entry would become, or null when its state isn't a lifecycle state. */
 function entryRecord(date: ISODate, value: unknown): StatusRecord | null {
-	const { state, note, why } = readEntry(value);
+	const { state, note, why, intensity } = readEntry(value);
 	const status = String(state) as LifecycleState;
 	if (!LIFECYCLE.has(status)) return null;
 	return {
 		date,
 		status,
+		...(intensity !== undefined ? { intensity } : {}),
 		...(note ? { note } : {}),
 		...(why ? { why } : {}),
 	};
@@ -166,9 +188,10 @@ function padDateKey(key: string): ISODate | null {
  * Parse the `status` frontmatter map into records sorted oldest→newest by date,
  * alongside the entries that weren't in the shape or vocabulary Kairos writes.
  * Keys are `YYYY-MM-DD`. Each value is either a bare lifecycle state string or a
- * `{ status, note?, why? }` object — the object form carries the freeform `note`
- * (what the state entails) and `why` (what moved the entity into it), both
- * open-label and never logic. An empty or non-string note/why is dropped so it
+ * `{ status, intensity?, note?, why? }` object — the object form carries the
+ * freeform `note` (the intention for this stretch) and `why` (what moved the
+ * entity into it), both open-label and never logic, and `intensity`, an integer
+ * 0–5 (see `coerceIntensity`). An empty or non-string note/why is dropped so it
  * never round-trips as a synthetic "".
  *
  * Nothing throws and nothing is thrown away. Two kinds of entry are *fixable*
@@ -279,8 +302,9 @@ export function effectiveStatus(
  * span. Same "most recent record on-or-before asOf" rule as `effectiveStatus`,
  * but also surfaces:
  *   • `status` / `note` / `why` — the effective record's state, its freeform
- *     note (the "status description") and the reason it was entered; note and
- *     why are "" when unset or when no record applies.
+ *     note (the intention for this stretch) and the reason it was entered; note
+ *     and why are "" when unset or when no record applies.
+ *   • `intensity` — the effective record's 0–5 level, null when unset.
  *   • `since` — the date the *current* span (the run of consecutive records
  *     sharing this status) began. Null when the default "active" applies with no
  *     record at all.
@@ -301,6 +325,7 @@ export function effectiveRecord(
 	status: LifecycleState;
 	note: string;
 	why: string;
+	intensity: number | null;
 	since: ISODate | null;
 	until: ISODate | null;
 } {
@@ -314,7 +339,14 @@ export function effectiveRecord(
 		}
 	}
 	if (idx < 0) {
-		return { status: "active", note: "", why: "", since: null, until: null };
+		return {
+			status: "active",
+			note: "",
+			why: "",
+			intensity: null,
+			since: null,
+			until: null,
+		};
 	}
 	const rec = history[idx]!;
 	// Walk back over any records sharing this status to find where the span began.
@@ -325,6 +357,7 @@ export function effectiveRecord(
 		status: rec.status,
 		note: rec.note ?? "",
 		why: rec.why ?? "",
+		intensity: rec.intensity ?? null,
 		since: history[start]!.date,
 		until,
 	};
@@ -398,9 +431,9 @@ export function parseDomain(content: string, path: string): Domain | null {
 
 /**
  * Turn a `StatusRecord[]` back into a frontmatter status map. Each value Kairos
- * owns is a `{ status, note?, why? }` object; `note` and `why` are emitted only
- * when present, so a record carrying neither stays `{ status }` rather than
- * round-tripping synthetic empty strings.
+ * owns is a `{ status, intensity?, note?, why? }` object; the optional keys are
+ * emitted only when present, so a record carrying none stays `{ status }` rather
+ * than round-tripping synthetic empty strings. An intensity of 0 is present.
  *
  * Fixable shapes (the flat scalar, a paddable near-miss date) are not
  * preserved: their records are already in `history`, so any write emits them
@@ -412,6 +445,7 @@ export function parseDomain(content: string, path: string): Domain | null {
  */
 interface StatusValue {
 	status: LifecycleState;
+	intensity?: number;
 	note?: string;
 	why?: string;
 }
@@ -429,6 +463,7 @@ function statusMap(
 	for (const r of history) {
 		const value: StatusValue = {
 			status: r.status,
+			...(r.intensity !== undefined ? { intensity: r.intensity } : {}),
 			...(r.note ? { note: r.note } : {}),
 			...(r.why ? { why: r.why } : {}),
 		};
@@ -554,7 +589,7 @@ export function serializeDomainFile(domain: Domain): string {
 //
 // Every history edit funnels through `normalizeHistory`, which is the single
 // place the invariants live: chronological order, one record per date, and no
-// two *consecutive* records carrying the same `{ status, note, why }` (a no-op
+// two *consecutive* records carrying the same `{ status, intensity, note, why }` (a no-op
 // transition holds no information, so the redundant later one is dropped). The
 // Gantt/strength view and the status-history overlay both call these functions,
 // so they are the guardrail — invariant-breaking states can't be written.
@@ -569,7 +604,9 @@ function isProject(entity: Project | Domain): entity is Project {
 }
 
 /**
- * Two records represent the same transition iff status, note AND why all match.
+ * Two records represent the same transition iff status, intensity, note AND why
+ * all match. Intensity counts for the obvious reason: turning a project up for a
+ * week without touching its status or intention is the whole point of the field.
  * `why` counts: two consecutive records sharing a status and a note but holding
  * different reasons hold different information, and collapsing the later one
  * would silently discard a reason the user was just prompted for. Two
@@ -579,6 +616,7 @@ function isProject(entity: Project | Domain): entity is Project {
 function sameTransition(a: StatusRecord, b: StatusRecord): boolean {
 	return (
 		a.status === b.status &&
+		a.intensity === b.intensity &&
 		(a.note ?? "") === (b.note ?? "") &&
 		(a.why ?? "") === (b.why ?? "")
 	);
@@ -588,7 +626,7 @@ function sameTransition(a: StatusRecord, b: StatusRecord): boolean {
  * Enforce the history invariants and return a fresh, sorted array:
  *  1. chronological order (oldest → newest),
  *  2. one record per date (later write wins on a collision),
- *  3. no two consecutive records with identical `{ status, note, why }` — the
+ *  3. no two consecutive records with identical `{ status, intensity, note, why }` — the
  *     redundant later one is dropped, since a no-op transition carries nothing.
  * Pure: the input is never mutated.
  */
@@ -619,8 +657,9 @@ function withHistory<T extends Project | Domain>(
 }
 
 /**
- * Append a status record dated `date` with an optional `note` (what the state
- * entails) and `why` (what moved the entity into it). A same-day record
+ * Append a status record dated `date` with an optional `note` (the intention for
+ * this stretch), `why` (what moved the entity into it) and `intensity` (0–5).
+ * A same-day record
  * is replaced (one status per day); everything else is handled by
  * `normalizeHistory` (ordering, consecutive-duplicate collapse). `archived` is
  * re-derived from the resulting latest record.
@@ -635,14 +674,17 @@ export function appendStatus<T extends Project | Domain>(
 	status: LifecycleState,
 	note?: string,
 	why?: string,
+	intensity?: number,
 ): T {
 	if (!isProject(entity) && status === "archived") return entity;
 
 	const trimmed = note?.trim();
 	const trimmedWhy = why?.trim();
+	const level = coerceIntensity(intensity);
 	const record: StatusRecord = {
 		date,
 		status,
+		...(level !== undefined ? { intensity: level } : {}),
 		...(trimmed ? { note: trimmed } : {}),
 		...(trimmedWhy ? { why: trimmedWhy } : {}),
 	};
@@ -650,9 +692,18 @@ export function appendStatus<T extends Project | Domain>(
 	return withHistory(entity, history);
 }
 
+/** The replacement `editStatusRecord` takes; see there for which keys preserve. */
+export interface StatusEdit {
+	date: ISODate;
+	status: LifecycleState;
+	note?: string;
+	why?: string;
+	intensity?: number;
+}
+
 /**
  * Edit a prior record identified by `originalDate`, replacing its date, status,
- * note and/or why. A no-op if no record carries `originalDate`. The result runs
+ * note, why and/or intensity. A no-op if no record carries `originalDate`. The result runs
  * through `normalizeHistory`, so moving a record's date past a neighbour re-sorts
  * it and any resulting consecutive duplicate is collapsed. The domain-archived
  * guard is preserved (an `archived` edit on a domain is refused, unchanged).
@@ -663,13 +714,15 @@ export function appendStatus<T extends Project | Domain>(
  * four places — are not editing the reason, and would otherwise silently delete
  * a reason the user typed on the Projects page. A form that owns the field, like
  * the status-history modal, always passes the key and so stays fully editable.
- * `note` keeps its older replace-or-drop semantics; every caller that cares
- * about a note already passes it explicitly.
+ * `intensity` follows the same rule as `why` for the same reason: present
+ * replaces (undefined clears), absent preserves. `note` keeps its older
+ * replace-or-drop semantics; every caller that cares about a note already
+ * passes it explicitly.
  */
 export function editStatusRecord<T extends Project | Domain>(
 	entity: T,
 	originalDate: ISODate,
-	next: { date: ISODate; status: LifecycleState; note?: string; why?: string },
+	next: StatusEdit,
 ): T {
 	if (!isProject(entity) && next.status === "archived") return entity;
 	const original = entity.history.find((r) => r.date === originalDate);
@@ -677,9 +730,12 @@ export function editStatusRecord<T extends Project | Domain>(
 
 	const trimmed = next.note?.trim();
 	const why = "why" in next ? next.why?.trim() : original.why;
+	const intensity =
+		"intensity" in next ? coerceIntensity(next.intensity) : original.intensity;
 	const replacement: StatusRecord = {
 		date: next.date,
 		status: next.status,
+		...(intensity !== undefined ? { intensity } : {}),
 		...(trimmed ? { note: trimmed } : {}),
 		...(why ? { why } : {}),
 	};

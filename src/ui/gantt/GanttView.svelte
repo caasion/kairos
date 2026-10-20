@@ -1,10 +1,10 @@
 <script lang="ts">
 	// The Gantt / strength view — "the old season view reborn". A retrospective
-	// visualization of active/inactive spans and note-driven intensity across time,
+	// visualization of active spans, each with its intention and 0–5 intensity,
 	// computed entirely from the history arrays (no stored spans). It is also the
 	// primary editing surface: dragging a span boundary moves the date of the
 	// record that begins the later span, and clicking a span opens a popup to edit
-	// its status/note — both routing through the same guarded edit functions the
+	// its intention/intensity — both routing through the same guarded edit functions the
 	// Projects page uses (projectActions → index → projectFile invariants).
 	//
 	// Rows mirror the Projects page grouping: each domain, its child projects
@@ -51,6 +51,7 @@
 		type Interval,
 	} from "../../gantt/ganttUtils";
 	import { historyToSpans, type Span } from "../../gantt/spans";
+	import { INTENSITY_MAX } from "../../projectFile";
 	import { visibleEntities } from "../../gantt/rows";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
@@ -267,9 +268,11 @@
 
 	// A note for a newly-created active record that is guaranteed *not* to collapse
 	// against the active record in effect immediately before `start`. When the click
-	// lands inside an existing active span (same status), an identical note would be
-	// dropped as a no-op transition, so we pick a default that differs from the
-	// predecessor's note. Empty history / non-active predecessor → no note needed.
+	// lands inside an existing active span (same status), an identical record would
+	// be dropped as a no-op transition, so we seed a placeholder intention that
+	// differs from the predecessor's, for the user to rename. Empty history /
+	// non-active predecessor → no note needed.
+	const NEW_INTENTION = "New intention";
 	function boundaryNote(history: StatusRecord[], start: ISODate): string | undefined {
 		let prev: StatusRecord | undefined;
 		for (const r of history) {
@@ -277,8 +280,7 @@
 			else break;
 		}
 		if (!prev || prev.status !== "active") return undefined; // won't collapse
-		const prevNote = (prev.note ?? "").trim().toLowerCase();
-		return prevNote === "baseline" ? "active" : "baseline";
+		return (prev.note ?? "").trim() === NEW_INTENTION ? undefined : NEW_INTENTION;
 	}
 
 	function pointerX(e: PointerEvent): number {
@@ -394,8 +396,8 @@
 			// If the new active record would sit right after another active one with an
 			// identical note, `normalizeHistory` collapses it (a no-op transition) and
 			// nothing is written — so the popup would have no record to edit. That case
-			// is exactly "click inside an existing active span to change intensity", so
-			// seed a distinguishing note; the popup lets the user rename it immediately.
+			// is exactly "click inside an existing active span to start a new stretch", so
+			// seed a distinguishing note for the user to rename.
 			const note = boundaryNote(d.row.entity.history, start);
 			if (!d.moved || start === end) {
 				// Click → open-ended active (splits an existing open span at `start`).
@@ -483,8 +485,9 @@
 		return null;
 	}
 
-	// Delete removes the selected period; Escape clears selection (and closes an
-	// in-place edit / menu first). Ignored while typing in the description input.
+	// Delete removes the selected period; 0–5 sets its intensity; Escape clears
+	// selection (and closes an in-place edit / menu first). Ignored while typing in
+	// the intention input.
 	function onPlotKeyDown(e: KeyboardEvent) {
 		const t = e.target;
 		if (t instanceof HTMLElement && (t.tagName === "INPUT" || t.isContentEditable)) return;
@@ -494,13 +497,45 @@
 			if (!target) return;
 			e.preventDefault();
 			deletePeriod(target.row, target.span);
+		} else if (/^[0-5]$/.test(key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+			const target = selectedTarget();
+			if (!target) return;
+			e.preventDefault();
+			setIntensity(target.row, target.span, Number(key));
 		} else if (key === "Escape") {
 			if (editingKey) { cancelEditDesc(); return; }
 			selectedKey = null;
 		}
 	}
 
-	// ── In-place description editing (double-click) ──
+	// ── Intensity (0–5) ──
+	// Written onto the span's opening record through the same guarded edit as the
+	// intention; `undefined` clears it back to "no claim". Set from the bar's pips,
+	// the number keys on a selected bar, or the context menu.
+	function setIntensity(row: GanttRow, span: Span, value: number | undefined) {
+		const live = currentRow(row.key);
+		if (!live) return;
+		const next = {
+			date: span.start,
+			status: "active" as LifecycleState,
+			note: span.note ?? "",
+			intensity: value,
+		};
+		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
+		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+	}
+	// A pip click sets that level; clicking the level already set clears it.
+	function clickPip(e: MouseEvent, row: GanttRow, span: Span, level: number) {
+		e.stopPropagation();
+		setIntensity(row, span, span.intensity === level ? undefined : level);
+	}
+	// The bar's fill, as a share of the project colour: 10% a level, so 5 is 50%
+	// and the label stays readable over it. 0 and unset fill nothing.
+	function fillPercent(span: Span): number {
+		return (span.intensity ?? 0) * 10;
+	}
+
+	// ── In-place intention editing (double-click) ──
 	// The bar's label becomes an input seeded with the span's note; committing writes
 	// it back through the same guarded record edit the drags use, keeping the start
 	// date and status untouched.
@@ -574,8 +609,25 @@
 		selectedKey = spanKey(row.key, span.start);
 		const menu = new Menu();
 		menu.addItem((item) =>
-			item.setTitle("Edit description").setIcon("pencil").onClick(() => beginEditDesc(row, span)),
+			item.setTitle("Edit intention").setIcon("pencil").onClick(() => beginEditDesc(row, span)),
 		);
+		for (let level = 0; level <= INTENSITY_MAX; level++) {
+			menu.addItem((item) =>
+				item
+					.setTitle(`Intensity ${level}`)
+					.setSection("intensity")
+					.setChecked(span.intensity === level)
+					.onClick(() => setIntensity(row, span, level)),
+			);
+		}
+		if (span.intensity !== undefined) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Clear intensity")
+					.setSection("intensity")
+					.onClick(() => setIntensity(row, span, undefined)),
+			);
+		}
 		menu.addItem((item) =>
 			item.setTitle("Edit start date…").setIcon("calendar").onClick(() => openDateEdit(row, span, "start")),
 		);
@@ -821,6 +873,9 @@
 									class:open-ended={openEnded}
 									class:clamped-start={box.clampedStart}
 									class:selected={selectedKey === key}
+									class:dormant={span.intensity === 0}
+									class:unrated={span.intensity === undefined}
+									style:--fill={`${fillPercent(span)}%`}
 									style:left={`${box.left}px`}
 									style:width={`${box.width}px`}
 									style:top={`${rowTop(i) + (ROW_HEIGHT - BAR_HEIGHT) / 2}px`}
@@ -828,7 +883,7 @@
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
 									use:peek={{
-										text: span.note || "No description",
+										text: span.note || "No intention",
 										detail: `${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`,
 										always: true,
 									}}
@@ -846,13 +901,30 @@
 											title="Drag to move the start date"
 										></div>
 									{/if}
+									<!-- Intensity pips: N of five filled. Hidden on an unrated bar until
+									     hover, so they double as the way to rate it; dropped on a bar
+									     too narrow to hold them beside a label. -->
+									{#if box.width >= 64}
+										<span class="gantt-pips" title="Intensity: click a dot to set · 0–5 keys on a selected bar">
+											{#each [1, 2, 3, 4, 5] as level (level)}
+												<!-- svelte-ignore a11y_click_events_have_key_events -->
+												<!-- svelte-ignore a11y_no_static_element_interactions -->
+												<span
+													class="gantt-pip"
+													class:on={(span.intensity ?? 0) >= level}
+													onpointerdown={(e) => e.stopPropagation()}
+													onclick={(e) => clickPip(e, row, span, level)}
+												></span>
+											{/each}
+										</span>
+									{/if}
 									{#if editingKey === key}
 										<!-- Fully inline: the input sits in the label's slot with no chrome
 										     of its own, so editing reads as typing over the label text. -->
 										<!-- svelte-ignore a11y_autofocus -->
 										<input
 											class="gantt-bar-edit kairos-inline-input"
-											placeholder="No description"
+											placeholder="No intention"
 											bind:value={editingText}
 											autofocus
 											onclick={(e) => e.stopPropagation()}
@@ -865,7 +937,7 @@
 										/>
 									{:else}
 										<span class="gantt-bar-label" class:placeholder={!span.note}>
-											{#if span.note}{span.note}{:else}No description{/if}
+											{#if span.note}{span.note}{:else}No intention{/if}
 										</span>
 									{/if}
 									<!-- Right edge: drag to move the end date, or (open-ended) to set one.
@@ -1201,13 +1273,43 @@
 		   label does its own ellipsis clipping. */
 		overflow: visible;
 		z-index: 1;
-		/* Colored sides, plain interior: thick accent caps on left/right, a hairline
-		   accent top/bottom, and a background-primary body so the bar reads as a
-		   framed span rather than a filled block. */
+		/* Colored sides, tinted interior: thick accent caps on left/right, a hairline
+		   accent top/bottom, and a body filled with the project colour in proportion
+		   to intensity (--fill, 0–50%), so an unrated bar stays a plain frame. */
 		border: 1px solid color-mix(in srgb, var(--bar-color) 45%, transparent);
 		border-left: 3px solid var(--bar-color);
 		border-right: 3px solid var(--bar-color);
-		background: var(--background-primary);
+		background: color-mix(in srgb, var(--bar-color) var(--fill, 0%), var(--background-primary));
+	}
+	/* Intensity 0: on the books with no time going in — a dashed frame. */
+	.gantt-bar.dormant {
+		border-style: dashed;
+	}
+	.gantt-pips {
+		display: flex;
+		gap: 3px;
+		padding-left: 9px;
+		flex-shrink: 0;
+	}
+	.gantt-pip {
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		border: 1px solid var(--bar-color);
+		cursor: pointer;
+		position: relative;
+		z-index: 3; /* above the left handle */
+	}
+	.gantt-pip.on {
+		background-color: var(--bar-color);
+	}
+	.gantt-bar.unrated .gantt-pips {
+		visibility: hidden;
+	}
+	.gantt-bar.unrated:hover .gantt-pips,
+	.gantt-bar.unrated.selected .gantt-pips {
+		visibility: visible;
+		opacity: 0.6;
 	}
 	.gantt-bar:hover {
 		border-color: color-mix(in srgb, var(--bar-color) 70%, transparent);
@@ -1250,12 +1352,12 @@
 		text-overflow: ellipsis;
 		pointer-events: none;
 	}
-	/* A bar with no note shows a muted "No description" placeholder. */
+	/* A bar with no note shows a muted "No intention" placeholder. */
 	.gantt-bar-label.placeholder {
 		color: var(--text-faint);
 		font-style: italic;
 	}
-	/* In-place description editor: occupies the label's slot with no chrome of its
+	/* In-place intention editor: occupies the label's slot with no chrome of its
 	   own (same font, padding, transparent background) so editing reads as typing
 	   directly over the label — the caret and text sit exactly where the label was. */
 	.gantt-bar-edit {

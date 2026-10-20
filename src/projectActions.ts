@@ -21,6 +21,7 @@ import {
 	setDescription,
 	setDomain,
 	setOrder,
+	type StatusEdit,
 } from "./projectFile";
 
 // ── status history (a hands-off log; editable through the guarded views) ──
@@ -29,8 +30,9 @@ import {
 // `edit*StatusRecord` / `remove*StatusRecord`
 // revise the past. All route through the pure edit functions in projectFile.ts,
 // which own the invariants (order, one-per-date, no consecutive duplicates), so
-// these verbs stay thin. `note` (what the state entails) and `why` (what moved
-// the entity into it) are both freeform open-label text, never logic.
+// these verbs stay thin. `note` (the intention for this stretch) and `why` (what
+// moved the entity into it) are both freeform open-label text, never logic;
+// `intensity` is the explicit 0–5 level.
 
 export function setProjectStatus(
 	index: KairosIndex,
@@ -39,8 +41,9 @@ export function setProjectStatus(
 	status: LifecycleState,
 	note?: string,
 	why?: string,
+	intensity?: number,
 ): void {
-	index.applyProjectEdit(appendStatus(project, date, status, note, why));
+	index.applyProjectEdit(appendStatus(project, date, status, note, why, intensity));
 }
 
 /** Domains are durable: `archived` is refused by `appendStatus`, so the UI
@@ -52,8 +55,9 @@ export function setDomainStatus(
 	status: LifecycleState,
 	note?: string,
 	why?: string,
+	intensity?: number,
 ): void {
-	index.applyDomainEdit(appendStatus(domain, date, status, note, why));
+	index.applyDomainEdit(appendStatus(domain, date, status, note, why, intensity));
 }
 
 /**
@@ -93,7 +97,7 @@ export function editProjectStatusRecord(
 	index: KairosIndex,
 	project: Project,
 	originalDate: ISODate,
-	next: { date: ISODate; status: LifecycleState; note?: string; why?: string },
+	next: StatusEdit,
 ): void {
 	index.applyProjectEdit(editStatusRecord(project, originalDate, next));
 }
@@ -102,7 +106,7 @@ export function editDomainStatusRecord(
 	index: KairosIndex,
 	domain: Domain,
 	originalDate: ISODate,
-	next: { date: ISODate; status: LifecycleState; note?: string; why?: string },
+	next: StatusEdit,
 ): void {
 	index.applyDomainEdit(editStatusRecord(domain, originalDate, next));
 }

@@ -154,6 +154,7 @@ describe("effectiveRecord", () => {
 			status: "active",
 			note: "",
 			why: "",
+			intensity: null,
 			since: null,
 			until: null,
 		});
@@ -165,6 +166,7 @@ describe("effectiveRecord", () => {
 			status: "active",
 			note: "baseline",
 			why: "",
+			intensity: null,
 			since: "2026-01-01",
 			until: null, // still open
 		});
@@ -176,6 +178,7 @@ describe("effectiveRecord", () => {
 			status: "active",
 			note: "hard",
 			why: "",
+			intensity: null,
 			since: "2026-01-01",
 			until: "2026-06-01",
 		});
@@ -190,9 +193,15 @@ describe("effectiveRecord", () => {
 			status: "active",
 			note: "",
 			why: "",
+			intensity: null,
 			since: "2026-01-01",
 			until: "2026-08-07",
 		});
+	});
+
+	it("surfaces the effective record's intensity", () => {
+		const h: StatusRecord[] = [{ date: "2026-01-01", status: "active", intensity: 4 }];
+		expect(effectiveRecord(h, "2026-08-04")).toMatchObject({ intensity: 4 });
 	});
 
 	it("surfaces the effective record's reason", () => {
@@ -255,6 +264,24 @@ describe("parseStatus", () => {
 		).toEqual([
 			{ date: "2026-07-18", status: "inactive", note: "on hold", why: "burned out" },
 			{ date: "2026-07-23", status: "active", why: "picked it back up" },
+		]);
+	});
+
+	it("parses intensity, rounding and clamping a number and dropping a non-number", () => {
+		expect(
+			parseStatus({
+				"2026-07-18": { status: "active", intensity: 0 },
+				"2026-07-19": { status: "active", intensity: 3.6 },
+				"2026-07-20": { status: "active", intensity: 9 },
+				"2026-07-21": { status: "active", intensity: "2" },
+				"2026-07-22": { status: "active", intensity: "high" },
+			}),
+		).toEqual([
+			{ date: "2026-07-18", status: "active", intensity: 0 },
+			{ date: "2026-07-19", status: "active", intensity: 4 },
+			{ date: "2026-07-20", status: "active", intensity: 5 },
+			{ date: "2026-07-21", status: "active", intensity: 2 },
+			{ date: "2026-07-22", status: "active" },
 		]);
 	});
 
@@ -351,6 +378,20 @@ describe("serialization round-trip", () => {
 		// synthetic empty strings in the user's file.
 		expect(fm).not.toContain('why: ""');
 		expect(fm).not.toContain('note: ""');
+	});
+
+	it("round-trips intensity, 0 included, as a number", () => {
+		const base = parseProject(PROJECT, "Projects/Alpha.md")!;
+		const original: Project = {
+			...base,
+			history: [
+				{ date: "2026-07-18", status: "active", intensity: 0, note: "on the books" },
+				{ date: "2026-07-23", status: "active", intensity: 5, note: "get it done this week" },
+			],
+		};
+		const fm = serializeProjectFrontmatter(original);
+		expect(fm).toContain("intensity: 0");
+		expect(parseProject(fm, "Projects/Alpha.md")!.history).toEqual(original.history);
 	});
 
 	it("domain frontmatter round-trips through parse", () => {
@@ -459,10 +500,18 @@ describe("normalizeHistory", () => {
 		).toEqual([r("2026-01-01", "active", "hard")]);
 	});
 
-	it("does NOT collapse when the note differs (intensity change is meaningful)", () => {
+	it("does NOT collapse when the note differs (a new intention is meaningful)", () => {
 		const h = normalizeHistory([
 			r("2026-01-01", "active", "baseline"),
 			r("2026-02-01", "active", "hard"),
+		]);
+		expect(h).toHaveLength(2);
+	});
+
+	it("does NOT collapse when only the intensity differs", () => {
+		const h = normalizeHistory([
+			{ date: "2026-01-01", status: "active", intensity: 2 },
+			{ date: "2026-02-01", status: "active", intensity: 5 },
 		]);
 		expect(h).toHaveLength(2);
 	});
@@ -531,6 +580,33 @@ describe("editStatusRecord", () => {
 			why: "",
 		});
 		expect(cleared.history.at(-1)).toEqual({ date: "2026-08-01", status: "inactive" });
+	});
+
+	it("preserves intensity when `next` omits the key, replaces or clears it when present", () => {
+		const base = editStatusRecord(proj(), "2026-07-23", {
+			date: "2026-07-23",
+			status: "active",
+			intensity: 4,
+		});
+		expect(base.history.at(-1)?.intensity).toBe(4);
+		const moved = editStatusRecord(base, "2026-07-23", {
+			date: "2026-07-24",
+			status: "active",
+			note: "",
+		});
+		expect(moved.history.at(-1)).toEqual({ date: "2026-07-24", status: "active", intensity: 4 });
+		const zeroed = editStatusRecord(base, "2026-07-23", {
+			date: "2026-07-23",
+			status: "active",
+			intensity: 0,
+		});
+		expect(zeroed.history.at(-1)?.intensity).toBe(0);
+		const cleared = editStatusRecord(base, "2026-07-23", {
+			date: "2026-07-23",
+			status: "active",
+			intensity: undefined,
+		});
+		expect(cleared.history.at(-1)).toEqual({ date: "2026-07-23", status: "active" });
 	});
 
 	it("is a no-op when originalDate is not present", () => {
