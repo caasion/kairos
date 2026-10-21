@@ -4,7 +4,7 @@ Kairos is for people whose time isn't fully their own (students, employees, or a
 
 Kairos is a time-centric productivity app that helps you turn intentions into action. Most tools let tasks float in a backlog. Kairos doesn't. It asks one thing of you: decide *when* and *where* the work happens. That constraint is the whole point. A task you've placed in your day is a commitment; a task you haven't is just a wish.
 
-<!-- GIF: docs/media/hero.gif — a daily note's markdown beside the Day view, editing one updates the other -->
+![A daily note's markdown beside the Day view, editing one updates the other](https://raw.githubusercontent.com/caasion/kairos/main/docs/media/hero.gif)
 
 Your day is built from time blocks, and work lives as tasks inside them. A real, complete day is stored in markdown:
 ```markdown
@@ -31,17 +31,17 @@ The key philosophy:
 Select the hourglass icon in the ribbon to open any of them.
 
 - **Day** and **Week**: your timeline. Drag on empty time to make a block, then add tasks inside it.
-  <!-- GIF: docs/media/day-blocks.gif — drag out a block, rename it, add tasks, check one off -->
+  ![Drag out a block, rename it, add tasks, check one off](https://raw.githubusercontent.com/caasion/kairos/main/docs/media/day-blocks.gif)
 - **Grid**: one row per project or domain, one column per day. Triage what you're doing and when, then drag tasks onto the timeline to schedule them.
-  <!-- GIF: docs/media/grid-drag.gif — drag a task to another day, then to another row -->
-  <!-- GIF: docs/media/grid-to-timeline.gif — drag a Grid task onto empty time in the Day view -->
+  ![Drag a task to another day, then to another row](https://raw.githubusercontent.com/caasion/kairos/main/docs/media/grid-drag.gif)
+  ![Drag a Grid task onto empty time in the Day view](https://raw.githubusercontent.com/caasion/kairos/main/docs/media/grid-to-timeline.gif)
 - **Backlog**: intentions you haven't scheduled yet. Give one a resurface date and it shows up in your day when it's time.
-  <!-- GIF: docs/media/backlog-nudge.gif — a resurfaced item, then the arrow schedules it -->
+  ![A resurfaced item, then the arrow schedules it](https://raw.githubusercontent.com/caasion/kairos/main/docs/media/backlog-nudge.gif)
 - **Routines**: blocks and tasks that repeat. Kairos offers the missing ones each day; you add them on purpose.
-  <!-- GIF: docs/media/routines.gif — the routines pill on a column header, then Add all -->
+  ![The routines pill on a column header, then Add all](https://raw.githubusercontent.com/caasion/kairos/main/docs/media/routines.gif)
 - **Projects & domains**: create and organise what your work belongs to, and record when you're focused on each.
 - **Timeline**: which projects were active when, and how hard you pushed them.
-  <!-- GIF: docs/media/timeline-intensity.gif — set a bar's intensity with the pips -->
+  ![Set a bar's intensity with the pips](https://raw.githubusercontent.com/caasion/kairos/main/docs/media/timeline-intensity.gif)
 
 ## Get started
 
