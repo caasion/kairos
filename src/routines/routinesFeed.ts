@@ -10,6 +10,9 @@
 //   • `active$` yields whether a routine's project or domain is active on a
 //     date (owners.ts), fresh whenever the project/domain files change, so a
 //     paused routine drops out of every view as soon as its owner goes inactive.
+//   • `carried$` yields the `kairos-carried` value a date's note records, the
+//     day whose leftovers were dealt with, republished like `marks$`, so the
+//     Day view's leftovers list goes away once you leave the rest.
 // Obsidian glue only; the decisions live in preview.ts and plan.ts.
 
 import { TFile, moment } from "obsidian";
@@ -18,8 +21,9 @@ import { derived, writable } from "svelte/store";
 import type { Readable } from "svelte/store";
 import { getAllDailyNotes, getDailyNote, getDateFromPath } from "obsidian-daily-notes-interface";
 import type Kairos from "../main";
-import type { ISODate } from "../types";
+import type { ISODate, SourceRef } from "../types";
 import { ROUTINES_KEY } from "./apply";
+import { CARRIED_KEY } from "../carry";
 import { ownerActive, type OwnerActive } from "./owners";
 import type { ParsedRoutines, Routine } from "./routinesFile";
 import type { RoutinesStore } from "./routinesStore";
@@ -38,15 +42,27 @@ export interface RoutineActions {
 	addAll: (date: ISODate) => void;
 }
 
+/** What the Day view needs to offer the previous day's leftovers and act on them. */
+export interface LeftoverActions {
+	/** The day a date's note says its leftovers came from, if they were dealt with. */
+	carried$: Readable<RoutineMarks>;
+	/** Bring the tasks at `which` (or every leftover) from `from` into `date`. */
+	bring: (date: ISODate, from: ISODate, which?: SourceRef[]) => void;
+	/** Leave the rest where they are and stop offering them on `date`. */
+	leave: (date: ISODate, from: ISODate) => void;
+}
+
 const DEBOUNCE_MS = 250;
 
 export class RoutinesFeed {
 	private marksStore = writable<RoutineMarks>(() => undefined);
+	private carriedStore = writable<RoutineMarks>(() => undefined);
 	private marksTimer: number | undefined;
 
 	/** The parsed routines file — the RoutinesStore's copy, shared, not re-read. */
 	readonly routines$: Readable<ParsedRoutines>;
 	readonly marks$: Readable<RoutineMarks> = { subscribe: this.marksStore.subscribe };
+	readonly carried$: Readable<RoutineMarks> = { subscribe: this.carriedStore.subscribe };
 	readonly active$: Readable<OwnerActive>;
 
 	constructor(
@@ -72,6 +88,16 @@ export class RoutinesFeed {
 			active$: this.active$,
 			insert: (date, routines) => void preparer().insertRoutines(date, routines),
 			addAll: (date) => void preparer().applyToDate(date),
+		};
+	}
+
+	/** The Day view's leftovers data and actions, for its props. */
+	leftoverActions(): LeftoverActions {
+		const preparer = () => this.plugin.dayPreparer;
+		return {
+			carried$: this.carried$,
+			bring: (date, from, which) => void preparer().bringLeftovers(date, from, which),
+			leave: (date, from) => void preparer().leaveLeftovers(date, from),
 		};
 	}
 
@@ -108,8 +134,7 @@ export class RoutinesFeed {
 		// Each published lookup scans the daily notes at most once, and answers
 		// each date at most once, however often a view re-renders.
 		let all: ReturnType<typeof getAllDailyNotes> | undefined;
-		const memo = new Map<ISODate, string | undefined>();
-		const read = (date: ISODate): string | undefined => {
+		const read = (date: ISODate, key: string): string | undefined => {
 			let note: TFile | null = null;
 			try {
 				all ??= getAllDailyNotes();
@@ -118,15 +143,20 @@ export class RoutinesFeed {
 				return undefined;
 			}
 			if (!note) return undefined;
-			const value: unknown = metadataCache.getFileCache(note)?.frontmatter?.[ROUTINES_KEY];
+			const value: unknown = metadataCache.getFileCache(note)?.frontmatter?.[key];
 			if (typeof value === "string") return value;
 			if (typeof value === "number") return String(value);
 			return undefined;
 		};
-		this.marksStore.set((date) => {
-			if (!memo.has(date)) memo.set(date, read(date));
-			return memo.get(date);
-		});
+		const lookup = (key: string): RoutineMarks => {
+			const memo = new Map<ISODate, string | undefined>();
+			return (date) => {
+				if (!memo.has(date)) memo.set(date, read(date, key));
+				return memo.get(date);
+			};
+		};
+		this.marksStore.set(lookup(ROUTINES_KEY));
+		this.carriedStore.set(lookup(CARRIED_KEY));
 	}
 }
 

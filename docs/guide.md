@@ -114,7 +114,14 @@ A routine that belongs to an inactive project or domain is paused, and shows as 
 
 ## Carry unfinished tasks forward
 
-When today's note is created, Kairos moves open and half-done tasks from your most recent earlier note into today's **Unscheduled**. Done and cancelled tasks stay where they were.
+Open and half-done tasks from your most recent earlier note show in today's Day view under **Left from** that day. Nothing moves until you choose:
+
+- **Mark it done:** select the checkbox. The task is ticked on the day you left it, for something you did but forgot to tick. Long-press to cancel it instead.
+- **Bring it to today:** select the arrow. The task moves into today's **Unscheduled**.
+- **Bring all** moves every task in the list.
+- **Leave the rest** keeps the remaining tasks open where they are and hides the list for today.
+
+Done and cancelled tasks are never listed. A task that today already has, such as a routine task, isn't listed either.
 
 ## Manage projects and domains
 

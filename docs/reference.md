@@ -122,7 +122,7 @@ status:
 
 ### Frontmatter Kairos adds to daily notes
 
-- `kairos-carried`: the day unfinished tasks were carried from.
+- `kairos-carried`: the earlier day whose unfinished tasks were dealt with, written when you select **Leave the rest**. Notes from earlier versions have it from when tasks moved automatically. Safe to delete: today is then offered that day's open tasks again.
 - `kairos-routines`: a fingerprint of the routines the day was set up with. Safe to delete: the day is then offered its routines again.
 
 ## Mouse and keyboard

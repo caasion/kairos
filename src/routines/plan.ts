@@ -1,9 +1,9 @@
 // Day preparation, decided — the pure half of dayPrep.ts.
 //
 // `planDayPrep` takes everything the glue knows about one day (its blocks, its
-// frontmatter keys, the previous note, the routines) and returns what should
-// change: the new blocks for this day and the previous one, the frontmatter
-// keys to set or delete, and an `outcome` the command turns into a message.
+// frontmatter keys, the routines) and returns what should change: the day's new
+// blocks, the frontmatter keys to set or delete, and an `outcome` the command
+// turns into a message.
 // dayPrep.ts only gathers the inputs and performs the writes, so every decision
 // in the table below is unit-tested here without Obsidian.
 //
@@ -16,15 +16,14 @@
 //   auto     today/future    different               nothing; outcome "stale"
 //   manual   any             any                     applied, hash recorded
 //
-// Carry-over runs only in `auto` mode, only for today, and only once per note
-// (`kairos-carried` absent). It runs before routines, so a routine task that
-// carried in open from yesterday is found and not added a second time.
+// Carry-over isn't part of day preparation any more: the previous day's open
+// tasks are offered in today's Day view and move only when asked (carry.ts,
+// decision 105).
 //
 // Routines whose project or domain isn't active on the date are left out of
 // everything here, the hash included (decision 87, owners.ts).
 
 import type { Block, ISODate } from "../types";
-import { CARRIED_KEY, carryOver } from "../carry";
 import { ROUTINES_KEY, applyRoutines, routinesFor, routinesHash } from "./apply";
 import { activeRoutines, type OwnerActive } from "./owners";
 import type { ParsedRoutines, Routine } from "./routinesFile";
@@ -39,10 +38,6 @@ export interface PrepInput {
 	blocks: Block[];
 	/** The note's `kairos-routines` value, if it has one. */
 	recorded?: string;
-	/** Whether the note already has a `kairos-carried` key. */
-	carried: boolean;
-	/** The most recent earlier daily note, for carry-over. */
-	previous?: { date: ISODate; path: string; blocks: Block[] };
 	routines: Routine[];
 	/** Whether a routine's owner is active on a date; without it, every routine is. */
 	active?: OwnerActive;
@@ -52,7 +47,7 @@ export interface PrepInput {
 
 export type PrepOutcome =
 	| "past" // auto mode on a past day: nothing considered
-	| "off" // auto mode with the setting off: carry-over only
+	| "off" // auto mode with the setting off: nothing
 	| "none-due" // no routines occur on this date
 	| "added" // at least one routine item was added
 	| "present" // routines are due and every one is already in the day
@@ -61,12 +56,8 @@ export type PrepOutcome =
 
 export interface PrepPlan {
 	outcome: PrepOutcome;
-	/** This day's blocks after carry-over and routines. */
+	/** This day's blocks after routines. */
 	blocks: Block[];
-	/** The previous note's blocks after carry-over, when anything moved. */
-	previous?: { date: ISODate; path: string; blocks: Block[] };
-	/** How many tasks carried in. */
-	carried: number;
 	/** How many routine blocks/tasks were added. */
 	added: number;
 	/** How many routines occur on this date (active owners only). */
@@ -86,25 +77,12 @@ export function planDayPrep(input: PrepInput): PrepPlan {
 	const frontmatter: Record<string, string | null> = {};
 
 	if (mode === "auto" && date < today) {
-		return { outcome: "past", blocks: input.blocks, carried: 0, added: 0, due, paused, frontmatter };
+		return { outcome: "past", blocks: input.blocks, added: 0, due, paused, frontmatter };
 	}
 
-	// Carry-over first, so routines see what carried in.
-	let blocks = input.blocks;
-	let previous: PrepPlan["previous"];
-	let carried = 0;
-	if (mode === "auto" && date === today && !input.carried && input.previous) {
-		const r = carryOver(input.previous.blocks, blocks, path);
-		if (r.moved > 0) {
-			blocks = r.to;
-			previous = { ...input.previous, blocks: r.from };
-			carried = r.moved;
-			frontmatter[CARRIED_KEY] = input.previous.date;
-		}
-	}
-
+	const blocks = input.blocks;
 	const hash = routinesHash(routines, date);
-	const base = { blocks, carried, due, paused, frontmatter, ...(previous ? { previous } : {}) };
+	const base = { blocks, due, paused, frontmatter };
 
 	if (mode === "auto" && !input.autoApply) {
 		return { ...base, outcome: "off", added: 0 };

@@ -122,7 +122,6 @@ describe("routines pause with their owner", () => {
 			today: MON,
 			path: "day.md",
 			blocks: [],
-			carried: false,
 			routines,
 			active,
 			autoApply: false,

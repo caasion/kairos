@@ -1,4 +1,4 @@
-// Day preparation — the Obsidian glue that runs carry-over and routines.
+// Day preparation — the Obsidian glue that runs routines and carry-over.
 //
 // Every decision (carry or not, apply or not, which frontmatter keys change)
 // lives in plan.ts and is unit-tested there. This module only decides WHEN to
@@ -8,8 +8,10 @@
 // Triggers:
 //   • A daily note is created (by Kairos, the Daily Notes plugin, Templater, or
 //     a sync). After a short delay — so a template finishes writing first — the
-//     day is prepared once in `auto` mode: carry-over always, routines only
-//     when "Add routines to new daily notes" is on (see plan.ts for the table).
+//     day is prepared once in `auto` mode: routines only when "Add routines to
+//     new daily notes" is on (see plan.ts for the table). Carry-over never runs
+//     here: today's Day view offers yesterday's open tasks, and `bringLeftovers`
+//     / `leaveLeftovers` below act on the answer (carry.ts, decision 105).
 //   • The "Apply routines to this day" command, in `manual` mode. "This day" is
 //     the day the Day view shows when it is focused, else the open daily note,
 //     else a day the user picks. It never silently creates a note the user
@@ -23,8 +25,8 @@ import { MarkdownView, Notice, SuggestModal, TFile } from "obsidian";
 import type { App } from "obsidian";
 import { getDateFromPath } from "obsidian-daily-notes-interface";
 import type Kairos from "../main";
-import type { Block, ISODate } from "../types";
-import { CARRIED_KEY, previousDay } from "../carry";
+import type { Block, ISODate, SourceRef } from "../types";
+import { CARRIED_KEY, carryOver } from "../carry";
 import { ensureNoteForDate, shiftISO, todayISO } from "../dayNote";
 import { parseSchedule } from "../parser";
 import { KairosView } from "../KairosView";
@@ -118,6 +120,41 @@ export class DayPreparer {
 		if (r.added > 0) this.plugin.indexAdapter.index.applyDayEdit(date, file.path, r.blocks);
 	}
 
+	/**
+	 * Bring leftovers from the earlier day `from` into `date`'s Unscheduled
+	 * list: the tasks at `which`, or every open and half-done one. A move, as
+	 * one cross-day edit, creating `date`'s note if it has none yet.
+	 */
+	async bringLeftovers(date: ISODate, from: ISODate, which?: SourceRef[]): Promise<void> {
+		const index = this.plugin.indexAdapter.index;
+		if (!index.snapshot().days.get(from)) return;
+		const file = await this.noteFor(date);
+		if (!file) return;
+		// Re-read after the await: the note's creation may have reindexed days.
+		const prev = index.snapshot().days.get(from);
+		if (!prev) return;
+		const blocks = await this.currentBlocks(file, date);
+		const pick = which
+			? (t: { source: SourceRef }) =>
+					which.some((s) => s.path === t.source.path && s.line === t.source.line)
+			: undefined;
+		const r = carryOver(prev.blocks, blocks, file.path, pick);
+		if (r.moved > 0) index.applyCrossDayMove(from, prev.path, r.from, date, file.path, r.to);
+	}
+
+	/**
+	 * Leave the remaining leftovers from `from` where they are: record on
+	 * `date`'s note that they were dealt with, so the Day view stops offering
+	 * them. Creates the note if it has none yet.
+	 */
+	async leaveLeftovers(date: ISODate, from: ISODate): Promise<void> {
+		const file = await this.noteFor(date);
+		if (!file) return;
+		await this.plugin.app.fileManager.processFrontMatter(file, (front: Record<string, unknown>) => {
+			front[CARRIED_KEY] = from;
+		});
+	}
+
 	/** The daily note for `date`, created if missing; null (with a notice) on failure. */
 	private async noteFor(date: ISODate): Promise<TFile | null> {
 		try {
@@ -187,10 +224,8 @@ export class DayPreparer {
 		const { app } = this.plugin;
 		const index = this.plugin.indexAdapter.index;
 		const fm = app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-		const days = index.snapshot().days;
 		const blocks = await this.currentBlocks(file, date);
 		const recorded = readKey(fm[ROUTINES_KEY]);
-		const prev = previousDay(days, date);
 
 		const plan = planDayPrep({
 			mode,
@@ -199,8 +234,6 @@ export class DayPreparer {
 			path: file.path,
 			blocks,
 			...(recorded !== undefined ? { recorded } : {}),
-			carried: fm[CARRIED_KEY] !== undefined,
-			...(prev ? { previous: { date: prev.date, path: prev.path, blocks: prev.blocks } } : {}),
 			routines: parsed.routines,
 			active: this.ownerActive(),
 			autoApply: this.plugin.settings.autoApplyRoutines,
@@ -220,16 +253,7 @@ export class DayPreparer {
 			});
 		}
 
-		if (plan.previous) {
-			index.applyCrossDayMove(
-				plan.previous.date,
-				plan.previous.path,
-				plan.previous.blocks,
-				date,
-				file.path,
-				plan.blocks,
-			);
-		} else if (plan.added > 0) {
+		if (plan.added > 0) {
 			index.applyDayEdit(date, file.path, plan.blocks);
 		}
 		return plan;

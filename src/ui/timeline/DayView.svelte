@@ -21,7 +21,10 @@
 		nestTaskUnderBlock,
 		notesWithAdded,
 		notesWithText,
+		setTaskStatus,
 	} from "../../writer";
+	import { leftovers, type Leftover } from "../../carry";
+	import LeftoverTask from "./LeftoverTask.svelte";
 	import { surfacedOn } from "../../backlogModel";
 	import {
 		insertEntry,
@@ -46,7 +49,7 @@
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import TaskRow from "../task/Task.svelte";
 	import { requestRepeat } from "../../routines/repeat";
-	import type { RoutineActions } from "../../routines/routinesFeed";
+	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
 	import { routinesToOffer } from "../../routines/preview";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
 	import { dayLabel } from "../../routines/plan";
@@ -100,10 +103,21 @@
 		onDateChange?: (date: ISODate) => void;
 		// The shown day's missing routines, folded into a bar at the top.
 		routineActions: RoutineActions;
+		// The previous day's open tasks, offered on today (carry.ts).
+		leftoverActions: LeftoverActions;
 	}
 
-	let { app, index, settings$, reveal$, updateSettings, links, onDateChange, routineActions }: Props =
-		$props();
+	let {
+		app,
+		index,
+		settings$,
+		reveal$,
+		updateSettings,
+		links,
+		onDateChange,
+		routineActions,
+		leftoverActions,
+	}: Props = $props();
 
 	// Mirrors of the cross-view stores (subscribed on mount, like the resolver):
 	// the live task drag from any view, and the item under the pointer.
@@ -244,6 +258,58 @@
 			active: $active$,
 		});
 	});
+	// ── Leftovers ──
+	// On today only: the open and half-done tasks still on the most recent
+	// earlier note, each to bring here or mark done there. Shown in full, like
+	// Unscheduled and Resurfacing, since each is an open decision. The list goes
+	// away when it's empty or once "Leave the rest" records the day on today's
+	// note (`kairos-carried`); `leftHidden` hides it the moment you click.
+	let leftDay = $state<Day | undefined>(undefined);
+	let leftHidden = $state<ISODate | null>(null);
+	// Follow the day before the shown day while it is today. Keyed on `date`, so
+	// a view left open past midnight picks up the new day's leftovers once it
+	// moves to the new today.
+	$effect(() => {
+		const shown = date;
+		if (shown !== todayISO()) {
+			leftDay = undefined;
+			return;
+		}
+		return index.dayBefore(shown).subscribe((d) => {
+			leftDay = d;
+		});
+	});
+	// svelte-ignore state_referenced_locally
+	const { carried$ } = leftoverActions;
+	const offeredLeftovers = $derived.by<Leftover[]>(() => {
+		const today = todayISO();
+		if (date !== today || !leftDay || leftHidden === leftDay.date) return [];
+		if ($carried$(today) !== undefined) return [];
+		return leftovers(leftDay.blocks, blocks);
+	});
+	function bringLeftover(l: Leftover) {
+		if (leftDay) leftoverActions.bring(date, leftDay.date, [l.task.source]);
+	}
+	function bringAllLeftovers() {
+		if (!leftDay) return;
+		leftoverActions.bring(
+			date,
+			leftDay.date,
+			offeredLeftovers.map((l) => l.task.source),
+		);
+	}
+	function leaveLeftovers() {
+		if (!leftDay) return;
+		leftHidden = leftDay.date;
+		leftoverActions.leave(date, leftDay.date);
+	}
+	// Mark it on the day it was left on: done or cancelled stays a record there.
+	function settleLeftover(l: Leftover, status: TaskStatus) {
+		const day = leftDay;
+		if (!day) return;
+		index.applyDayEdit(day.date, day.path, setTaskStatus(day.blocks, l.owner, l.task, status));
+	}
+
 	// The daily note backing `date`, or null when that day has no note yet. An
 	// empty day still renders (an empty timeline) — the note is created lazily on
 	// the first write (see `notePathForWrite`).
@@ -1327,6 +1393,34 @@
 			</div>
 		{/if}
 
+		<!-- Leftovers: yesterday's open tasks, asked about rather than moved. -->
+		{#if offeredLeftovers.length > 0 && leftDay}
+			{@const from = dayLabel(leftDay.date)}
+			<div class="day-leftovers">
+				<div class="lo-header">
+					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+					<span>Left from {from}</span>
+					<span class="lo-count">{offeredLeftovers.length}</span>
+					<span class="lo-spacer"></span>
+					<button class="lo-action" title="Move every task here to today's Unscheduled" onclick={bringAllLeftovers}>Bring all</button>
+					<button class="lo-action" title={`Leave the rest open on ${from}`} onclick={leaveLeftovers}>Leave the rest</button>
+				</div>
+				{#each offeredLeftovers as l (l.task.source.line)}
+					{@const assoc = l.task.assoc ?? l.owner.assoc}
+					<LeftoverTask
+						task={l.task}
+						association={assoc}
+						resolved={assoc ? resolve(assoc) : undefined}
+						fromLabel={from}
+						onDone={() => settleLeftover(l, "x")}
+						onCancel={() => settleLeftover(l, "-")}
+						onBring={() => bringLeftover(l)}
+						{onNavigate}
+					/>
+				{/each}
+			</div>
+		{/if}
+
 		<!-- Resurfacing: backlog nudges due on this day. A separate section, like
 		     Unscheduled, but the items live in the backlog until inserted. -->
 		{#if surfaced.length > 0}
@@ -1844,6 +1938,53 @@
 	.day-routines {
 		flex-shrink: 0;
 		padding: 4px 8px 0;
+	}
+
+	/* ── Leftovers (the previous day's open tasks, offered on today) ── */
+	.day-leftovers {
+		border-bottom: 1px solid var(--background-modifier-border);
+		padding: 2px 8px 6px;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+	.lo-header {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 5px 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		user-select: none;
+	}
+	.lo-header svg {
+		flex-shrink: 0;
+	}
+	.lo-count {
+		font-size: 10px;
+		font-weight: 400;
+		color: var(--text-faint);
+		margin-left: 2px;
+	}
+	.lo-spacer {
+		flex: 1;
+	}
+	.lo-action {
+		height: auto;
+		padding: 1px 6px;
+		font-size: 10px;
+		font-weight: 500;
+		color: var(--text-muted);
+		background: transparent;
+		box-shadow: none;
+		border-radius: var(--radius-s);
+		cursor: pointer;
+	}
+	.lo-action:hover {
+		color: var(--text-normal);
+		background: var(--background-modifier-hover);
+		box-shadow: none;
 	}
 
 	/* ── Resurfacing (backlog nudges due today) ── */

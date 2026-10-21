@@ -53,6 +53,7 @@ export class KairosView extends ItemView {
 					this.plugin.links.setDayDate(date);
 				},
 				routineActions: this.plugin.routinesFeed.actions(),
+				leftoverActions: this.plugin.routinesFeed.leftoverActions(),
 			},
 		});
 	}
