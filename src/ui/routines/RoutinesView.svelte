@@ -23,6 +23,7 @@
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import type { BlockOption } from "../../blockOptions";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import { createAssociation } from "../association/createAssociation";
 	import { RuleModal } from "./RuleModal";
 	import type { Readable } from "svelte/store";
 	import type { RoutinesStore } from "../../routines/routinesStore";
@@ -436,6 +437,7 @@
 {#if pickerRoutine && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
+		create={(kind, name) => createAssociation(index, kind, name)}
 		current={shownAssoc(pickerRoutine)}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

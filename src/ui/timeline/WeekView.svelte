@@ -40,6 +40,7 @@
 	import { dayLabel } from "../../routines/plan";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import {
@@ -932,6 +933,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
+		create={(kind, name) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

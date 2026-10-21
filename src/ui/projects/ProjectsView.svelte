@@ -500,6 +500,20 @@
 			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/></svg>
 		</button>
 
+		<!-- Always here, so a first project needs no domain (the Unassigned group's
+		     own + only shows once a domain-less project exists). -->
+		<button
+			class="add-btn"
+			title="New project"
+			onclick={(e) => {
+				e.stopPropagation();
+				createProject(undefined);
+			}}
+			aria-label="New project"
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+		</button>
+
 		<button
 			class="add-btn"
 			title="New domain"
