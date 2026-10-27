@@ -45,6 +45,7 @@
 	} from "../../writer";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import type { GridDay, GridSnapshot, KairosIndex, Resolver } from "../../index";
+	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { hitTestGridCell, hitTestGridGroup, hitTestTimeline, type BlockDragState, type GridDropSlot, type GridGroupDrop, type TaskDragState } from "../timeline/taskDrag";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline } from "../timeline/dropTask";
@@ -609,6 +610,13 @@
 	// Re-hit-tested at pointerup to get the freshest drop slot.
 	let lastPointerX = 0;
 	let lastPointerY = 0;
+	// Scrolls the grid (or a timeline the drag is over) near its edge, for a
+	// task or a block drag (see dragScroll.ts).
+	let dragScroll: DragScroll | undefined;
+	function stopDragScroll() {
+		dragScroll?.stop();
+		dragScroll = undefined;
+	}
 
 	function onTaskGrab(task: ResolvedTask, event: PointerEvent) {
 		lastPointerX = event.clientX;
@@ -624,6 +632,8 @@
 		// Show the task's day in the Day view, so its blocks are there to drop on.
 		focusDay(task.date);
 		hitTestDrag(event);
+		dragScroll?.stop();
+		dragScroll = startDragScroll(event, onTaskDragMove);
 	}
 
 	function onTaskDragMove(event: PointerEvent) {
@@ -637,6 +647,7 @@
 			duplicate: event.ctrlKey || event.metaKey,
 		};
 		hitTestDrag(event);
+		dragScroll?.update(event);
 	}
 
 	// Find what's under the pointer — a timeline first, then a block group, else
@@ -696,6 +707,7 @@
 		groupDrop = null;
 		timelineDrop = null;
 		clearSpring();
+		stopDragScroll();
 		links.setDrag(null);
 	}
 
@@ -901,6 +913,8 @@
 			duplicate: event.ctrlKey || event.metaKey,
 		};
 		blockDrop = hitTestGridCell(event);
+		dragScroll?.stop();
+		dragScroll = startDragScroll(event, onBlockDragMove);
 	}
 
 	function onBlockDragMove(event: PointerEvent) {
@@ -914,6 +928,7 @@
 			duplicate: event.ctrlKey || event.metaKey,
 		};
 		blockDrop = hitTestGridCell(event);
+		dragScroll?.update(event);
 	}
 
 	async function onBlockDragUp() {
@@ -923,6 +938,7 @@
 		const drop = hitTestGridCell(synth) ?? blockDrop;
 		blockDrag = null;
 		blockDrop = null;
+		stopDragScroll();
 		if (!drop) return;
 
 		const sourceDate = drag.sourceDate as ISODate;
@@ -992,6 +1008,7 @@
 	function cancelBlockDrag() {
 		blockDrag = null;
 		blockDrop = null;
+		stopDragScroll();
 	}
 
 	// True when the given cell (date + row) is the live drop target for either
@@ -1210,6 +1227,7 @@
 			unsubDayDate();
 			unsubHover();
 			if (taskDrag) endTaskDrag();
+			stopDragScroll();
 			unsubscribeGrid?.();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
@@ -1360,7 +1378,7 @@
 		{/each}
 	</div>
 
-	<div class="grid-scroll">
+	<div class="grid-scroll" data-drag-scroll>
 		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
 			<!-- Body rows -->
 			{#each rows as row, i (row.key)}

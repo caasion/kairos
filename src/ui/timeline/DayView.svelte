@@ -62,6 +62,7 @@
 		hitTestTimeline,
 		type TaskDragState,
 	} from "./taskDrag";
+	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline } from "./dropTask";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
@@ -763,6 +764,8 @@
 	// the live insertion slot passed down so the hovered block draws an indicator.
 	let taskDrag = $state<TaskDragState | null>(null);
 	let taskDrop = $state<TimelineDrop | null>(null);
+	// Scrolls the timeline when the drag nears its edge (see dragScroll.ts).
+	let dragScroll: DragScroll | undefined;
 
 	// What every timeline draws for the live task drag, whichever view started
 	// it (this one, a Week column, or the Grid): the drop line in a block, the
@@ -1018,6 +1021,8 @@
 		// Any timeline is a target: this one, a Week column, another Day view.
 		taskDrop = hitTestTimeline(event);
 		publishDrag();
+		dragScroll?.stop();
+		dragScroll = startDragScroll(event, onTaskDragMove);
 	}
 
 	function onTaskDragMove(event: PointerEvent) {
@@ -1030,6 +1035,7 @@
 		};
 		taskDrop = hitTestTimeline(event);
 		publishDrag();
+		dragScroll?.update(event);
 	}
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
@@ -1067,6 +1073,8 @@
 		if (!taskDrag) return;
 		taskDrag = null;
 		taskDrop = null;
+		dragScroll?.stop();
+		dragScroll = undefined;
 		links.setDrag(null);
 	}
 
@@ -1344,7 +1352,7 @@
 
 	<!-- The timeline always renders, even for a day with no note yet: creating a
 	     block on an empty day lazily creates the daily note (see writeToDisk). -->
-	<div class="day-scroll" bind:this={scrollEl}>
+	<div class="day-scroll" data-drag-scroll bind:this={scrollEl}>
 		<!-- Shown during any task drag too, even when empty: dropping on it takes
 		     a task out of its block. -->
 		{#if unscheduled.length > 0 || dragPreview}
