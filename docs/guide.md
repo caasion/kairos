@@ -36,7 +36,7 @@ A note records what happened in a block, like "Ran late, skipped the review".
 
 **When a block is too small for its tasks**, its last row says "N more". Point at it or tap it, and the block grows to show everything.
 
-**Unscheduled** appears above the timeline when a day has tasks without a time, and whenever you're dragging a task.
+Above the timeline, a row of pills holds what isn't on it yet: **Unscheduled** (tasks without a time), **Left from** (see below), **Resurfacing** and missing routines. Point at a pill to see its list, or select it to keep the list open until you click elsewhere. To schedule a task, drag it from the list onto the timeline. The **Unscheduled** pill also shows whenever you're dragging a task; drop on it to take a task out of its block.
 
 ## Triage in the Grid
 
@@ -80,7 +80,7 @@ The backlog holds things you mean to do but haven't given a day. It lives in one
 - **Edit an item:** select its text. Clear the text to delete it.
 - **Bring it back on a date:** point at the item's right edge and select **Set a resurface date**.
 
-On that date the item appears in your day: in the Day view under **Resurfacing**, and in the Grid on its row. Select its **arrow** to schedule it into that day as a task. Point at its corner and select **Resurface later** to push it back.
+On that date the item appears in your day: in the Day view under the **Resurfacing** pill, and in the Grid on its row. Select its **arrow** to schedule it into that day as a task. Point at its corner and select **Resurface later** to push it back.
 
 To send a task back to the backlog, right-click it and select **Move to backlog**.
 
@@ -97,10 +97,10 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 Kairos doesn't fill your days by itself. When a day is missing routines, it tells you:
 
-- In the Day view, a bar at the top says how many are missing.
+- In the Day view, a pill above the timeline shows the count.
 - In the Week and Grid views, a small pill on the day's header shows the count.
 
-Point at the bar or pill to see the list. Select a routine's arrow to add it, or **Add all**. If you delete a routine from a day after that, Kairos won't offer it again for that day.
+Point at the pill to see the list. Select a routine's arrow to add it, or **Add all**. If you delete a routine from a day after that, Kairos won't offer it again for that day.
 
 You can also run **Apply routines to this day** from the command palette. To add routines automatically whenever a daily note is created, turn on **Settings → Kairos → Add routines to new daily notes**.
 
@@ -112,7 +112,7 @@ A routine that belongs to an inactive project or domain is paused, and shows as 
 
 ## Carry unfinished tasks forward
 
-Open and half-done tasks from your most recent earlier note show in today's Day view under **Left from** that day. Nothing moves until you choose:
+Open and half-done tasks from your most recent earlier note show in today's Day view under the **Left from** pill for that day. Nothing moves until you choose:
 
 - **Mark it done:** select the checkbox. The task is ticked on the day you left it, for something you did but forgot to tick. Long-press to cancel it instead.
 - **Bring it to today:** select the arrow. The task moves into today's **Unscheduled**.
