@@ -847,14 +847,29 @@
 		unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).length, 0),
 	);
 
-	// The strip of pills above the timeline, and what its lists hang under.
+	// The strip of pills above the timeline, and what its peeks hang under.
 	let trayEl = $state<HTMLDivElement>();
+	const showUnscheduled = $derived(unscheduledCount > 0 || dragPreview !== null);
+	const showLeftovers = $derived(offeredLeftovers.length > 0 && leftDay !== undefined);
+	const leftFrom = $derived(leftDay ? dayLabel(leftDay.date) : "");
 	const hasTray = $derived(
-		offeredRoutines.count > 0 ||
-			unscheduledCount > 0 ||
-			dragPreview !== null ||
-			(offeredLeftovers.length > 0 && leftDay !== undefined) ||
-			surfaced.length > 0,
+		offeredRoutines.count > 0 || showUnscheduled || showLeftovers || surfaced.length > 0,
+	);
+	// Which lists a click has toggled into the view. They push the timeline down
+	// until clicked off.
+	type TrayList = "unscheduled" | "leftovers" | "resurfacing";
+	let trayOpen = $state<Record<TrayList, boolean>>({
+		unscheduled: false,
+		leftovers: false,
+		resurfacing: false,
+	});
+	function toggleTray(list: TrayList) {
+		trayOpen[list] = !trayOpen[list];
+	}
+	const anyTrayOpen = $derived(
+		(showUnscheduled && trayOpen.unscheduled) ||
+			(showLeftovers && trayOpen.leftovers) ||
+			(surfaced.length > 0 && trayOpen.resurfacing),
 	);
 
 	const needleTop = $derived(minutesToOffset(nowMinutes, geo));
@@ -1341,9 +1356,81 @@
 		</div>
 	</div>
 
+	<!-- Each tray list, rendered in its pill's hover peek or, toggled on with a
+	     click, in the view under the strip. -->
+	{#snippet unscheduledList()}
+		{#each unscheduled as block (block.source.line)}
+			{@const tasks = tasksBySource.get(block.source.line) ?? []}
+			{#each tasks as task (task.source.line)}
+				{@const r = task.owner ? resolve(task.owner) : undefined}
+				<TaskRow
+					{task}
+					color={r?.color}
+					association={task.assoc ?? task.owner}
+					inherited={task.assoc === undefined && task.owner !== undefined}
+					resolved={r}
+					onNavigate={() => task.owner && onNavigate(task.owner)}
+					onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
+					onNest={(rect) => openBlockPicker(block, task, rect)}
+					onMoveToBacklog={() =>
+						void handleMoveTaskToBacklog(block, task)}
+					onRepeat={() => requestRepeat(task, block)}
+					onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
+					onSetText={(_t, text) => handleSetTaskText(block, task, text)}
+					onDelete={(_t) => handleDeleteTask(block, task)}
+					onGrab={(e) => onTaskGrab(block, task, e)}
+					highlight={isLinked(task) ? "task" : null}
+					onHoverChange={(on: boolean) => taskHover(task, on)}
+				/>
+			{/each}
+		{/each}
+	{/snippet}
+	{#snippet leftoverActions()}
+		<button class="lo-action" title="Move every task here to today's Unscheduled" onclick={bringAllLeftovers}>Bring all</button>
+		<button class="lo-action" title={`Leave the rest open on ${leftFrom}`} onclick={leaveLeftovers}>Leave the rest</button>
+	{/snippet}
+	{#snippet leftoverList()}
+		{#each offeredLeftovers as l (l.task.source.line)}
+			{@const assoc = l.task.assoc ?? l.owner.assoc}
+			<LeftoverTask
+				task={l.task}
+				association={assoc}
+				resolved={assoc ? resolve(assoc) : undefined}
+				fromLabel={leftFrom}
+				onDone={() => settleLeftover(l, "x")}
+				onCancel={() => settleLeftover(l, "-")}
+				onBring={() => bringLeftover(l)}
+				{onNavigate}
+			/>
+		{/each}
+	{/snippet}
+	{#snippet resurfacingList()}
+		<div class="rs-list">
+			{#each surfaced as entry (entry.source.line)}
+				<BacklogNudge
+					{entry}
+					resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+					onInsert={onNudgeInsert}
+					onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+					onResurfaceAt={onNudgeResurfaceAt}
+					{onNavigate}
+				/>
+			{/each}
+		</div>
+	{/snippet}
+	{#snippet usIcon()}
+		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+	{/snippet}
+	{#snippet loIcon()}
+		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+	{/snippet}
+	{#snippet rsIcon()}
+		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+	{/snippet}
+
 	<!-- The tray: routines, Unscheduled, "Left from" and Resurfacing as one strip
-	     of pills, each opening its list over the timeline on hover or click, so
-	     the timeline keeps the sidebar's height (decision 108). -->
+	     of pills. Pointing at a pill peeks at its list over the timeline; a click
+	     toggles the list into the view under the strip (decision 108). -->
 	{#if hasTray}
 		<div class="day-tray" bind:this={trayEl}>
 			{#if offeredRoutines.count > 0}
@@ -1359,77 +1446,37 @@
 
 			<!-- Shown during any task drag too, even when empty: dropping on it takes
 			     a task out of its block. -->
-			{#if unscheduledCount > 0 || dragPreview}
+			{#if showUnscheduled}
 				<TrayPill
 					label="Unscheduled"
 					count={unscheduledCount}
 					title="Unscheduled"
+					expanded={trayOpen.unscheduled}
+					onToggle={() => toggleTray("unscheduled")}
 					anchor={() => trayEl}
+					icon={usIcon}
 					dropDate={date}
 					dragging={dragPreview !== null}
 					dropTarget={dragPreview?.drop?.kind === "unscheduled" && dragPreview.drop.date === date}
 				>
-					{#snippet icon()}
-						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-					{/snippet}
-					{#each unscheduled as block (block.source.line)}
-						{@const tasks = tasksBySource.get(block.source.line) ?? []}
-						{#each tasks as task (task.source.line)}
-							{@const r = task.owner ? resolve(task.owner) : undefined}
-							<TaskRow
-								{task}
-								color={r?.color}
-								association={task.assoc ?? task.owner}
-								inherited={task.assoc === undefined && task.owner !== undefined}
-								resolved={r}
-								onNavigate={() => task.owner && onNavigate(task.owner)}
-								onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
-								onNest={(rect) => openBlockPicker(block, task, rect)}
-								onMoveToBacklog={() =>
-									void handleMoveTaskToBacklog(block, task)}
-								onRepeat={() => requestRepeat(task, block)}
-								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
-								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
-								onDelete={(_t) => handleDeleteTask(block, task)}
-								onGrab={(e) => onTaskGrab(block, task, e)}
-								highlight={isLinked(task) ? "task" : null}
-								onHoverChange={(on: boolean) => taskHover(task, on)}
-							/>
-						{/each}
-					{/each}
+					{@render unscheduledList()}
 				</TrayPill>
 			{/if}
 
 			<!-- Leftovers: yesterday's open tasks, asked about rather than moved. -->
-			{#if offeredLeftovers.length > 0 && leftDay}
-				{@const from = dayLabel(leftDay.date)}
+			{#if showLeftovers}
 				<TrayPill
-					label={`Left from ${from}`}
+					label={`Left from ${leftFrom}`}
 					count={offeredLeftovers.length}
-					title={`Left from ${from}`}
+					title={`Left from ${leftFrom}`}
+					expanded={trayOpen.leftovers}
+					onToggle={() => toggleTray("leftovers")}
 					anchor={() => trayEl}
+					icon={loIcon}
+					actions={leftoverActions}
 					dragging={dragPreview !== null}
 				>
-					{#snippet icon()}
-						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-					{/snippet}
-					{#snippet actions()}
-						<button class="lo-action" title="Move every task here to today's Unscheduled" onclick={bringAllLeftovers}>Bring all</button>
-						<button class="lo-action" title={`Leave the rest open on ${from}`} onclick={leaveLeftovers}>Leave the rest</button>
-					{/snippet}
-					{#each offeredLeftovers as l (l.task.source.line)}
-						{@const assoc = l.task.assoc ?? l.owner.assoc}
-						<LeftoverTask
-							task={l.task}
-							association={assoc}
-							resolved={assoc ? resolve(assoc) : undefined}
-							fromLabel={from}
-							onDone={() => settleLeftover(l, "x")}
-							onCancel={() => settleLeftover(l, "-")}
-							onBring={() => bringLeftover(l)}
-							{onNavigate}
-						/>
-					{/each}
+					{@render leftoverList()}
 				</TrayPill>
 			{/if}
 
@@ -1440,25 +1487,47 @@
 					label="Resurfacing"
 					count={surfaced.length}
 					title="Resurfacing"
+					expanded={trayOpen.resurfacing}
+					onToggle={() => toggleTray("resurfacing")}
 					anchor={() => trayEl}
+					icon={rsIcon}
 					dragging={dragPreview !== null}
 				>
-					{#snippet icon()}
-						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-					{/snippet}
-					<div class="rs-list">
-						{#each surfaced as entry (entry.source.line)}
-							<BacklogNudge
-								{entry}
-								resolved={entry.assoc ? resolve(entry.assoc) : undefined}
-								onInsert={onNudgeInsert}
-								onResurfaceTomorrow={onNudgeResurfaceTomorrow}
-								onResurfaceAt={onNudgeResurfaceAt}
-								{onNavigate}
-							/>
-						{/each}
-					</div>
+					{@render resurfacingList()}
 				</TrayPill>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- The lists toggled into the view, in the strip's order. -->
+	{#if anyTrayOpen}
+		<div class="day-tray-lists">
+			{#if showUnscheduled && trayOpen.unscheduled}
+				<!-- A drop target like its pill: dropping takes a task out of its block. -->
+				<div
+					class="tray-list"
+					class:drop-target={dragPreview?.drop?.kind === "unscheduled" && dragPreview.drop.date === date}
+					data-unscheduled-date={date}
+				>
+					<div class="tray-list-head">{@render usIcon()}<span>Unscheduled</span></div>
+					{@render unscheduledList()}
+				</div>
+			{/if}
+			{#if showLeftovers && trayOpen.leftovers}
+				<div class="tray-list">
+					<div class="tray-list-head">
+						{@render loIcon()}<span>Left from {leftFrom}</span>
+						<span class="tray-list-spacer"></span>
+						{@render leftoverActions()}
+					</div>
+					{@render leftoverList()}
+				</div>
+			{/if}
+			{#if surfaced.length > 0 && trayOpen.resurfacing}
+				<div class="tray-list">
+					<div class="tray-list-head">{@render rsIcon()}<span>Resurfacing</span></div>
+					{@render resurfacingList()}
+				</div>
 			{/if}
 		</div>
 	{/if}
@@ -1936,6 +2005,43 @@
 	.day-tray :global(.ra-pill-trigger) {
 		height: 22px;
 		border-radius: var(--radius-s);
+	}
+	/* Toggled-on lists push the timeline down, up to a little under half the
+	   view; past that they scroll on their own. */
+	.day-tray-lists {
+		flex-shrink: 0;
+		max-height: 45%;
+		overflow-y: auto;
+		border-bottom: 1px solid var(--background-modifier-border);
+	}
+	.tray-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		padding: 2px 8px 6px;
+	}
+	.tray-list.drop-target {
+		box-shadow: inset 0 0 0 2px var(--interactive-accent);
+		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+	}
+	.tray-list + .tray-list {
+		border-top: 1px solid var(--background-modifier-border);
+	}
+	.tray-list-head {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-muted);
+		user-select: none;
+	}
+	.tray-list-head :global(svg) {
+		flex-shrink: 0;
+	}
+	.tray-list-spacer {
+		flex: 1;
 	}
 	.rs-list {
 		display: flex;

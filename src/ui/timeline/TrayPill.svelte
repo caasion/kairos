@@ -4,12 +4,13 @@
 	//
 	// Unscheduled, "Left from" and Resurfacing used to stack above the timeline
 	// in full and took close to half a sidebar. Each is now a pill in one strip.
-	// Pointing at a pill for a moment (mouse) opens its list, and it closes when
-	// the pointer leaves; a click (or a tap) opens it and keeps it open until a
-	// press elsewhere, Escape, or another click on the pill. The list spans the
-	// strip's width, under it, portaled like the routines alert's.
+	// Pointing at a pill for a moment (mouse) peeks at its list over the
+	// timeline, spanning the strip's width under it, portaled like the routines
+	// alert's; it closes when the pointer leaves. A click (or a tap) toggles the
+	// list into the view instead: the parent shows it under the strip, pushing
+	// the timeline down, and the pill stays pressed until it's clicked again.
 	//
-	// During a task drag the list closes so the timeline under it is reachable,
+	// During a task drag the peek closes so the timeline under it is reachable,
 	// and the Unscheduled pill is itself the drop target (`dropDate`).
 
 	import type { Snippet } from "svelte";
@@ -19,6 +20,9 @@
 		count: number;
 		/** The list's heading. */
 		title: string;
+		/** The list is toggled into the view (the parent renders it). */
+		expanded: boolean;
+		onToggle: () => void;
 		/** The element the list hangs under and takes its width from. */
 		anchor: () => HTMLElement | undefined;
 		icon: Snippet;
@@ -37,6 +41,8 @@
 		label,
 		count,
 		title,
+		expanded,
+		onToggle,
 		anchor,
 		icon,
 		actions,
@@ -48,9 +54,8 @@
 
 	let pillEl = $state<HTMLButtonElement>();
 	let panelEl = $state<HTMLDivElement>();
+	// The hover peek.
 	let open = $state(false);
-	// Opened by a click: stays open when the pointer leaves.
-	let pinned = $state(false);
 	let panelStyle = $state("");
 	let timer: number | undefined;
 	// The same delays as the routines alert and a block's "N more".
@@ -88,41 +93,38 @@
 		panelStyle = `top: ${top}px; left: ${r.left}px; width: ${r.width}px; max-height: ${maxHeight}px;`;
 	}
 
-	function show(pin: boolean) {
+	function show() {
 		clearTimer();
 		place();
 		open = true;
-		pinned = pin;
 	}
 	function hide() {
 		clearTimer();
 		open = false;
-		pinned = false;
 	}
 
 	function onEnter(e: PointerEvent) {
-		if (e.pointerType !== "mouse" || dragging) return;
+		// Nothing to peek at when the list is already in the view.
+		if (e.pointerType !== "mouse" || dragging || expanded) return;
 		clearTimer();
-		if (!open) timer = window.setTimeout(() => show(false), OPEN_MS);
+		if (!open) timer = window.setTimeout(show, OPEN_MS);
 	}
 	function onLeave(e: PointerEvent) {
 		if (e.pointerType !== "mouse") return;
 		clearTimer();
 		// Moving between the pill and its list (portaled, so not a DOM child)
 		// isn't leaving.
-		if (pinned || inside(e.relatedTarget)) return;
+		if (inside(e.relatedTarget)) return;
 		if (open) timer = window.setTimeout(hide, CLOSE_MS);
 	}
-	// A click pins a hover-opened list rather than closing it; a second click
-	// closes.
 	function onClick(e: MouseEvent) {
 		e.stopPropagation();
-		if (open && pinned) hide();
-		else show(true);
+		hide();
+		onToggle();
 	}
 
 	$effect(() => {
-		if (dragging) hide();
+		if (dragging || expanded) hide();
 	});
 
 	// While open: a press outside closes it, as do Escape and scrolling the view
@@ -155,9 +157,10 @@
 <button
 	class="tray-pill"
 	class:open
+	class:expanded
 	class:drop-target={dropTarget}
 	data-unscheduled-date={dropDate}
-	aria-expanded={open}
+	aria-expanded={expanded}
 	aria-label={`${label}, ${count}`}
 	bind:this={pillEl}
 	onclick={onClick}
@@ -213,6 +216,11 @@
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
 		box-shadow: none;
+	}
+	.tray-pill.expanded {
+		border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
+		background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
+		color: var(--text-normal);
 	}
 	.tray-pill.drop-target {
 		border-color: var(--interactive-accent);

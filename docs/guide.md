@@ -36,7 +36,7 @@ A note records what happened in a block, like "Ran late, skipped the review".
 
 **When a block is too small for its tasks**, its last row says "N more". Point at it or tap it, and the block grows to show everything.
 
-Above the timeline, a row of pills holds what isn't on it yet: **Unscheduled** (tasks without a time), **Left from** (see below), **Resurfacing** and missing routines. Point at a pill to see its list, or select it to keep the list open until you click elsewhere. To schedule a task, drag it from the list onto the timeline. The **Unscheduled** pill also shows whenever you're dragging a task; drop on it to take a task out of its block.
+Above the timeline, a row of pills holds what isn't on it yet: **Unscheduled** (tasks without a time), **Left from** (see below), **Resurfacing** and missing routines. Point at a pill to peek at its list. Select it to open the list above the timeline, and select it again to close it. To schedule a task, drag it from the list onto the timeline. The **Unscheduled** pill also shows whenever you're dragging a task; drop on it to take a task out of its block.
 
 ## Triage in the Grid
 
