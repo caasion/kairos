@@ -48,6 +48,7 @@
 	import { nextDraftLine } from "../../draftLine";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import TaskRow from "../task/Task.svelte";
+	import { commitNumber } from "./numberField";
 	import { requestRepeat } from "../../routines/repeat";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
 	import { routinesToOffer } from "../../routines/preview";
@@ -196,26 +197,35 @@
 	let showControls = $state(false);
 	let controlsRef = $state<HTMLDivElement>();
 
-	function setStartHour(value: number) {
+	// Each returns the value now in effect, for commitNumber (a cleared field
+	// keeps the current value).
+	function setStartHour(value: number): number {
+		if (Number.isNaN(value)) return geo.startHour;
 		const v = Math.max(0, Math.min(23, Math.floor(value)));
 		updateSettings((s) => {
 			s.timelineStartHour = v;
 			if (s.timelineEndHour <= v) s.timelineEndHour = v + 1;
 		});
+		return v;
 	}
 
-	function setEndHour(value: number) {
+	function setEndHour(value: number): number {
+		if (Number.isNaN(value)) return geo.endHour;
 		const v = Math.max(1, Math.min(24, Math.floor(value)));
 		updateSettings((s) => {
 			s.timelineEndHour = v;
 			if (s.timelineStartHour >= v) s.timelineStartHour = v - 1;
 		});
+		return v;
 	}
 
-	function setHourHeight(value: number) {
+	function setHourHeight(value: number): number {
+		if (Number.isNaN(value)) return geo.hourHeight;
+		const v = Math.max(20, Math.min(240, Math.floor(value)));
 		updateSettings((s) => {
-			s.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
+			s.timelineHourHeight = v;
 		});
+		return v;
 	}
 
 	function handleClickOutside(event: MouseEvent) {
@@ -1296,7 +1306,7 @@
 							min="0"
 							max="23"
 							value={geo.startHour}
-							oninput={(e) => setStartHour(+e.currentTarget.value)}
+							onchange={(e) => commitNumber(e.currentTarget, setStartHour)}
 						/>
 					</label>
 					<label class="controls-field">
@@ -1307,7 +1317,7 @@
 							min="1"
 							max="24"
 							value={geo.endHour}
-							oninput={(e) => setEndHour(+e.currentTarget.value)}
+							onchange={(e) => commitNumber(e.currentTarget, setEndHour)}
 						/>
 					</label>
 					<label class="controls-field">
@@ -1319,7 +1329,7 @@
 							max="240"
 							step="5"
 							value={geo.hourHeight}
-							oninput={(e) => setHourHeight(+e.currentTarget.value)}
+							onchange={(e) => commitNumber(e.currentTarget, setHourHeight)}
 						/>
 					</label>
 				</div>
