@@ -387,11 +387,19 @@ body {
 .view-header.kairos-header-host .view-header-title {
 	display: none;
 }
+/* Spaced like Obsidian's own header: buttons in a group sit side by side
+   with no gap, and only groups are set apart, by the header's own gap. The
+   bar's end tucks into that gap, so the settings button sits against the
+   tab's ⋯ the way the tab's back and forward buttons sit together. */
 .view-header.kairos-header-host .kairos-header-bar {
 	flex: 1;
 	min-width: 0;
-	gap: var(--size-2-1);
-	padding: 0 var(--size-2-2) 0 0;
+	gap: 0;
+	margin-right: calc(-1 * var(--size-4-2));
+	padding: 0;
+}
+.view-header.kairos-header-host .kairos-header-bar .day-nav {
+	gap: 0;
 }
 
 /* In the tab header the bar takes Obsidian's header look, built from its own
@@ -416,23 +424,23 @@ body {
 	opacity: var(--icon-opacity-hover);
 }
 .view-header.kairos-header-host .kairos-header-bar .icon-btn svg {
-	width: var(--icon-size);
-	height: var(--icon-size);
+	width: var(--icon-s);
+	height: var(--icon-s);
 	stroke-width: var(--icon-stroke);
 }
 .view-header.kairos-header-host .kairos-header-bar .day-date {
-	padding: var(--size-2-1) var(--size-4-1);
+	padding: var(--size-2-2) var(--size-2-3);
 	border: none;
 	border-radius: var(--radius-s);
 	box-shadow: none;
 	font-size: var(--file-header-font-size, var(--font-ui-small));
 	font-weight: var(--file-header-font-weight, 400);
-	color: var(--text-normal);
+	color: var(--text-muted);
 }
 .view-header.kairos-header-host .kairos-header-bar .today-btn,
 .view-header.kairos-header-host .kairos-header-bar .interval-tab {
 	height: auto;
-	padding: var(--size-2-1) var(--size-4-1);
+	padding: var(--size-2-2) var(--size-2-3);
 	border: none;
 	border-radius: var(--radius-s);
 	background: transparent;
@@ -456,6 +464,7 @@ body {
 	color: var(--text-normal);
 }
 .view-header.kairos-header-host .kairos-header-bar .day-range-label {
+	margin-right: var(--size-4-2);
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
 }
