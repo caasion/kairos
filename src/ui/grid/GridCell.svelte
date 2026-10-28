@@ -52,6 +52,11 @@
 		draftOpen?: boolean;
 		onDraftSubmit?: (text: string) => void;
 		onDraftClose?: () => void;
+		// Unscheduled isn't shown in the cells (it's behind the day header's
+		// badge): hold each typed task here for a moment, then report it landed
+		// so the badge can pulse where it went.
+		holdLanded?: boolean;
+		onLanded?: () => void;
 		// Jump to this task's block in the Day view.
 		onReveal: (task: ResolvedTask) => void;
 		// Jump to a block in the Day view (its header's ctrl+click).
@@ -112,6 +117,8 @@
 		draftOpen = false,
 		onDraftSubmit,
 		onDraftClose,
+		holdLanded = false,
+		onLanded,
 		onReveal,
 		onRevealBlock,
 		onNest,
@@ -135,6 +142,28 @@
 		onDeleteBlock,
 		onSetBlockTitle,
 	}: Props = $props();
+
+	// PROTOTYPE (add flow): the field and the tasks just typed in it.
+	const hasUnscheduledGroup = $derived(blockGroups.some((g) => isUnscheduledBlock(g.block)));
+	const LANDED_MS = 1400;
+	let landed = $state<{ id: number; text: string }[]>([]);
+	let landedId = 0;
+	const landedTimers = new Set<number>();
+	function submitDraft(text: string) {
+		onDraftSubmit?.(text);
+		if (!holdLanded) return;
+		const id = ++landedId;
+		landed = [...landed, { id, text }];
+		const timer = window.setTimeout(() => {
+			landedTimers.delete(timer);
+			landed = landed.filter((l) => l.id !== id);
+			onLanded?.();
+		}, LANDED_MS);
+		landedTimers.add(timer);
+	}
+	$effect(() => () => {
+		for (const t of landedTimers) window.clearTimeout(t);
+	});
 
 	const canCreate = $derived(!inactive);
 	// Grouped, each group carries its own "+", and an Unscheduled group's adds
@@ -302,6 +331,24 @@
 		</div>
 	{/snippet}
 
+	{#snippet draftTail()}
+		<!-- PROTOTYPE (add flow): tasks just typed, held a moment before they
+		     go behind the header badge (the bar runs down the wait), then the
+		     field for the next one. -->
+		{#each landed as l (l.id)}
+			<div class="grid-cell-landed" style:--landed-ms={`${LANDED_MS}ms`}>
+				<svg class="grid-cell-landed-box" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+					<rect x="1" y="1" width="14" height="14" rx="3" ry="3" />
+				</svg>
+				<span class="grid-cell-landed-text">{l.text}</span>
+				<span class="grid-cell-landed-bar"></span>
+			</div>
+		{/each}
+		{#if draftOpen && onDraftSubmit && onDraftClose}
+			<DraftTask {color} placeholder="New task" onSubmit={submitDraft} onClose={onDraftClose} />
+		{/if}
+	{/snippet}
+
 	{#each blockGroups as group, g (group.key)}
 		{@const at = blockOffsets[g] ?? 0}
 		<!-- The whole group (header and tasks) is one drop target: a task
@@ -412,6 +459,9 @@
 			{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
 				{@render taskItem(task, at + j)}
 			{/each}
+			{#if isUnscheduledBlock(group.block)}
+				{@render draftTail()}
+			{/if}
 			{#if canCreate && onCreateInBlock && isUnscheduledBlock(group.block)}
 				<!-- Unscheduled's "+", at the right end of its header line (a
 				     block's own "+" is in its header's action stack). -->
@@ -439,11 +489,17 @@
 		</div>
 	{/if}
 
-	{#if draftOpen && onDraftSubmit && onDraftClose}
-		<!-- PROTOTYPE (add flow): typed here, filed in the day's Unscheduled
-		     (its badge pulses when it lands). -->
-		<DraftTask {color} placeholder="New task, to Unscheduled" onSubmit={onDraftSubmit} onClose={onDraftClose} />
-	{:else if showCellAdd && !unscheduledSlot}
+	{#if !hasUnscheduledGroup && (draftOpen || landed.length > 0)}
+		<!-- The field always sits under an Unscheduled header, so it says where
+		     the task goes: here the cell has no Unscheduled group yet (or it's
+		     behind the header badge), so the field brings one. -->
+		<div class="grid-cell-block-group">
+			<div class="grid-cell-group-header grid-cell-block-header unscheduled">Unscheduled</div>
+			{@render draftTail()}
+		</div>
+	{/if}
+
+	{#if !draftOpen && showCellAdd && !unscheduledSlot}
 		<!-- No Unscheduled group here yet, so the cell's "+" wears the header that
 		     group would have: it says where a new task goes. Shown on hover only.
 		     In an empty cell it sits where the group would; under other groups
@@ -869,5 +925,58 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
+	}
+
+	/* PROTOTYPE (add flow): a task just typed, held before it goes behind the
+	   header badge. The bar runs down the wait, then the row lifts away. */
+	.grid-cell-landed {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		padding: 2px 4px;
+		color: var(--text-normal);
+		font-size: 12px;
+		line-height: 1.4;
+		animation: grid-cell-landed-out 300ms ease-in forwards;
+		animation-delay: calc(var(--landed-ms) - 300ms);
+	}
+	.grid-cell-landed-box {
+		flex-shrink: 0;
+		fill: none;
+		stroke: var(--text-faint);
+		stroke-width: 1.5;
+	}
+	.grid-cell-landed-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.grid-cell-landed-bar {
+		position: absolute;
+		left: 4px;
+		right: 4px;
+		bottom: 0;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--interactive-accent);
+		transform-origin: left;
+		animation: grid-cell-landed-bar var(--landed-ms) linear forwards;
+	}
+	@keyframes grid-cell-landed-bar {
+		from {
+			transform: scaleX(1);
+		}
+		to {
+			transform: scaleX(0);
+		}
+	}
+	@keyframes grid-cell-landed-out {
+		to {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
 	}
 </style>

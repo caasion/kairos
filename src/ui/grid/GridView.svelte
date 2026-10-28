@@ -619,7 +619,6 @@
 		const path = day?.path ?? (await ensureNoteForDate(date));
 		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
 		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
-		if (!settings.gridUnscheduledInCells) pulse(date);
 	}
 
 	// A group's "+" (grouping on): a new task in that block, filed under the row
@@ -1629,6 +1628,8 @@
 								draftOpen={draftInCell(row, date)}
 								onDraftSubmit={(text: string) => void addDraft(row, date, text)}
 								onDraftClose={() => (draft = null)}
+								holdLanded={!settings.gridUnscheduledInCells}
+								onLanded={() => pulse(date)}
 								onTaskGrab={onTaskGrab}
 								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, row.key, e)}
 								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}
