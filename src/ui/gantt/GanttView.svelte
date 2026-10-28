@@ -511,7 +511,7 @@
 
 	// ── Intensity (0–5) ──
 	// Written onto the span's opening record through the same guarded edit as the
-	// intention; `undefined` clears it back to "no claim". Set from the bar's pips,
+	// intention; `undefined` clears it back to "no claim". Set from the bar's intensity bars,
 	// the number keys on a selected bar, or the context menu.
 	function setIntensity(row: GanttRow, span: Span, value: number | undefined) {
 		const live = currentRow(row.key);
@@ -524,10 +524,6 @@
 		};
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
 		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
-	}
-	// A click on the bars sets that level; clicking the level already set clears it.
-	function pickLevel(row: GanttRow, span: Span, level: number) {
-		setIntensity(row, span, span.intensity === level ? undefined : level);
 	}
 	// The bar's fill, as a share of the project colour: 10% a level, so 5 is 50%
 	// and the label stays readable over it. 0 and unset fill nothing.
@@ -890,7 +886,7 @@
 									     dropped on a bar too narrow to hold them beside a label. -->
 									{#if box.width >= 40}
 										<span class="gantt-pips" title="Intensity: click a bar to set · 0–5 keys on a selected bar">
-											<IntensityBars level={span.intensity} onpick={(level) => pickLevel(row, span, level)} />
+											<IntensityBars level={span.intensity} onpick={(level) => setIntensity(row, span, level)} />
 										</span>
 									{/if}
 									{#if editingKey === key}

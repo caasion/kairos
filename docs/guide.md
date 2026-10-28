@@ -151,7 +151,7 @@ The Timeline view draws each project's active stretches as bars. Switch between 
 
 - **Add an active stretch:** drag across an empty part of a row. A single click starts an open-ended one.
 - **Move its start or end:** drag the bar's left or right edge.
-- **Set its intensity:** the three small bars on the bar show the level, filling from the bottom, two levels to a bar. Select the left or right half of a bar to set its level, select the bar and press **0** to **5**, or right-click it and choose **Intensity**. Select the current level again to clear it.
+- **Set its intensity:** three small lines on the bar show the level, lighting from the bottom: 1 lights the bottom line, 2 adds a dim one above it, and 5 lights all three. Select a line to light up to it (select the top lit line again to dim it), select the bar and press **0** to **5**, or right-click it and choose **Intensity**.
 - **Edit its intention:** double-click the bar.
 - **More:** right-click the bar for exact dates and **Delete**.
 
