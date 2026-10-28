@@ -1,6 +1,6 @@
 <script lang="ts">
-	// PROTOTYPE: yesterday's open tasks as a banner at the top of a view —
-	// "deal with this now" — instead of a list mixed into the Inbox. Each row
+	// PROTOTYPE: yesterday's open tasks as a one-line bar at the top of the Day
+	// view — there until dealt with, but folded: "Review" opens the list. Each row
 	// is a LeftoverTask (checkbox marks it done where it was left, the arrow
 	// brings it to today); the header brings all or leaves the rest. Purely
 	// presentational: the view owns every write.
@@ -23,23 +23,26 @@
 	let { items, fromLabel, resolve, onSettle, onBring, onBringAll, onLeave }: Props = $props();
 
 	const weekday = $derived(fromLabel.split(",")[0]);
-	const heading = $derived(
-		`${items.length} ${items.length === 1 ? "task" : "tasks"} left open on ${weekday}`,
-	);
+	const heading = $derived(`${items.length} left open on ${weekday}`);
+	let reviewing = $state(false);
 </script>
 
 <div class="lo-banner" role="region" aria-label={heading}>
 	<div class="lo-banner-head">
 		<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-		<span class="lo-banner-title" title={fromLabel}>{heading}</span>
+		<span class="lo-banner-title">{heading}</span>
 		<span class="lo-banner-spacer"></span>
-		<button class="lo-banner-btn" title={`Leave the rest open on ${fromLabel}`} onclick={onLeave}>
-			Leave the rest
+		{#if reviewing}
+			<button class="lo-banner-btn" onclick={onLeave}>Leave the rest</button>
+		{/if}
+		<button class="lo-banner-btn" aria-expanded={reviewing} onclick={() => (reviewing = !reviewing)}>
+			{reviewing ? "Hide" : "Review"}
 		</button>
-		<button class="lo-banner-btn mod-cta" title="Move every task here to today's Unscheduled" onclick={onBringAll}>
+		<button class="lo-banner-btn mod-cta" onclick={onBringAll}>
 			Bring all
 		</button>
 	</div>
+	{#if reviewing}
 	<div class="lo-banner-list">
 		{#each items as l (l.task.source.line)}
 			{@const assoc = l.task.assoc ?? l.owner.assoc}
@@ -53,12 +56,13 @@
 			/>
 		{/each}
 	</div>
+	{/if}
 </div>
 
 <style>
 	.lo-banner {
 		margin: 6px 8px 2px;
-		padding: 4px 4px 4px;
+		padding: 2px 4px;
 		border: 1px solid color-mix(in srgb, var(--color-orange) 45%, transparent);
 		background: color-mix(in srgb, var(--color-orange) 10%, var(--background-primary));
 		border-radius: var(--radius-m);
@@ -68,7 +72,7 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 2px 4px 4px;
+		padding: 2px 2px;
 		color: var(--color-orange);
 		font-size: var(--font-ui-smaller);
 		font-weight: var(--font-semibold);

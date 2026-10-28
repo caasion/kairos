@@ -38,7 +38,8 @@
 	import { requestRepeat } from "../../routines/repeat";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
 	import type { Leftover } from "../../carry";
-	import LeftoverBanner from "./LeftoverBanner.svelte";
+	import LeftoverTask from "./LeftoverTask.svelte";
+	import HeaderBadge from "./HeaderBadge.svelte";
 	import AssocGroupHeader from "./AssocGroupHeader.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import { todayLeftovers } from "./todayLeftovers";
@@ -310,10 +311,6 @@
 		unscheduledByDate = { ...unscheduledByDate, [date]: items };
 	}
 
-	const hasAnyUnscheduled = $derived(
-		dates.some((d) => (unscheduledByDate[d]?.length ?? 0) > 0),
-	);
-
 	const totalUnscheduled = $derived(
 		dates.reduce((n, d) => n + (unscheduledByDate[d]?.length ?? 0), 0),
 	);
@@ -330,20 +327,18 @@
 		for (const date of dates) map[date] = surfacedOn(backlogEntries, date, today);
 		return map;
 	});
-	const totalSurfaced = $derived(
-		dates.reduce((n, d) => n + (surfacedByDate[d]?.length ?? 0), 0),
-	);
-	let resurfacingOpen = $state(true);
 
-	// PROTOTYPE: the Inbox strip — resurfacing backlog entries per day, plus
-	// yesterday's open tasks in today's column, grouped by association.
+	// PROTOTYPE: each day's Inbox badge — resurfacing backlog entries, plus
+	// yesterday's open tasks on today — grouped by association.
 	// svelte-ignore state_referenced_locally
 	const left$ = todayLeftovers(index, leftoverActions);
 	const leftFrom = $derived($left$ ? dayLabel($left$.from.date) : "");
-	const leftCount = $derived(
-		$left$ && dates.includes($left$.today) ? $left$.items.length : 0,
-	);
-	const totalInbox = $derived(totalSurfaced);
+	function leftoversOn(date: ISODate): Leftover[] {
+		return $left$ && $left$.today === date ? $left$.items : [];
+	}
+	function inboxCountFor(date: ISODate): number {
+		return (surfacedByDate[date]?.length ?? 0) + leftoversOn(date).length;
+	}
 	function inboxGroupsFor(date: ISODate) {
 		return groupByAssoc(surfacedByDate[date] ?? [], (e) => e.assoc, resolve);
 	}
@@ -698,6 +693,87 @@
 	void ensureNoteForDate;
 </script>
 
+<!-- PROTOTYPE: the lists behind each day's header badges. -->
+{#snippet listIcon()}
+	<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></svg>
+{/snippet}
+{#snippet inboxIcon()}
+	<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+{/snippet}
+{#snippet unscheduledList(date: ISODate)}
+		{#each unscheduledGroupsFor(date) as group (group.key)}
+			<AssocGroupHeader
+				assoc={group.assoc}
+				resolved={group.resolved}
+				count={group.items.length}
+				onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+			/>
+		{#each group.items as { block, task } (task.source.line)}
+			{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}
+			<TaskRow
+				{task}
+				color={r?.color}
+				association={task.assoc ?? task.owner}
+				inherited={task.assoc === undefined && task.owner !== undefined}
+				showAssociation={false}
+				resolved={r}
+				onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
+				onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
+				onNest={(rect) => columns[date]?.nestTask(block, task, rect)}
+				onMoveToBacklog={() => columns[date]?.moveToBacklog(block, task)}
+				onRepeat={() => requestRepeat(task, block)}
+				onSetStatus={(_t, status) => columns[date]?.setTaskStatus(block, task, status)}
+				onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
+				onDelete={(_t) => columns[date]?.deleteTask(block, task)}
+				onGrab={(e) => columns[date]?.grabTask(block, task, e)}
+				highlight={stripLinked(task) ? "task" : null}
+				onHoverChange={(on: boolean) => stripHover(task, on)}
+			/>
+		{/each}
+		{/each}
+{/snippet}
+{#snippet inboxList(date: ISODate)}
+	{@const lefts = leftoversOn(date)}
+	{#if lefts.length > 0}
+		<div class="inbox-left-head">
+			<span>Left open on {leftFrom.split(",")[0]}</span>
+			<span class="inbox-left-spacer"></span>
+			<button onclick={leaveLeftovers}>Leave the rest</button>
+			<button class="mod-cta" onclick={bringAllLeftovers}>Bring all</button>
+		</div>
+		{#each lefts as l (l.task.source.line)}
+			{@const la = l.task.assoc ?? l.owner.assoc}
+			<LeftoverTask
+				task={l.task}
+				resolved={la ? resolve(la) : undefined}
+				fromLabel={leftFrom}
+				onDone={() => settleLeftover(l, "x")}
+				onCancel={() => settleLeftover(l, "-")}
+				onBring={() => bringLeftover(l)}
+			/>
+		{/each}
+	{/if}
+	{#each inboxGroupsFor(date) as group (group.key)}
+		<AssocGroupHeader
+			assoc={group.assoc}
+			resolved={group.resolved}
+			count={group.items.length}
+			onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+		/>
+		{#each group.items as entry (entry.source.line)}
+			<BacklogNudge
+				{entry}
+				resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+				showAssociation={false}
+				onInsert={(e) => onNudgeInsert(e, date)}
+				onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+				onResurfaceAt={onNudgeResurfaceAt}
+				onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+			/>
+		{/each}
+	{/each}
+{/snippet}
+
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="week-view" tabindex="-1" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown}>
@@ -789,25 +865,13 @@
 		</div>
 	</div>
 
-	<!-- PROTOTYPE: yesterday's open tasks as a banner under the header, while
-	     today is in the window (LeftoverBanner.svelte). -->
-	{#if $left$ && leftCount > 0}
-		<LeftoverBanner
-			items={$left$.items}
-			fromLabel={leftFrom}
-			{resolve}
-			onSettle={settleLeftover}
-			onBring={bringLeftover}
-			onBringAll={bringAllLeftovers}
-			onLeave={leaveLeftovers}
-		/>
-	{/if}
-
 	<!-- Column titles row, aligned with the columns below (offset by the gutter). -->
 	<div class="week-colheads">
 		<div class="week-gutter-spacer"></div>
 		{#each dates as date (date)}
 			{@const offered = routinesByDate.get(date)}
+			{@const usCount = unscheduledByDate[date]?.length ?? 0}
+			{@const inCount = inboxCountFor(date)}
 			<div class="col-head-wrap">
 				<button
 					class="col-head date-card"
@@ -824,16 +888,42 @@
 						<span class="today-indicator"></span>
 					{/if}
 				</button>
-				{#if offered && offered.count > 0}
-					<div class="col-routines">
-						<RoutinesAlert
-							list={offered}
-							variant="pill"
-							label={dayLabel(date)}
-							showAddAll={!settings.autoApplyRoutines}
-							onAdd={(rs) => routineActions.insert(date, rs)}
-							onAddAll={() => routineActions.addAll(date)}
-						/>
+				<!-- PROTOTYPE: the day's lists as badges on its header — Unscheduled,
+				     Inbox (yesterday's open tasks on today, and resurfacing entries),
+				     routines — instead of strips that push every column down. -->
+				{#if usCount > 0 || inCount > 0 || (offered && offered.count > 0)}
+					<div class="col-badges">
+						{#if usCount > 0}
+							<HeaderBadge
+								title={`Unscheduled · ${dayLabel(date)}`}
+								count={usCount}
+								icon={listIcon}
+								dragging={dragPreview !== null}
+							>
+								{@render unscheduledList(date)}
+							</HeaderBadge>
+						{/if}
+						{#if inCount > 0}
+							<HeaderBadge
+								title={`Inbox · ${dayLabel(date)}`}
+								count={inCount}
+								icon={inboxIcon}
+								tone={leftoversOn(date).length > 0 ? "warn" : "neutral"}
+								dragging={dragPreview !== null}
+							>
+								{@render inboxList(date)}
+							</HeaderBadge>
+						{/if}
+						{#if offered && offered.count > 0}
+							<RoutinesAlert
+								list={offered}
+								variant="pill"
+								label={dayLabel(date)}
+								showAddAll={!settings.autoApplyRoutines}
+								onAdd={(rs) => routineActions.insert(date, rs)}
+								onAddAll={() => routineActions.addAll(date)}
+							/>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -842,7 +932,9 @@
 
 	<!-- Shown during any task drag too, even when empty: dropping on a day's
 	     column takes a task out of its block. -->
-	{#if hasAnyUnscheduled || dragPreview}
+	<!-- PROTOTYPE: the strip only shows during a task drag now, as the drop
+	     target that unschedules; otherwise each day's header badge holds it. -->
+	{#if dragPreview}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="week-unscheduled">
@@ -874,88 +966,7 @@
 							class:drop-target={inboxDropDate() === date}
 							data-unscheduled-date={date}
 						>
-							{#each unscheduledGroupsFor(date) as group (group.key)}
-								<AssocGroupHeader
-									assoc={group.assoc}
-									resolved={group.resolved}
-									count={group.items.length}
-									onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
-								/>
-							{#each group.items as { block, task } (task.source.line)}
-								{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}
-								<TaskRow
-									{task}
-									color={r?.color}
-									association={task.assoc ?? task.owner}
-									inherited={task.assoc === undefined && task.owner !== undefined}
-									showAssociation={false}
-									resolved={r}
-									onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
-									onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
-									onNest={(rect) => columns[date]?.nestTask(block, task, rect)}
-									onMoveToBacklog={() => columns[date]?.moveToBacklog(block, task)}
-									onRepeat={() => requestRepeat(task, block)}
-									onSetStatus={(_t, status) => columns[date]?.setTaskStatus(block, task, status)}
-									onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
-									onDelete={(_t) => columns[date]?.deleteTask(block, task)}
-									onGrab={(e) => columns[date]?.grabTask(block, task, e)}
-									highlight={stripLinked(task) ? "task" : null}
-									onHoverChange={(on: boolean) => stripHover(task, on)}
-								/>
-							{/each}
-							{/each}
-						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-	{/if}
-
-	<!-- Resurfacing: backlog nudges due somewhere in the window. A strip of its
-	     own, like Unscheduled, but the items live in the backlog until inserted. -->
-	{#if totalInbox > 0}
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div class="week-resurfacing">
-			<div
-				class="week-us-header"
-				class:open={resurfacingOpen}
-				onclick={() => (resurfacingOpen = !resurfacingOpen)}
-			>
-				<div class="week-us-gutter-spacer">
-					<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
-					<span>Inbox</span>
-					<span class="us-count">{totalInbox}</span>
-				</div>
-				{#each dates as date (date)}
-					<div class="week-us-head-cell"></div>
-				{/each}
-			</div>
-			{#if resurfacingOpen}
-				<div class="week-us-body">
-					<div class="week-us-gutter-spacer"></div>
-					{#each dates as date (date)}
-						<div class="week-us-col week-rs-col">
-							{#each inboxGroupsFor(date) as group (group.key)}
-								<AssocGroupHeader
-									assoc={group.assoc}
-									resolved={group.resolved}
-									count={group.items.length}
-									onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
-								/>
-								{#each group.items as entry (entry.source.line)}
-									<BacklogNudge
-										{entry}
-										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
-										showAssociation={false}
-										onInsert={(e) => onNudgeInsert(e, date)}
-										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
-										onResurfaceAt={onNudgeResurfaceAt}
-										onNavigate={(assoc) =>
-											navigateToAssociation(app, resolve(assoc))}
-									/>
-								{/each}
-							{/each}
+							{@render unscheduledList(date)}
 						</div>
 					{/each}
 				</div>
@@ -1239,10 +1250,35 @@
 		display: flex;
 	}
 	/* Bottom-right of the date card, as in the Grid. */
-	.col-routines {
+	.col-badges {
 		position: absolute;
 		right: 6px;
 		bottom: 6px;
+		display: flex;
+		align-items: center;
+		gap: 3px;
+	}
+
+	/* PROTOTYPE: the "Left open on …" heading inside a day's Inbox list. */
+	.inbox-left-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 4px 2px;
+		font-size: var(--font-ui-smaller);
+		font-weight: var(--font-semibold);
+		color: var(--color-orange);
+	}
+
+	.inbox-left-spacer {
+		flex: 1;
+	}
+
+	.inbox-left-head button {
+		height: auto;
+		padding: 1px 8px;
+		font-size: var(--font-ui-smaller);
+		font-weight: var(--font-normal);
 	}
 
 	.col-head.date-card {
@@ -1479,20 +1515,6 @@
 		background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
 	}
 
-	/* ── Resurfacing (backlog nudges due in the window) ── */
-	.week-resurfacing {
-		flex-shrink: 0;
-		border-bottom: 1px solid var(--background-modifier-border);
-	}
-
-	/* Nudges carry their own accent tint, so give them a little breathing room
-	   the plain task rows above don't need. */
-	.week-rs-col {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		padding: 3px 4px;
-	}
 
 	:global(.resurface-popup) {
 		position: fixed;
