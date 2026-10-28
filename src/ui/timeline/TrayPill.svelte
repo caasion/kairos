@@ -249,9 +249,11 @@
 		gap: 1px;
 		padding: 4px 6px 6px;
 		border-radius: 8px;
-		border: 1px solid var(--background-modifier-border);
+		/* Obsidian's menu edge: a border and shadow that hold up over the
+		   views' own dark surfaces. */
+		border: 1px solid var(--background-modifier-border-hover);
 		background: var(--background-primary);
-		box-shadow: var(--shadow-s);
+		box-shadow: var(--shadow-l);
 		text-align: left;
 	}
 	.tp-head {

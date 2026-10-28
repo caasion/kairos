@@ -262,9 +262,11 @@
 		flex-direction: column;
 		overflow: hidden;
 		background: var(--background-secondary);
-		border: 1px solid var(--background-modifier-border);
+		/* Obsidian's menu edge: a border and shadow that hold up over the
+		   views' own dark surfaces. */
+		border: 1px solid var(--background-modifier-border-hover);
 		border-radius: var(--radius-s);
-		box-shadow: var(--shadow-s);
+		box-shadow: var(--shadow-l);
 		padding: 10px 12px 10px;
 	}
 

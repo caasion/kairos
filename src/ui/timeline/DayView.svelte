@@ -27,6 +27,7 @@
 	} from "../../writer";
 	import { leftovers, type Leftover } from "../../carry";
 	import LeftoverBanner from "./LeftoverBanner.svelte";
+	import { leftOpenLabel } from "./todayLeftovers";
 	import AssocGroup from "./AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import TrayPill from "./TrayPill.svelte";
@@ -1468,6 +1469,7 @@
 		<LeftoverBanner
 			items={offeredLeftovers}
 			fromLabel={leftFrom}
+			label={leftDay ? leftOpenLabel(leftDay.date, date) : ""}
 			{resolve}
 			onSettle={settleLeftover}
 			onBring={bringLeftover}

@@ -6,7 +6,7 @@
 
 import { derived, type Readable } from "svelte/store";
 import { leftovers, type Leftover } from "../../carry";
-import { todayISO } from "../../dayNote";
+import { dateFromISO, shiftISO, todayISO } from "../../dayNote";
 import type { KairosIndex } from "../../index";
 import type { LeftoverActions } from "../../routines/routinesFeed";
 import type { Day, ISODate } from "../../types";
@@ -30,4 +30,15 @@ export function todayLeftovers(
 			return items.length > 0 ? { today, from: before, items } : undefined;
 		},
 	);
+}
+
+/**
+ * The heading over a list of leftovers. They come from the most recent earlier
+ * note, which is usually yesterday's, so that day goes unsaid; after a gap (a
+ * weekend, a day with no note) it names the day: "Left open on Fri".
+ */
+export function leftOpenLabel(from: ISODate, today: ISODate): string {
+	if (from === shiftISO(today, -1)) return "Left open";
+	const weekday = dateFromISO(from).toLocaleDateString(undefined, { weekday: "short" });
+	return `Left open on ${weekday}`;
 }

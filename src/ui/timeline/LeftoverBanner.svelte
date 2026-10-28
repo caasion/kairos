@@ -8,11 +8,14 @@
 	import type { Leftover } from "../../carry";
 	import type { Resolver } from "../../index";
 	import LeftoverTask from "./LeftoverTask.svelte";
+	import LeftoverButtons from "./LeftoverButtons.svelte";
 
 	interface Props {
 		items: Leftover[];
-		/** The day they were left on ("Tue, Oct 27"). */
+		/** The day they were left on ("Tue, Oct 27"), for the rows' tooltips. */
 		fromLabel: string;
+		/** "Left open", or "Left open on Fri" after a gap (leftOpenLabel). */
+		label: string;
 		resolve: Resolver;
 		onSettle: (l: Leftover, status: "x" | "-") => void;
 		onBring: (l: Leftover) => void;
@@ -20,10 +23,9 @@
 		onLeave: () => void;
 	}
 
-	let { items, fromLabel, resolve, onSettle, onBring, onBringAll, onLeave }: Props = $props();
+	let { items, fromLabel, label, resolve, onSettle, onBring, onBringAll, onLeave }: Props = $props();
 
-	const weekday = $derived(fromLabel.split(",")[0]);
-	const heading = $derived(`${items.length} left open on ${weekday}`);
+	const heading = $derived(`${items.length} ${label.charAt(0).toLowerCase()}${label.slice(1)}`);
 	let reviewing = $state(false);
 </script>
 
@@ -32,15 +34,10 @@
 		<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
 		<span class="lo-banner-title">{heading}</span>
 		<span class="lo-banner-spacer"></span>
-		{#if reviewing}
-			<button class="lo-banner-btn" onclick={onLeave}>Leave the rest</button>
-		{/if}
 		<button class="lo-banner-btn" aria-expanded={reviewing} onclick={() => (reviewing = !reviewing)}>
 			{reviewing ? "Hide" : "Review"}
 		</button>
-		<button class="lo-banner-btn mod-cta" onclick={onBringAll}>
-			Bring all
-		</button>
+		<LeftoverButtons {onLeave} {onBringAll} />
 	</div>
 	{#if reviewing}
 	<div class="lo-banner-list">
