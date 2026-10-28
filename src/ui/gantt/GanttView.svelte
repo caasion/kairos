@@ -43,6 +43,8 @@
 		getHeader,
 		getUnitViewport,
 		daysBetween,
+		dragBounds,
+		dragPeriod,
 		shiftDays,
 		stepUnit,
 		unitLabel,
@@ -246,9 +248,10 @@
 	//               *creates* one at the release date (giving the indefinite bar an
 	//               end). Releasing at/after today leaves it open (no record).
 	//  • "create" — empty space in a row. A click-in-place adds one open-ended
-	//               `active` record at that date; a click-drag adds an `active` at
-	//               the earlier date and an `inactive` at the later, i.e. a bounded
-	//               active period. Either way the note editor opens on release.
+	//               `active` record at that date; a click-drag adds a bounded active
+	//               period covering every day column it crossed: an `active` on the
+	//               first and an `inactive` on the day after the last (`dragPeriod`).
+	//               Either way the note editor opens on release.
 	//
 	// A date snaps to whole days (`xToDate`). We clamp against neighbouring records
 	// so chronological order and one-per-date can never break.
@@ -353,12 +356,7 @@
 		const history = row.entity.history;
 		const date = pointerDay(e);
 		// Clamp to the gaps between existing records so a create can't collide.
-		let lower: ISODate | null = null;
-		let upper: ISODate | null = null;
-		for (const r of history) {
-			if (r.date < date) lower = r.date;
-			else if (upper === null) upper = r.date;
-		}
+		const { lower, upper } = dragBounds(history, date);
 		drag = {
 			kind: "create",
 			row,
@@ -390,16 +388,14 @@
 		const project = d.row.entity as Project;
 
 		if (d.kind === "create") {
-			const [start, end] = d.anchorDate <= d.preview
-				? [d.anchorDate, d.preview]
-				: [d.preview, d.anchorDate];
+			const { start, end } = dragPeriod(d.anchorDate, d.preview);
 			// If the new active record would sit right after another active one with an
 			// identical note, `normalizeHistory` collapses it (a no-op transition) and
 			// nothing is written — so the popup would have no record to edit. That case
 			// is exactly "click inside an existing active span to start a new stretch", so
 			// seed a distinguishing note for the user to rename.
 			const note = boundaryNote(d.row.entity.history, start);
-			if (!d.moved || start === end) {
+			if (!d.moved || d.preview === d.anchorDate) {
 				// Click → open-ended active (splits an existing open span at `start`).
 				if (isDomain) setDomainStatus(index, domain, start, "active", note);
 				else setProjectStatus(index, project, start, "active", note);
@@ -957,14 +953,12 @@
 					{/each}
 				{/each}
 
-				<!-- Create-drag range preview: a ghost bar between anchor and pointer.
-				     The gesture creates a bounded active period [a, b): active at `a`,
-				     inactive at `b`. So the ghost's right edge lands on the `b` boundary
-				     line (matching the committed bar and the drag marker), *not* b+1 —
-				     otherwise the preview reads one day wider than what gets written. -->
+				<!-- Create-drag range preview: a ghost bar over every day column between
+				     the pressed one and the one under the pointer, both included. It
+				     covers exactly the period the release writes (`dragPeriod`): active
+				     at `a`, inactive at `b`, the day after the last column. -->
 				{#if drag && drag.kind === "create" && drag.moved}
-					{@const a = drag.anchorDate <= drag.preview ? drag.anchorDate : drag.preview}
-					{@const b = drag.anchorDate <= drag.preview ? drag.preview : drag.anchorDate}
+					{@const { start: a, end: b } = dragPeriod(drag.anchorDate, drag.preview)}
 					{@const ri = rows.findIndex((r) => r.key === drag!.row.key)}
 					<div
 						class="gantt-ghost"
@@ -975,9 +969,14 @@
 					></div>
 				{/if}
 
-				<!-- Drag boundary marker: the snapped day-boundary under the pointer. -->
+				<!-- Drag boundary marker: the snapped day-boundary under the pointer. A
+				     create-drag marks the ghost's edge on the pointer's side instead, so
+				     a rightward drag's marker sits after the column it's over. -->
 				{#if drag}
-					<div class="gantt-drag-marker" style:left={`${dateToX(drag.preview, viewport.start, pxPerDay)}px`} style:height={`${contentHeight}px`}>
+					{@const markerDate = drag.kind === "create" && drag.preview > drag.anchorDate
+						? shiftDays(drag.preview, 1)
+						: drag.preview}
+					<div class="gantt-drag-marker" style:left={`${dateToX(markerDate, viewport.start, pxPerDay)}px`} style:height={`${contentHeight}px`}>
 						<span class="gantt-drag-date">{formatDate(drag.preview)}</span>
 					</div>
 				{/if}

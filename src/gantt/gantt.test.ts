@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Domain, Project, StatusRecord } from "../types";
 import type { ProjectsDomains } from "../index";
-import { appendStatus, effectiveStatus } from "../projectFile";
+import { appendActivePeriod, appendStatus, effectiveStatus } from "../projectFile";
 import { historyToSpans } from "./spans";
 import { activeInWindow, visibleEntities } from "./rows";
 import {
 	dateToX,
 	daysBetween,
+	dragBounds,
+	dragPeriod,
 	getUnitViewport,
 	getViewportWidth,
 	isoWeekNumber,
@@ -194,6 +196,75 @@ describe("authoring active periods via the Gantt (compound edits)", () => {
 		expect(active).toHaveLength(2);
 		expect(active[0]).toMatchObject({ start: "2026-01-01", end: "2026-04-01", open: false });
 		expect(active[1]).toMatchObject({ start: "2026-04-01", open: true });
+	});
+});
+
+describe("drag-creating a period (#72)", () => {
+	const project = (history: StatusRecord[]): Project => ({
+		id: "p",
+		name: "P",
+		aliases: [],
+		description: "",
+		history,
+		archived: false,
+		source: { path: "P.md", line: 0 },
+	});
+	// A week viewport starting Monday 2026-10-26, 40px per day column.
+	const start = "2026-10-26";
+	const px = 40;
+	// Somewhere inside a day's column, as a pointer would be.
+	const inColumn = (date: string, frac = 0.5) => dateToX(date, start, px) + frac * px;
+	const activeBar = (history: StatusRecord[]) =>
+		historyToSpans(history, "2026-12-31").find((s) => s.status === "active");
+
+	it("covers the column released on, not just up to it", () => {
+		// Press on Monday's column, release on Wednesday's.
+		const pressed = xToDay(inColumn("2026-10-26"), start, px);
+		const released = xToDay(inColumn("2026-10-28", 0.9), start, px);
+		const { start: a, end: b } = dragPeriod(pressed, released);
+		const bar = activeBar(appendActivePeriod(project([]), a, b).history);
+		// The bar runs Monday through Wednesday: it ends at Thursday's boundary.
+		expect(bar).toMatchObject({ start: "2026-10-26", end: "2026-10-29", open: false });
+	});
+
+	it("dragging leftwards covers the pressed column too", () => {
+		expect(dragPeriod("2026-10-28", "2026-10-26")).toEqual({
+			start: "2026-10-26",
+			end: "2026-10-29",
+		});
+	});
+
+	it("is bounded by the records either side of the pressed day", () => {
+		const history = h(["2026-10-20", "active"], ["2026-10-24", "inactive"], ["2026-11-02", "active"]);
+		expect(dragBounds(history, "2026-10-28")).toEqual({ lower: "2026-10-24", upper: "2026-11-02" });
+	});
+
+	it("a record on the pressed day bounds neither side", () => {
+		// It used to be the upper bound, so a rightward drag from it was clamped to
+		// the day before and the period started a day early.
+		const history = h(["2026-10-20", "active"], ["2026-10-28", "inactive"]);
+		expect(dragBounds(history, "2026-10-28")).toEqual({ lower: "2026-10-20", upper: null });
+	});
+
+	it("stopping the day before the next record leaves that record alone", () => {
+		// Next record: an active stretch starting Friday. Drag Mon–Thu.
+		const p = project(h(["2026-10-30", "active", "next"]));
+		const { start: a, end: b } = dragPeriod("2026-10-26", "2026-10-29");
+		expect(appendActivePeriod(p, a, b, "new").history).toEqual([
+			{ date: "2026-10-26", status: "active", note: "new" },
+			{ date: "2026-10-30", status: "active", note: "next" },
+		]);
+	});
+
+	it("an existing record inside the period ends it, untouched", () => {
+		// Dragging leftwards from a day that holds a record: the record stays.
+		const p = project(h(["2026-10-28", "inactive"]));
+		const { start: a, end: b } = dragPeriod("2026-10-28", "2026-10-26");
+		const next = appendActivePeriod(p, a, b);
+		expect(next.history).toEqual([
+			{ date: "2026-10-26", status: "active" },
+			{ date: "2026-10-28", status: "inactive" },
+		]);
 	});
 });
 

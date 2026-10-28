@@ -724,6 +724,24 @@ export function appendStatus<T extends Project | Domain>(
 	return withHistory(entity, history);
 }
 
+/**
+ * Add a bounded active period: an `active` record at `start` (with the
+ * intention `note`) and an `inactive` record at `end` that closes it, `end`
+ * being the first day after the period. When a record already sits after
+ * `start` and on or before `end`, that record ends the new stretch instead, and
+ * no `inactive` is written: writing one on its date would replace it.
+ */
+export function appendActivePeriod<T extends Project | Domain>(
+	entity: T,
+	start: ISODate,
+	end: ISODate,
+	note?: string,
+): T {
+	const withActive = appendStatus(entity, start, "active", note);
+	const closed = entity.history.some((r) => r.date > start && r.date <= end);
+	return closed ? withActive : appendStatus(withActive, end, "inactive");
+}
+
 /** The replacement `editStatusRecord` takes; see there for which keys preserve. */
 export interface StatusEdit {
 	date: ISODate;
