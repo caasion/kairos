@@ -57,8 +57,9 @@
 		height: 2px;
 		border-radius: 1px;
 	}
+	/* Off is a neutral gray, not a faint tint, so it can't be mistaken for dim. */
 	.intensity-bar.off {
-		background: color-mix(in srgb, currentColor 20%, transparent);
+		background: color-mix(in srgb, var(--text-faint) 45%, transparent);
 	}
 	.intensity-bar.dim {
 		background: color-mix(in srgb, currentColor 55%, transparent);
