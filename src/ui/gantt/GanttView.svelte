@@ -36,9 +36,10 @@
 		HEADER_HEIGHT,
 		INTERVALS,
 		INTERVAL_LABEL,
-		LABEL_WIDTH,
 		ROW_GAP,
 		ROW_HEIGHT,
+		rowHeightFor,
+		rowTops,
 		dateToX,
 		getHeader,
 		getUnitViewport,
@@ -198,8 +199,17 @@
 		}
 	}
 
-	const rowTop = (i: number) => HEADER_HEIGHT + i * (ROW_HEIGHT + ROW_GAP);
-	const contentHeight = $derived(rowTop(rows.length) + ROW_GAP);
+	// Each label's measured height, by row key. A row grows past ROW_HEIGHT when
+	// its label needs it (a two-line note), and the plot follows the label column.
+	let labelHeights = $state<Record<string, number>>({});
+	const rowHeights = $derived(rows.map((r) => rowHeightFor(labelHeights[r.key])));
+	const tops = $derived(rowTops(rowHeights, HEADER_HEIGHT));
+	const rowTop = (i: number) => tops[i] ?? HEADER_HEIGHT;
+	const rowHeight = (i: number) => rowHeights[i] ?? ROW_HEIGHT;
+	const barTop = (i: number) => rowTop(i) + (rowHeight(i) - BAR_HEIGHT) / 2;
+	const contentHeight = $derived(
+		rows.length === 0 ? HEADER_HEIGHT + ROW_GAP : rowTop(rows.length - 1) + rowHeight(rows.length - 1) + 2 * ROW_GAP,
+	);
 
 	// Base hue for a row: its color, or the theme accent when none.
 	const barColor = (row: GanttRow) => row.color || "var(--interactive-accent)";
@@ -752,7 +762,7 @@
 	{:else}
 		<div class="gantt-grid">
 			<!-- Sidebar labels -->
-			<div class="gantt-labels" style:width={`${LABEL_WIDTH}px`}>
+			<div class="gantt-labels">
 				<div class="gantt-corner" style:height={`${HEADER_HEIGHT}px`}></div>
 				{#each rows as row, i (row.key)}
 					{@const group = ganttGroup(i)}
@@ -762,7 +772,7 @@
 						class:domain={row.isDomain}
 						class:group-start={group.start}
 						class:group-end={group.end}
-						style:height={`${ROW_HEIGHT}px`}
+						style:height={`${rowHeight(i)}px`}
 						style:margin-bottom={`${ROW_GAP}px`}
 						style={row.color ? `--row-accent: ${row.color};` : undefined}
 					>
@@ -771,9 +781,11 @@
 						     unbroken across the fixed-height, gapped Gantt rows. -->
 						<span
 							class="gantt-accent"
-							style:height={group.end ? `${ROW_HEIGHT}px` : `${ROW_HEIGHT + ROW_GAP}px`}
+							style:height={group.end ? `${rowHeight(i)}px` : `${rowHeight(i) + ROW_GAP}px`}
 						></span>
-						<RowLabel info={row.info} />
+						<div class="gantt-label-body" bind:offsetHeight={labelHeights[row.key]}>
+							<RowLabel info={row.info} />
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -830,7 +842,7 @@
 					<div
 						class="gantt-create-zone"
 						style:top={`${rowTop(i)}px`}
-						style:height={`${ROW_HEIGHT}px`}
+						style:height={`${rowHeight(i)}px`}
 						title="Drag to add an active period · click to start one"
 						onpointerdown={(e) => beginCreateDrag(e, row)}
 					></div>
@@ -858,7 +870,7 @@
 									style:--fill={`${fillPercent(span)}%`}
 									style:left={`${box.left}px`}
 									style:width={`${box.width}px`}
-									style:top={`${rowTop(i) + (ROW_HEIGHT - BAR_HEIGHT) / 2}px`}
+									style:top={`${barTop(i)}px`}
 									style:height={`${BAR_HEIGHT}px`}
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
@@ -941,7 +953,7 @@
 						class="gantt-ghost"
 						style:left={`${dateToX(a, viewport.start, pxPerDay)}px`}
 						style:width={`${Math.max(3, dateToX(b, viewport.start, pxPerDay) - dateToX(a, viewport.start, pxPerDay))}px`}
-						style:top={`${rowTop(ri) + (ROW_HEIGHT - BAR_HEIGHT) / 2}px`}
+						style:top={`${barTop(ri)}px`}
 						style:height={`${BAR_HEIGHT}px`}
 					></div>
 				{/if}
@@ -1097,6 +1109,7 @@
 	}
 	.gantt-labels {
 		flex-shrink: 0;
+		width: var(--kairos-row-label-width);
 		border-right: 1px solid var(--background-modifier-border);
 		background: var(--background-secondary);
 		position: sticky;
@@ -1107,25 +1120,33 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		background: var(--background-secondary);
 	}
+	/* Insets and indent are the Grid's (--kairos-row-label-* in styles.css), so
+	   the two label columns read as one; the label is centered on its bar. */
 	.gantt-label {
 		position: relative;
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 0 8px 0 12px;
-		font-size: 12px;
-		color: var(--text-normal);
+		padding: 0 var(--kairos-row-label-pad-right) 0
+			calc(var(--kairos-row-label-accent-width) + var(--kairos-row-label-pad-left));
 		overflow: visible;
 	}
-	.gantt-label.indent { padding-left: 26px; }
-	/* Continuous group accent stripe, mirroring the Grid: rounded only at the
-	   group's top/bottom, and extended through the row gap between grouped rows so
-	   it reads as unbroken across the fixed-height, gapped Gantt rows. */
+	.gantt-label.indent {
+		padding-left: calc(
+			var(--kairos-row-label-accent-width) + var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent)
+		);
+	}
+	.gantt-label-body {
+		flex: 1;
+		min-width: 0;
+	}
+	/* Continuous group accent stripe, mirroring the Grid's left border: rounded
+	   only at the group's top/bottom, and extended through the row gap between
+	   grouped rows so it reads as unbroken across the gapped Gantt rows. */
 	.gantt-accent {
 		position: absolute;
-		left: 4px;
+		left: 0;
 		top: 0;
-		width: 3px;
+		width: var(--kairos-row-label-accent-width);
 		background: var(--row-accent, var(--text-faint));
 	}
 	.gantt-label.group-start .gantt-accent {
