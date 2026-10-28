@@ -148,18 +148,19 @@
 	const LANDED_MS = 1400;
 	let landed = $state<{ id: number; text: string }[]>([]);
 	let landedId = 0;
-	const landedTimers = new Set<number>();
+	// Only for clearing on teardown, so not reactive.
+	let landedTimers: number[] = [];
 	function submitDraft(text: string) {
 		onDraftSubmit?.(text);
 		if (!holdLanded) return;
 		const id = ++landedId;
 		landed = [...landed, { id, text }];
 		const timer = window.setTimeout(() => {
-			landedTimers.delete(timer);
+			landedTimers = landedTimers.filter((t) => t !== timer);
 			landed = landed.filter((l) => l.id !== id);
 			onLanded?.();
 		}, LANDED_MS);
-		landedTimers.add(timer);
+		landedTimers.push(timer);
 	}
 	$effect(() => () => {
 		for (const t of landedTimers) window.clearTimeout(t);
