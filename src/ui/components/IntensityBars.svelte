@@ -43,19 +43,21 @@
 		flex-direction: column-reverse;
 		flex-shrink: 0;
 	}
-	/* Each bar sits in a 4px row, so the click target is taller than the bar. */
+	/* Sized by --intensity-bar-width/-height/-row so a host can scale the icon
+	   (the Timeline does); the defaults suit a line of text. Each bar sits in a
+	   row taller than itself, so the click target is taller than the bar. */
 	.intensity-bar-row {
 		display: flex;
 		align-items: center;
-		height: 4px;
+		height: var(--intensity-bar-row, 4px);
 	}
 	.pickable .intensity-bar-row {
 		cursor: pointer;
 	}
 	.intensity-bar {
-		width: 9px;
-		height: 2px;
-		border-radius: 1px;
+		width: var(--intensity-bar-width, 9px);
+		height: var(--intensity-bar-height, 2px);
+		border-radius: calc(var(--intensity-bar-height, 2px) / 2);
 	}
 	/* Off is a neutral gray, not a faint tint, so it can't be mistaken for dim. */
 	.intensity-bar.off {

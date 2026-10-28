@@ -12,9 +12,9 @@
 
 import type { ISODate } from "../types";
 
-export const ROW_HEIGHT = 34;
+export const ROW_HEIGHT = 38;
 export const ROW_GAP = 6;
-export const BAR_HEIGHT = 22;
+export const BAR_HEIGHT = 26;
 // The header carries two stacked rows: a coarse grouping row over a fine row.
 export const HEADER_COARSE_HEIGHT = 20;
 export const HEADER_FINE_HEIGHT = 20;

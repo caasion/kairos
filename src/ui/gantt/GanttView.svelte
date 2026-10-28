@@ -1263,6 +1263,10 @@
 		color: var(--bar-color);
 		position: relative;
 		z-index: 3; /* above the left handle */
+		/* Bigger than the Grid label's icon, to match the taller bar. */
+		--intensity-bar-width: 12px;
+		--intensity-bar-height: 3px;
+		--intensity-bar-row: 5px;
 	}
 	.gantt-bar.unrated .gantt-pips {
 		visibility: hidden;
@@ -1286,10 +1290,10 @@
 	.gantt-bar.open-ended::after {
 		content: "";
 		position: absolute;
-		right: -8px;
-		border-top: calc(var(--bar-h, 22px) / 2 + 1px) solid transparent;
-		border-bottom: calc(var(--bar-h, 22px) / 2 + 1px) solid transparent;
-		border-left: 8px solid var(--bar-color);
+		right: -9px;
+		border-top: calc(var(--bar-h) / 2 + 1px) solid transparent;
+		border-bottom: calc(var(--bar-h) / 2 + 1px) solid transparent;
+		border-left: 9px solid var(--bar-color);
 	}
 	/* Span whose real start is off-screen left: square that edge (it's cut, not a boundary). */
 	.gantt-bar.clamped-start {
@@ -1305,7 +1309,7 @@
 	.gantt-bar-label {
 		flex: 1;
 		min-width: 0;
-		font-size: 10px;
+		font-size: 11px;
 		padding: 0 6px 0 8px;
 		color: var(--text-normal);
 		white-space: nowrap;
@@ -1326,7 +1330,7 @@
 		min-width: 0;
 		height: 100%;
 		padding: 0 6px 0 8px;
-		font-size: 10px;
+		font-size: 11px;
 		font-family: inherit;
 		border: none;
 		outline: none;
@@ -1350,7 +1354,7 @@
 	.gantt-handle.right { right: 0; }
 	.gantt-handle:hover { background: color-mix(in srgb, var(--bar-color) 45%, transparent); }
 	/* The open-ended arrow cap doubles as the right handle's visual affordance. */
-	.gantt-bar.open-ended .gantt-handle.right { right: -8px; width: 16px; }
+	.gantt-bar.open-ended .gantt-handle.right { right: -9px; width: 17px; }
 	.gantt-drag-marker {
 		position: absolute;
 		top: 0;
