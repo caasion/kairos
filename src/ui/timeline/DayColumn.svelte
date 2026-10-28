@@ -23,6 +23,7 @@
 		type TaskDragState,
 		type UnscheduledItem,
 	} from "./taskDrag";
+	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline } from "./dropTask";
 	import type { DragPreview, HoverTarget, ViewLinks } from "../../viewLinks";
@@ -397,6 +398,8 @@
 	// on any timeline: this day, another Week column, or the Day view. See
 	// taskDrag.ts for the hit-test contract and taskDrop.ts for what a drop writes.
 	let taskDrag = $state<TaskDragState | null>(null);
+	// Scrolls the Week timeline when the drag nears its edge (see dragScroll.ts).
+	let dragScroll: DragScroll | undefined;
 	let taskDrop = $state<TimelineDrop | null>(null);
 
 	// What this column draws for the live task drag, whichever view started it:
@@ -553,6 +556,8 @@
 		};
 		taskDrop = hitTestTimeline(event);
 		publishDrag();
+		dragScroll?.stop();
+		dragScroll = startDragScroll(event, (last) => handlePointerMove(last));
 	}
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
@@ -580,6 +585,8 @@
 		if (!taskDrag) return;
 		taskDrag = null;
 		taskDrop = null;
+		dragScroll?.stop();
+		dragScroll = undefined;
 		links.setDrag(null);
 	}
 
@@ -597,6 +604,7 @@
 			};
 			taskDrop = hitTestTimeline(event);
 			publishDrag();
+			dragScroll?.update(event);
 			return true;
 		}
 		if (!gesture) return false;

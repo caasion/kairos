@@ -892,7 +892,7 @@
 		</div>
 	{/if}
 
-	<div class="week-scroll">
+	<div class="week-scroll" data-drag-scroll>
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
 			<div class="week-gutter" style={`height: ${bodyHeight}px;`}>
