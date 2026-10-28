@@ -42,7 +42,7 @@ A note records what happened in a block, like "Ran late, skipped the review".
 
 The Grid has one row per project and domain, and one column per day. Use it to see what you're working on and when, and to move things around.
 
-- **Rows:** projects without a domain come first, then each domain followed by its projects. **Unassigned** at the bottom holds tasks with no project or domain.
+- **Rows:** projects without a domain come first, then each domain followed by its projects. **Unassociated** at the bottom holds tasks with no project or domain.
 - **Cells:** tasks are grouped under their block's time and title. Tasks with no time are under **Unscheduled**, last.
 - **Dimmed cells** are days when that project or domain wasn't active. You can't add to them.
 
