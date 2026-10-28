@@ -861,34 +861,49 @@
 			resolve,
 		),
 	);
-	const leftoverGroups = $derived(
-		groupByAssoc(offeredLeftovers, (l) => l.task.assoc ?? l.owner.assoc, resolve),
-	);
-	const surfacedGroups = $derived(groupByAssoc(surfaced, (e) => e.assoc, resolve));
 
 	// The strip of pills above the timeline, and what its peeks hang under.
 	let trayEl = $state<HTMLDivElement>();
 	const showUnscheduled = $derived(unscheduledCount > 0 || dragPreview !== null);
 	const showLeftovers = $derived(offeredLeftovers.length > 0 && leftDay !== undefined);
+	const inboxCount = $derived((showLeftovers ? offeredLeftovers.length : 0) + surfaced.length);
+	const showInbox = $derived(inboxCount > 0);
+	// PROTOTYPE: the Inbox — what needs a decision today (yesterday's open tasks
+	// and resurfacing backlog entries) in one list, apart from Unscheduled.
+	type InboxItem =
+		| { kind: "left"; key: string; l: Leftover }
+		| { kind: "surfaced"; key: string; entry: BacklogEntry };
+	const inboxGroups = $derived(
+		groupByAssoc<InboxItem>(
+			[
+				...(showLeftovers ? offeredLeftovers : []).map(
+					(l): InboxItem => ({ kind: "left", key: `l${l.task.source.line}`, l }),
+				),
+				...surfaced.map(
+					(entry): InboxItem => ({ kind: "surfaced", key: `s${entry.source.line}`, entry }),
+				),
+			],
+			(i) => (i.kind === "left" ? (i.l.task.assoc ?? i.l.owner.assoc) : i.entry.assoc),
+			resolve,
+		),
+	);
 	const leftFrom = $derived(leftDay ? dayLabel(leftDay.date) : "");
 	const hasTray = $derived(
 		offeredRoutines.count > 0 || showUnscheduled || showLeftovers || surfaced.length > 0,
 	);
 	// Which lists a click has toggled into the view. They push the timeline down
 	// until clicked off.
-	type TrayList = "unscheduled" | "leftovers" | "resurfacing";
+	type TrayList = "unscheduled" | "inbox";
 	let trayOpen = $state<Record<TrayList, boolean>>({
 		unscheduled: false,
-		leftovers: false,
-		resurfacing: false,
+		inbox: false,
 	});
 	function toggleTray(list: TrayList) {
 		trayOpen[list] = !trayOpen[list];
 	}
 	const anyTrayOpen = $derived(
 		(showUnscheduled && trayOpen.unscheduled) ||
-			(showLeftovers && trayOpen.leftovers) ||
-			(surfaced.length > 0 && trayOpen.resurfacing),
+			(showInbox && trayOpen.inbox),
 	);
 
 	const needleTop = $derived(minutesToOffset(nowMinutes, geo));
@@ -1421,57 +1436,46 @@
 		<button class="lo-action" title="Move every task here to today's Unscheduled" onclick={bringAllLeftovers}>Bring all</button>
 		<button class="lo-action" title={`Leave the rest open on ${leftFrom}`} onclick={leaveLeftovers}>Leave the rest</button>
 	{/snippet}
-	{#snippet leftoverList()}
-		{#each leftoverGroups as group (group.key)}
-			<AssocGroupHeader
-				assoc={group.assoc}
-				resolved={group.resolved}
-				count={group.items.length}
-				{onNavigate}
-			/>
-			{#each group.items as l (l.task.source.line)}
-				<LeftoverTask
-					task={l.task}
-					fromLabel={leftFrom}
-					onDone={() => settleLeftover(l, "x")}
-					onCancel={() => settleLeftover(l, "-")}
-					onBring={() => bringLeftover(l)}
-					{onNavigate}
-				/>
-			{/each}
-		{/each}
-	{/snippet}
-	{#snippet resurfacingList()}
+	{#snippet inboxList()}
 		<div class="rs-list">
-			{#each surfacedGroups as group (group.key)}
+			{#each inboxGroups as group (group.key)}
 				<AssocGroupHeader
 					assoc={group.assoc}
 					resolved={group.resolved}
 					count={group.items.length}
 					{onNavigate}
 				/>
-				{#each group.items as entry (entry.source.line)}
-					<BacklogNudge
-						{entry}
-						resolved={entry.assoc ? resolve(entry.assoc) : undefined}
-						showAssociation={false}
-						onInsert={onNudgeInsert}
-						onResurfaceTomorrow={onNudgeResurfaceTomorrow}
-						onResurfaceAt={onNudgeResurfaceAt}
-						{onNavigate}
-					/>
+				{#each group.items as item (item.key)}
+					{#if item.kind === "left"}
+						{@const l = item.l}
+						<LeftoverTask
+							task={l.task}
+							fromLabel={leftFrom}
+							onDone={() => settleLeftover(l, "x")}
+							onCancel={() => settleLeftover(l, "-")}
+							onBring={() => bringLeftover(l)}
+							{onNavigate}
+						/>
+					{:else}
+						<BacklogNudge
+							entry={item.entry}
+							resolved={item.entry.assoc ? resolve(item.entry.assoc) : undefined}
+							showAssociation={false}
+							onInsert={onNudgeInsert}
+							onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+							onResurfaceAt={onNudgeResurfaceAt}
+							{onNavigate}
+						/>
+					{/if}
 				{/each}
 			{/each}
 		</div>
 	{/snippet}
+	{#snippet listIcon()}
+		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></svg>
+	{/snippet}
 	{#snippet usIcon()}
 		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-	{/snippet}
-	{#snippet loIcon()}
-		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-	{/snippet}
-	{#snippet rsIcon()}
-		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
 	{/snippet}
 
 	<!-- The tray: routines, Unscheduled, "Left from" and Resurfacing as one strip
@@ -1500,7 +1504,7 @@
 					expanded={trayOpen.unscheduled}
 					onToggle={() => toggleTray("unscheduled")}
 					anchor={() => trayEl}
-					icon={usIcon}
+					icon={listIcon}
 					dropDate={date}
 					dragging={dragPreview !== null}
 					dropTarget={dragPreview?.drop?.kind === "unscheduled" && dragPreview.drop.date === date}
@@ -1509,37 +1513,21 @@
 				</TrayPill>
 			{/if}
 
-			<!-- Leftovers: yesterday's open tasks, asked about rather than moved. -->
-			{#if showLeftovers}
+			<!-- PROTOTYPE: the Inbox — yesterday's open tasks and resurfacing backlog
+			     entries, both waiting on a decision, as one pill. -->
+			{#if showInbox}
 				<TrayPill
-					label={`Left from ${leftFrom}`}
-					count={offeredLeftovers.length}
-					title={`Left from ${leftFrom}`}
-					expanded={trayOpen.leftovers}
-					onToggle={() => toggleTray("leftovers")}
+					label="Inbox"
+					count={inboxCount}
+					title="Inbox"
+					expanded={trayOpen.inbox}
+					onToggle={() => toggleTray("inbox")}
 					anchor={() => trayEl}
-					icon={loIcon}
-					actions={leftoverActions}
+					icon={usIcon}
+					actions={showLeftovers ? leftoverActions : undefined}
 					dragging={dragPreview !== null}
 				>
-					{@render leftoverList()}
-				</TrayPill>
-			{/if}
-
-			<!-- Resurfacing: backlog nudges due on this day. The items live in the
-			     backlog until inserted. -->
-			{#if surfaced.length > 0}
-				<TrayPill
-					label="Resurfacing"
-					count={surfaced.length}
-					title="Resurfacing"
-					expanded={trayOpen.resurfacing}
-					onToggle={() => toggleTray("resurfacing")}
-					anchor={() => trayEl}
-					icon={rsIcon}
-					dragging={dragPreview !== null}
-				>
-					{@render resurfacingList()}
+					{@render inboxList()}
 				</TrayPill>
 			{/if}
 		</div>
@@ -1555,24 +1543,20 @@
 					class:drop-target={dragPreview?.drop?.kind === "unscheduled" && dragPreview.drop.date === date}
 					data-unscheduled-date={date}
 				>
-					<div class="tray-list-head">{@render usIcon()}<span>Unscheduled</span></div>
+					<div class="tray-list-head">{@render listIcon()}<span>Unscheduled</span></div>
 					{@render unscheduledList()}
 				</div>
 			{/if}
-			{#if showLeftovers && trayOpen.leftovers}
+			{#if showInbox && trayOpen.inbox}
 				<div class="tray-list">
 					<div class="tray-list-head">
-						{@render loIcon()}<span>Left from {leftFrom}</span>
-						<span class="tray-list-spacer"></span>
-						{@render leftoverActions()}
+						{@render usIcon()}<span>Inbox</span>
+						{#if showLeftovers}
+							<span class="tray-list-spacer"></span>
+							{@render leftoverActions()}
+						{/if}
 					</div>
-					{@render leftoverList()}
-				</div>
-			{/if}
-			{#if surfaced.length > 0 && trayOpen.resurfacing}
-				<div class="tray-list">
-					<div class="tray-list-head">{@render rsIcon()}<span>Resurfacing</span></div>
-					{@render resurfacingList()}
+					{@render inboxList()}
 				</div>
 			{/if}
 		</div>

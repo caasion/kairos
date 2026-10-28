@@ -153,9 +153,9 @@
 			<div class="block-empty">No blocks</div>
 		{:else}
 			{#each filtered as option, i (option.block.source.line)}
+				{@const color = colorOf?.(option)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_interactive_supports_focus -->
-				{@const color = colorOf?.(option)}
 				<div
 					class="block-row"
 					class:highlighted={i === highlighted}
