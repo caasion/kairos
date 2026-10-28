@@ -214,7 +214,7 @@
 			onpointerleave={onLeave}
 		>
 			<div class="ra-head">
-				<span class="ra-title">Routines for {label}</span>
+				<span class="ra-title">Routines</span>
 				{#if showAddAll && variant === "pill"}
 					<button
 						class="ra-add-all"
@@ -225,6 +225,7 @@
 						}}
 					>Add all</button>
 				{/if}
+				<span class="ra-date">{label}</span>
 			</div>
 			{#each list.items as item (item.key)}
 				{#if item.block}
@@ -368,27 +369,38 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		padding: 6px;
-		border-radius: 8px;
+		/* PROTOTYPE: the same look as the header badges' lists (HeaderBadge). */
+		padding: 10px 12px;
+		border-radius: var(--radius-s);
 		border: 1px solid var(--background-modifier-border);
-		background: var(--background-primary);
+		background: var(--background-secondary);
 		box-shadow: var(--shadow-s);
 		text-align: left;
 	}
 	.ra-head {
 		display: flex;
-		align-items: center;
+		align-items: baseline;
 		gap: 8px;
-		padding: 0 2px 4px;
+		padding: 0 0 8px;
+		margin-bottom: 4px;
+		border-bottom: 1px solid var(--background-modifier-border);
 	}
 	.ra-title {
 		flex: 1;
 		min-width: 0;
-		font-size: 11px;
-		color: var(--text-muted);
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 15px;
+		color: var(--text-normal);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.ra-date {
+		flex-shrink: 0;
+		font-size: var(--font-ui-smaller);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-muted);
 	}
 	.ra-item {
 		display: flex;

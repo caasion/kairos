@@ -82,7 +82,7 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "../timeline/LeftoverTask.svelte";
 	import HeaderBadge from "../timeline/HeaderBadge.svelte";
-	import AssocGroupHeader from "../timeline/AssocGroupHeader.svelte";
+	import AssocGroup from "../timeline/AssocGroup.svelte";
 	import { groupByAssoc } from "../timeline/groupByAssoc";
 	import TaskRow from "../task/Task.svelte";
 	import { todayLeftovers } from "../timeline/todayLeftovers";
@@ -1274,12 +1274,12 @@
 {/snippet}
 {#snippet unscheduledList(tasks: ResolvedTask[])}
 	{#each groupByAssoc(tasks, (t) => t.owner, resolve) as group (group.key)}
-		<AssocGroupHeader
+		<AssocGroup
 			assoc={group.assoc}
 			resolved={group.resolved}
 			count={group.items.length}
 			{onNavigate}
-		/>
+		>
 		{#each group.items as task (task.source.line)}
 			{@const r = task.owner ? resolve(task.owner) : undefined}
 			<TaskRow
@@ -1288,6 +1288,7 @@
 				association={task.owner}
 				inherited={task.assoc === undefined && task.owner !== undefined}
 				showAssociation={false}
+				scheduleButton
 				resolved={r}
 				onNavigate={() => task.owner && onNavigate(task.owner)}
 				onEditAssoc={(rect) => openTaskAssoc(task, rect)}
@@ -1301,6 +1302,7 @@
 				onHoverChange={(on: boolean) => onTaskHover(task, on)}
 			/>
 		{/each}
+		</AssocGroup>
 	{/each}
 {/snippet}
 {#snippet inboxList(date: ISODate)}
@@ -1325,12 +1327,12 @@
 		{/each}
 	{/if}
 	{#each groupByAssoc(surfacedOnDate(date), (e) => e.assoc, resolve) as group (group.key)}
-		<AssocGroupHeader
+		<AssocGroup
 			assoc={group.assoc}
 			resolved={group.resolved}
 			count={group.items.length}
 			{onNavigate}
-		/>
+		>
 		{#each group.items as entry (entry.source.line)}
 			<BacklogNudge
 				{entry}
@@ -1342,6 +1344,7 @@
 				{onNavigate}
 			/>
 		{/each}
+		</AssocGroup>
 	{/each}
 {/snippet}
 
@@ -1472,7 +1475,8 @@
 					<div class="grid-badges">
 						{#if usTasks.length > 0}
 							<HeaderBadge
-								title={`Unscheduled · ${dayLabel(date)}`}
+								title="Unscheduled"
+								dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
 								count={usTasks.length}
 								icon={listIcon}
 								bind:open={unscheduledOpen[date]}
@@ -1483,7 +1487,8 @@
 						{/if}
 						{#if inCount > 0}
 							<HeaderBadge
-								title={`Inbox · ${dayLabel(date)}`}
+								title="Inbox"
+								dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
 								count={inCount}
 								icon={inboxIcon}
 								tone={leftoversOn(date).length > 0 ? "warn" : "neutral"}

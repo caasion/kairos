@@ -61,6 +61,10 @@
 		// Turn this task into a routine ("Repeat…"): opens the rule picker and adds
 		// a routine built from the task. The task itself stays as the first one.
 		onRepeat?: () => void;
+		// PROTOTYPE: an always-visible "Schedule" button at the row's end that
+		// opens the block picker (`onNest`), for lists of tasks waiting for a
+		// block (a day's Unscheduled).
+		scheduleButton?: boolean;
 		// Extra metadata rendered inside the row, beneath the text on the same line
 		// as the association (so it shares the row's hover region). The grid uses
 		// this for the block-nesting badge. Snippet content is compiled in the
@@ -112,6 +116,7 @@
 		nestLabel = "Nest under block",
 		onMoveToBacklog,
 		onRepeat,
+		scheduleButton = false,
 		meta,
 		onGrab,
 		lines = 1,
@@ -497,6 +502,19 @@
 				{task.text}
 			</span>
 			{#if trailing}<span class="k-task-trailing" title={trailing}>{trailing}</span>{/if}
+			{#if scheduleButton && onNest}
+				<button
+					class="k-task-schedule"
+					aria-label="Schedule into a block"
+					use:tooltip={"Schedule into a block"}
+					onclick={(e) => {
+						e.stopPropagation();
+						requestNest();
+					}}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8"/><path d="M3 10h18"/><path d="M16 19h6"/><path d="M19 16v6"/></svg>
+				</button>
+			{/if}
 		{/if}
 	</div>
 
@@ -676,6 +694,31 @@
 		padding-left: 4px;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+
+	/* PROTOTYPE: the row's "Schedule" button — always visible, quiet until
+	   pointed at. */
+	.k-task-schedule {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 18px;
+		margin-left: 4px;
+		padding: 0;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: var(--radius-s);
+		background: transparent;
+		box-shadow: none;
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+
+	.k-task-schedule:hover {
+		color: var(--kairos-link-color, var(--interactive-accent));
+		border-color: var(--kairos-link-color, var(--interactive-accent));
+		background: var(--background-modifier-hover);
 	}
 
 	.k-task-text.grabbable {

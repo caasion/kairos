@@ -40,7 +40,7 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "./LeftoverTask.svelte";
 	import HeaderBadge from "./HeaderBadge.svelte";
-	import AssocGroupHeader from "./AssocGroupHeader.svelte";
+	import AssocGroup from "./AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import { todayLeftovers } from "./todayLeftovers";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
@@ -702,12 +702,12 @@
 {/snippet}
 {#snippet unscheduledList(date: ISODate)}
 		{#each unscheduledGroupsFor(date) as group (group.key)}
-			<AssocGroupHeader
+			<AssocGroup
 				assoc={group.assoc}
 				resolved={group.resolved}
 				count={group.items.length}
 				onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
-			/>
+			>
 		{#each group.items as { block, task } (task.source.line)}
 			{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}
 			<TaskRow
@@ -716,6 +716,7 @@
 				association={task.assoc ?? task.owner}
 				inherited={task.assoc === undefined && task.owner !== undefined}
 				showAssociation={false}
+				scheduleButton
 				resolved={r}
 				onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
 				onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
@@ -730,6 +731,7 @@
 				onHoverChange={(on: boolean) => stripHover(task, on)}
 			/>
 		{/each}
+			</AssocGroup>
 		{/each}
 {/snippet}
 {#snippet inboxList(date: ISODate)}
@@ -754,12 +756,12 @@
 		{/each}
 	{/if}
 	{#each inboxGroupsFor(date) as group (group.key)}
-		<AssocGroupHeader
+		<AssocGroup
 			assoc={group.assoc}
 			resolved={group.resolved}
 			count={group.items.length}
 			onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
-		/>
+		>
 		{#each group.items as entry (entry.source.line)}
 			<BacklogNudge
 				{entry}
@@ -771,6 +773,7 @@
 				onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
 			/>
 		{/each}
+		</AssocGroup>
 	{/each}
 {/snippet}
 
@@ -895,7 +898,8 @@
 					<div class="col-badges">
 						{#if usCount > 0}
 							<HeaderBadge
-								title={`Unscheduled · ${dayLabel(date)}`}
+								title="Unscheduled"
+								dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
 								count={usCount}
 								icon={listIcon}
 								dragging={dragPreview !== null}
@@ -905,7 +909,8 @@
 						{/if}
 						{#if inCount > 0}
 							<HeaderBadge
-								title={`Inbox · ${dayLabel(date)}`}
+								title="Inbox"
+								dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
 								count={inCount}
 								icon={inboxIcon}
 								tone={leftoversOn(date).length > 0 ? "warn" : "neutral"}

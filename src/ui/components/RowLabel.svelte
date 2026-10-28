@@ -123,41 +123,55 @@
 
 {#if hovering && hasCardBody}
 	<Portal>
+		<!-- PROTOTYPE: the card in Kairos's own type — a full-height bar in the
+		     entity's color, the status in small capitals, the name in serif,
+		     the note and description in the UI font, and the dates as a small
+		     labelled list with intensity drawn as its stacked bars. -->
 		<div class="row-label-card" bind:this={cardEl} style={cardStyle}>
-			<div class="rlc-head">
+			<span
+				class="rlc-accent"
+				style={info.color ? `background: ${info.color};` : undefined}
+			></span>
+			<div class="rlc-body">
 				<span
-					class="rlc-accent"
-					style={info.color ? `background: ${info.color};` : undefined}
-				></span>
+					class="rlc-status"
+					class:active={info.status === "active"}
+					class:inactive={info.status === "inactive"}
+					class:archived={info.status === "archived"}
+				>{statusLabel}</span>
 				<span class="rlc-name">{info.name}</span>
-			</div>
-			{#if info.description.trim() !== ""}
-				<div class="rlc-desc">{info.description}</div>
-			{/if}
-			<div class="rlc-status">
-				<span class="rlc-status-badge" class:active={info.status === "active"} class:inactive={info.status === "inactive"} class:archived={info.status === "archived"}>
-					{statusLabel}
-				</span>
 				{#if info.note.trim() !== ""}
-					<span class="rlc-status-note">{info.note}</span>
+					<div class="rlc-note">{info.note}</div>
+				{/if}
+				{#if info.description.trim() !== ""}
+					<div class="rlc-desc">{info.description}</div>
+				{/if}
+				{#if info.intensity || info.since !== null || rolledUp.length > 0}
+					<dl class="rlc-facts">
+						{#if info.intensity}
+							<dt>Intensity</dt>
+							<dd>
+								<span
+									class="rlc-bars"
+									style={info.color ? `color: ${info.color};` : undefined}
+								><IntensityBars level={info.intensity.level} /></span>
+								<span class="rlc-dim">({info.intensity.level})</span>
+								<span>on {fmtDate(info.intensity.on)}</span>
+							</dd>
+						{/if}
+						{#if info.since !== null}
+							<dt>{statusLabel}</dt>
+							<dd>
+								Since {fmtDate(info.since)}{#if info.until !== null}<span class="rlc-dim">&nbsp;· until {fmtDate(info.until)}</span>{/if}
+							</dd>
+						{/if}
+						{#if rolledUp.length > 0}
+							<dt>Also here</dt>
+							<dd>{rolledUpText}</dd>
+						{/if}
+					</dl>
 				{/if}
 			</div>
-			{#if info.intensity}
-				<div class="rlc-span">Intensity {info.intensity.level} on {fmtDate(info.intensity.on)}</div>
-			{/if}
-			{#if rolledUp.length > 0}
-				<div class="rlc-rollup">Also shown here: {rolledUpText}</div>
-			{/if}
-			{#if info.since !== null}
-				<div class="rlc-span">
-					{statusLabel} since {fmtDate(info.since)}
-					{#if info.until !== null}
-						· until {fmtDate(info.until)}
-					{:else if info.status === "active"}
-						· ongoing
-					{/if}
-				</div>
-			{/if}
 		</div>
 	</Portal>
 {/if}
@@ -232,92 +246,92 @@
 		color: var(--text-faint);
 	}
 
-	/* ── Hover card ── */
+	/* ── Hover card (PROTOTYPE: Kairos style) ── */
 	:global(.row-label-card) {
 		position: fixed;
 		z-index: var(--layer-popover);
-		min-width: 160px;
-		max-width: 260px;
+		min-width: 180px;
+		max-width: 270px;
 		height: auto;
-		background: var(--background-primary);
+		display: flex;
+		overflow: hidden;
+		background: var(--background-secondary);
 		border: 1px solid var(--background-modifier-border);
-		border-radius: var(--radius-m);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-		padding: var(--size-4-2) var(--size-4-3);
+		border-radius: var(--radius-s);
+		box-shadow: var(--shadow-s);
 		pointer-events: none;
+	}
+	/* Full-height bar in the entity's color (faint when none is set). */
+	:global(.row-label-card) .rlc-accent {
+		width: 4px;
+		flex-shrink: 0;
+		background: var(--text-faint);
+	}
+	:global(.row-label-card) .rlc-body {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: var(--size-4-2);
-	}
-	:global(.row-label-card) .rlc-head {
-		display: flex;
-		align-items: stretch;
-		gap: var(--size-4-2);
-	}
-	/* Vertical accent bar in the entity's color (faint when none is set). */
-	:global(.row-label-card) .rlc-accent {
-		width: 3px;
-		border-radius: 2px;
-		background: var(--text-faint);
-		flex-shrink: 0;
-	}
-	:global(.row-label-card) .rlc-name {
-		font-family: Georgia, "Times New Roman", serif;
-		font-size: var(--font-ui-medium);
-		font-weight: 400;
-		color: var(--text-normal);
-	}
-	:global(.row-label-card) .rlc-desc {
-		font-size: var(--font-ui-smaller);
-		color: var(--text-muted);
-		line-height: var(--line-height-tight);
+		padding: 12px 14px;
 	}
 	:global(.row-label-card) .rlc-status {
-		display: flex;
-		align-items: center;
-		gap: var(--size-4-2);
-		flex-wrap: wrap;
-	}
-	/* Muted "chip": tinted 20% fill behind a full-opacity border and darker,
-	   legible text — never bright-on-bright. */
-	:global(.row-label-card) .rlc-status-badge {
-		font-size: 0.7em;
-		font-weight: var(--font-semibold);
-		text-transform: capitalize;
-		letter-spacing: 0.5px;
-		padding: 1px var(--size-4-2);
-		border-radius: var(--radius-s);
-		color: var(--text-muted);
-		background: color-mix(in srgb, var(--text-faint) 20%, transparent);
-		border: 1px solid var(--text-faint);
-	}
-	:global(.row-label-card) .rlc-status-badge.active {
-		color: color-mix(in srgb, var(--color-green) 75%, var(--text-normal));
-		background: color-mix(in srgb, var(--color-green) 20%, transparent);
-		border-color: var(--color-green);
-	}
-	:global(.row-label-card) .rlc-status-badge.inactive {
-		color: var(--text-muted);
-		background: color-mix(in srgb, var(--text-muted) 20%, transparent);
-		border-color: var(--text-muted);
-	}
-	:global(.row-label-card) .rlc-status-badge.archived {
-		color: color-mix(in srgb, var(--color-red) 75%, var(--text-normal));
-		background: color-mix(in srgb, var(--color-red) 20%, transparent);
-		border-color: var(--color-red);
-	}
-	:global(.row-label-card) .rlc-status-note {
 		font-size: var(--font-ui-smaller);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-muted);
+	}
+	:global(.row-label-card) .rlc-status.active {
+		color: var(--color-green);
+	}
+	:global(.row-label-card) .rlc-status.archived {
+		color: var(--color-red);
+	}
+	:global(.row-label-card) .rlc-name {
+		margin: 1px 0 6px;
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 18px;
+		font-weight: 400;
+		line-height: 1.2;
 		color: var(--text-normal);
 	}
-	:global(.row-label-card) .rlc-rollup {
+	:global(.row-label-card) .rlc-note {
+		font-size: var(--font-ui-small);
+		color: var(--text-normal);
+		line-height: var(--line-height-tight);
+	}
+	:global(.row-label-card) .rlc-desc {
+		margin-top: 2px;
 		font-size: var(--font-ui-smaller);
 		color: var(--text-muted);
 		line-height: var(--line-height-tight);
 	}
-	:global(.row-label-card) .rlc-span {
+	:global(.row-label-card) .rlc-facts {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 5px 12px;
+		align-items: center;
+		margin: 10px 0 0;
+		padding-top: 8px;
+		border-top: 1px solid var(--background-modifier-border);
 		font-size: var(--font-ui-smaller);
-		color: var(--text-faint);
 		font-variant-numeric: tabular-nums;
+	}
+	:global(.row-label-card) .rlc-facts dt {
+		color: var(--text-muted);
+	}
+	:global(.row-label-card) .rlc-facts dd {
+		margin: 0;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		min-width: 0;
+		color: var(--text-normal);
+	}
+	:global(.row-label-card) .rlc-bars {
+		display: inline-flex;
+		color: var(--text-muted);
+	}
+	:global(.row-label-card) .rlc-dim {
+		color: var(--text-faint);
 	}
 </style>

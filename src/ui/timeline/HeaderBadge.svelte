@@ -12,8 +12,10 @@
 	import type { Snippet } from "svelte";
 
 	interface Props {
-		/** Accessible name and the list's heading ("Unscheduled · Wed, Oct 28"). */
+		/** The list's heading, in serif ("Unscheduled"). */
 		title: string;
+		/** The day, in small capitals at the heading's right ("Wed 28"). */
+		dateLabel?: string;
 		count: number;
 		icon: Snippet;
 		children: Snippet;
@@ -33,6 +35,7 @@
 
 	let {
 		title,
+		dateLabel,
 		count,
 		icon,
 		children,
@@ -165,7 +168,7 @@
 		class="hb-trigger"
 		bind:this={triggerEl}
 		aria-expanded={!!open}
-		aria-label={`${title}: ${count}`}
+		aria-label={`${title}${dateLabel ? ` · ${dateLabel}` : ""}: ${count}`}
 		onclick={onClick}
 	>
 		{@render icon()}
@@ -177,7 +180,7 @@
 			style={panelStyle}
 			role="dialog"
 			tabindex="-1"
-			aria-label={title}
+			aria-label={dateLabel ? `${title} · ${dateLabel}` : title}
 			bind:this={panelEl}
 			use:portal
 			onpointerenter={onEnter}
@@ -186,6 +189,7 @@
 			<div class="hb-head">
 				<span class="hb-title">{title}</span>
 				{#if actions}{@render actions()}{/if}
+				{#if dateLabel}<span class="hb-date">{dateLabel}</span>{/if}
 			</div>
 			<div class="hb-list">
 				{@render children()}
@@ -245,20 +249,22 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		background: var(--background-primary);
+		background: var(--background-secondary);
 		border: 1px solid var(--background-modifier-border);
-		border-radius: var(--radius-m);
+		border-radius: var(--radius-s);
 		box-shadow: var(--shadow-s);
+		padding: 10px 12px 10px;
 	}
 
+	/* Kairos's own type: the list's name in serif, the day in small capitals
+	   on the right, like the column header the badge sits on. */
 	.hb-head {
 		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 6px 8px 4px;
-		font-size: var(--font-ui-smaller);
-		font-weight: var(--font-semibold);
-		color: var(--text-muted);
+		align-items: baseline;
+		gap: 8px;
+		padding: 0 0 8px;
+		margin-bottom: 2px;
+		border-bottom: 1px solid var(--background-modifier-border);
 	}
 
 	.hb-title {
@@ -267,6 +273,17 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 15px;
+		color: var(--text-normal);
+	}
+
+	.hb-date {
+		flex-shrink: 0;
+		font-size: var(--font-ui-smaller);
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--text-muted);
 	}
 
 	.hb-head :global(button) {
@@ -278,6 +295,7 @@
 
 	.hb-list {
 		overflow-y: auto;
-		padding: 0 4px 6px;
+		margin-right: -4px;
+		padding-right: 4px;
 	}
 </style>

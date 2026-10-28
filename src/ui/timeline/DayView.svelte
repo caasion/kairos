@@ -27,7 +27,7 @@
 	} from "../../writer";
 	import { leftovers, type Leftover } from "../../carry";
 	import LeftoverBanner from "./LeftoverBanner.svelte";
-	import AssocGroupHeader from "./AssocGroupHeader.svelte";
+	import AssocGroup from "./AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import TrayPill from "./TrayPill.svelte";
 	import { surfacedOn } from "../../backlogModel";
@@ -1398,12 +1398,12 @@
 	     (groupByAssoc.ts), so its rows drop their own association line. -->
 	{#snippet unscheduledList()}
 		{#each unscheduledGroups as group (group.key)}
-			<AssocGroupHeader
+			<AssocGroup
 				assoc={group.assoc}
 				resolved={group.resolved}
 				count={group.items.length}
 				{onNavigate}
-			/>
+			>
 			{#each group.items as { block, task } (task.source.line)}
 				{@const r = task.owner ? resolve(task.owner) : undefined}
 				<TaskRow
@@ -1412,6 +1412,7 @@
 					association={task.assoc ?? task.owner}
 					inherited={task.assoc === undefined && task.owner !== undefined}
 					showAssociation={false}
+				scheduleButton
 					resolved={r}
 					onNavigate={() => task.owner && onNavigate(task.owner)}
 					onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
@@ -1427,17 +1428,18 @@
 					onHoverChange={(on: boolean) => taskHover(task, on)}
 				/>
 			{/each}
+			</AssocGroup>
 		{/each}
 	{/snippet}
 	{#snippet inboxList()}
 		<div class="rs-list">
 			{#each inboxGroups as group (group.key)}
-				<AssocGroupHeader
+				<AssocGroup
 					assoc={group.assoc}
 					resolved={group.resolved}
 					count={group.items.length}
 					{onNavigate}
-				/>
+				>
 				{#each group.items as entry (entry.source.line)}
 					<BacklogNudge
 						{entry}
@@ -1449,6 +1451,7 @@
 						{onNavigate}
 					/>
 				{/each}
+				</AssocGroup>
 			{/each}
 		</div>
 	{/snippet}
