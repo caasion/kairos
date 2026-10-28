@@ -80,7 +80,7 @@
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
 	import type { Leftover } from "../../carry";
-	import LeftoverTask from "../timeline/LeftoverTask.svelte";
+	import LeftoverBanner from "../timeline/LeftoverBanner.svelte";
 	import { todayLeftovers } from "../timeline/todayLeftovers";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
 	import { dayLabel } from "../../routines/plan";
@@ -124,7 +124,7 @@
 		showDay: (date: ISODate) => void;
 		// Each day's missing routines, behind a pill on its date header.
 		routineActions: RoutineActions;
-		// PROTOTYPE: yesterday's open tasks, shown in today's cells by row.
+		// PROTOTYPE: yesterday's open tasks, for the banner above the table.
 		leftoverActions: LeftoverActions;
 	}
 
@@ -401,19 +401,10 @@
 		return due.filter((e) => rowMatchesEntry(row, e));
 	}
 
-	// PROTOTYPE: yesterday's open tasks sit in today's cell of their row, next to
-	// the resurfacing nudges: together they are that row's Inbox for today.
+	// PROTOTYPE: yesterday's open tasks, for the banner above the table.
 	// svelte-ignore state_referenced_locally
 	const left$ = todayLeftovers(index, leftoverActions);
 	const leftFrom = $derived($left$ ? dayLabel($left$.from.date) : "");
-	function leftoversFor(row: GridRow, date: ISODate): Leftover[] {
-		const left = $left$;
-		if (!snapshot || !left || left.today !== date) return [];
-		const snap = snapshot;
-		return left.items.filter(
-			(l) => ownerRowKey(l.task.assoc ?? l.owner.assoc, snap) === row.key,
-		);
-	}
 	function settleLeftover(l: Leftover, status: "x" | "-") {
 		const day = $left$?.from;
 		if (!day) return;
@@ -1406,6 +1397,20 @@
 		{/each}
 	</div>
 
+	<!-- PROTOTYPE: yesterday's open tasks as a banner above the table, while
+	     today is in the window, rather than in today's cells (LeftoverBanner). -->
+	{#if $left$ && dates.includes($left$.today)}
+		<LeftoverBanner
+			items={$left$.items}
+			fromLabel={leftFrom}
+			{resolve}
+			onSettle={settleLeftover}
+			onBring={bringLeftover}
+			onBringAll={() => $left$ && leftoverActions.bring($left$.today, $left$.from.date)}
+			onLeave={() => $left$ && leftoverActions.leave($left$.today, $left$.from.date)}
+		/>
+	{/if}
+
 	<div class="grid-scroll" data-drag-scroll>
 		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
 			<!-- Body rows -->
@@ -1433,7 +1438,6 @@
 				{#each dates as date (date)}
 					{@const day = dayOf(date)}
 					{@const nudges = nudgesFor(row, date)}
-					{@const lefts = leftoversFor(row, date)}
 					{@const inactive = isCellInactive(row, date)}
 					{@const change = changeOn(row, date, inactive)}
 					{@const intention = intentionOn(row, date, inactive)}
@@ -1468,26 +1472,13 @@
 								{/if}
 							</span>
 						{/if}
-						{#if nudges.length > 0 || lefts.length > 0}
+						{#if nudges.length > 0}
 							<div class="grid-nudges">
-								{#each lefts as l (l.task.source.line)}
-									{@const la = l.task.assoc ?? l.owner.assoc}
-									<LeftoverTask
-										task={l.task}
-										resolved={la ? resolve(la) : undefined}
-										fromLabel={leftFrom}
-										sourceTag={leftFrom.split(",")[0]}
-										onDone={() => settleLeftover(l, "x")}
-										onCancel={() => settleLeftover(l, "-")}
-										onBring={() => bringLeftover(l)}
-									/>
-								{/each}
 								{#each nudges as entry (entry.source.line)}
 									<BacklogNudge
 										{entry}
 										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
 										showAssociation={false}
-										sourceTag="Backlog"
 										onInsert={(e) => onNudgeInsert(e, date)}
 										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
 										onResurfaceAt={onNudgeResurfaceAt}

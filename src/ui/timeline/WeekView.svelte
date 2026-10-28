@@ -37,7 +37,7 @@
 	import { requestRepeat } from "../../routines/repeat";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
 	import type { Leftover } from "../../carry";
-	import LeftoverTask from "./LeftoverTask.svelte";
+	import LeftoverBanner from "./LeftoverBanner.svelte";
 	import AssocGroupHeader from "./AssocGroupHeader.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import { todayLeftovers } from "./todayLeftovers";
@@ -327,24 +327,10 @@
 	const leftCount = $derived(
 		$left$ && dates.includes($left$.today) ? $left$.items.length : 0,
 	);
-	const totalInbox = $derived(totalSurfaced + leftCount);
-	type InboxItem =
-		| { kind: "left"; key: string; l: Leftover }
-		| { kind: "surfaced"; key: string; entry: BacklogEntry };
+	const totalInbox = $derived(totalSurfaced);
 	function inboxGroupsFor(date: ISODate) {
-		const left = $left$ && $left$.today === date ? $left$.items : [];
-		return groupByAssoc<InboxItem>(
-			[
-				...left.map((l): InboxItem => ({ kind: "left", key: `l${l.task.source.line}`, l })),
-				...(surfacedByDate[date] ?? []).map(
-					(entry): InboxItem => ({ kind: "surfaced", key: `s${entry.source.line}`, entry }),
-				),
-			],
-			(i) => (i.kind === "left" ? (i.l.task.assoc ?? i.l.owner.assoc) : i.entry.assoc),
-			resolve,
-		);
+		return groupByAssoc(surfacedByDate[date] ?? [], (e) => e.assoc, resolve);
 	}
-	// Mark it on the day it was left on, as the Day view does.
 	function settleLeftover(l: Leftover, status: "x" | "-") {
 		const day = $left$?.from;
 		if (!day) return;
@@ -352,6 +338,12 @@
 	}
 	function bringLeftover(l: Leftover) {
 		if ($left$) leftoverActions.bring($left$.today, $left$.from.date, [l.task.source]);
+	}
+	function bringAllLeftovers() {
+		if ($left$) leftoverActions.bring($left$.today, $left$.from.date);
+	}
+	function leaveLeftovers() {
+		if ($left$) leftoverActions.leave($left$.today, $left$.from.date);
 	}
 	// PROTOTYPE: each column's Unscheduled tasks, grouped by association.
 	function unscheduledGroupsFor(date: ISODate) {
@@ -781,6 +773,20 @@
 		</div>
 	</div>
 
+	<!-- PROTOTYPE: yesterday's open tasks as a banner under the header, while
+	     today is in the window (LeftoverBanner.svelte). -->
+	{#if $left$ && leftCount > 0}
+		<LeftoverBanner
+			items={$left$.items}
+			fromLabel={leftFrom}
+			{resolve}
+			onSettle={settleLeftover}
+			onBring={bringLeftover}
+			onBringAll={bringAllLeftovers}
+			onLeave={leaveLeftovers}
+		/>
+	{/if}
+
 	<!-- Column titles row, aligned with the columns below (offset by the gutter). -->
 	<div class="week-colheads">
 		<div class="week-gutter-spacer"></div>
@@ -921,30 +927,17 @@
 									count={group.items.length}
 									onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
 								/>
-								{#each group.items as item (item.key)}
-									{#if item.kind === "left"}
-										{@const l = item.l}
-										<LeftoverTask
-											task={l.task}
-											fromLabel={leftFrom}
-											sourceTag={leftFrom.split(",")[0]}
-											onDone={() => settleLeftover(l, "x")}
-											onCancel={() => settleLeftover(l, "-")}
-											onBring={() => bringLeftover(l)}
-										/>
-									{:else}
-										<BacklogNudge
-											entry={item.entry}
-											resolved={item.entry.assoc ? resolve(item.entry.assoc) : undefined}
-											showAssociation={false}
-											sourceTag="Backlog"
-											onInsert={(e) => onNudgeInsert(e, date)}
-											onResurfaceTomorrow={onNudgeResurfaceTomorrow}
-											onResurfaceAt={onNudgeResurfaceAt}
-											onNavigate={(assoc) =>
-												navigateToAssociation(app, resolve(assoc))}
-										/>
-									{/if}
+								{#each group.items as entry (entry.source.line)}
+									<BacklogNudge
+										{entry}
+										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+										showAssociation={false}
+										onInsert={(e) => onNudgeInsert(e, date)}
+										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+										onResurfaceAt={onNudgeResurfaceAt}
+										onNavigate={(assoc) =>
+											navigateToAssociation(app, resolve(assoc))}
+									/>
 								{/each}
 							{/each}
 						</div>
