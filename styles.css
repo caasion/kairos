@@ -390,5 +390,72 @@ body {
 .view-header.kairos-header-host .kairos-header-bar {
 	flex: 1;
 	min-width: 0;
-	padding: 0 4px 0 0;
+	gap: var(--size-2-1);
+	padding: 0 var(--size-2-2) 0 0;
+}
+
+/* In the tab header the bar takes Obsidian's header look, built from its own
+   variables so themes restyle it too: frameless icon buttons like the tab's
+   back/forward and ⋯ buttons, the date set like the tab title, and text
+   buttons that only show a fill on hover. The views' own framed look stays
+   for a bar that isn't in a tab header (a view in the sidebar). */
+.view-header.kairos-header-host .kairos-header-bar .icon-btn {
+	width: auto;
+	height: auto;
+	padding: var(--size-2-2) var(--size-2-3);
+	border: none;
+	border-radius: var(--clickable-icon-radius);
+	background: transparent;
+	box-shadow: none;
+	color: var(--icon-color);
+	opacity: var(--icon-opacity);
+}
+.view-header.kairos-header-host .kairos-header-bar .icon-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--icon-color-hover);
+	opacity: var(--icon-opacity-hover);
+}
+.view-header.kairos-header-host .kairos-header-bar .icon-btn svg {
+	width: var(--icon-size);
+	height: var(--icon-size);
+	stroke-width: var(--icon-stroke);
+}
+.view-header.kairos-header-host .kairos-header-bar .day-date {
+	padding: var(--size-2-1) var(--size-4-1);
+	border: none;
+	border-radius: var(--radius-s);
+	box-shadow: none;
+	font-size: var(--file-header-font-size, var(--font-ui-small));
+	font-weight: var(--file-header-font-weight, 400);
+	color: var(--text-normal);
+}
+.view-header.kairos-header-host .kairos-header-bar .today-btn,
+.view-header.kairos-header-host .kairos-header-bar .interval-tab {
+	height: auto;
+	padding: var(--size-2-1) var(--size-4-1);
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-normal);
+	color: var(--text-muted);
+}
+.view-header.kairos-header-host .kairos-header-bar :is(.day-date, .today-btn, .interval-tab):hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+.view-header.kairos-header-host .kairos-header-bar .interval-tabs {
+	gap: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+}
+.view-header.kairos-header-host .kairos-header-bar .interval-tab.active {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+.view-header.kairos-header-host .kairos-header-bar .day-range-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
 }
