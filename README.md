@@ -1,5 +1,9 @@
 Seize the moment. Get things done.
 
+[![Watch the 3-minute demo: planning a morning with Kairos](https://img.youtube.com/vi/4KXV-WIqeDw/maxresdefault.jpg)](https://www.youtube.com/watch?v=4KXV-WIqeDw)
+
+*Watch the 3-minute demo: planning a morning with Kairos.*
+
 Kairos is for people whose time isn't fully their own (students, employees, or anyone juggling shifting commitments) who need to decide how they spend their time before it's decided for them.
 
 Kairos is a time-centric productivity app that helps you turn intentions into action. Most tools let tasks float in a backlog. Kairos doesn't. It asks one thing of you: decide *when* and *where* the work happens. That constraint is the whole point. A task you've placed in your day is a commitment; a task you haven't is just a wish.
