@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf } from 'obsidian';
+import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
 import { writable } from 'svelte/store';
 import type { Readable, Writable } from 'svelte/store';
 import { DEFAULT_SETTINGS, KairosSettingTab } from './settings';
@@ -192,6 +192,21 @@ export default class Kairos extends Plugin {
 			id: 'open-grid-view',
 			name: 'Open grid view',
 			callback: () => void this.activateGridView(),
+		});
+
+		// PROTOTYPE (add flow): flip where the Grid's "+" opens its field.
+		this.addCommand({
+			id: 'switch-add-flow-prototype',
+			name: 'Switch where new tasks are typed (prototype)',
+			callback: () =>
+				void this.updateSettings((s) => {
+					s.protoAddInPopup = !s.protoAddInPopup;
+					new Notice(
+						s.protoAddInPopup
+							? 'New tasks: typed in the Unscheduled list'
+							: 'New tasks: typed in the cell',
+					);
+				}),
 		});
 
 		this.addCommand({

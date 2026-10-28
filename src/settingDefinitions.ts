@@ -92,6 +92,13 @@ export interface KairosSettings {
 	 * the end of its line on its domain's row (decision 74). Off by default.
 	 */
 	gridShowRollupProjects: boolean;
+
+	/**
+	 * PROTOTYPE (add flow): where a Grid "+" opens its new-task field. Off: in
+	 * the cell you clicked. On: in the day's Unscheduled list, where the task
+	 * goes. Either way nothing is made until it has a name.
+	 */
+	protoAddInPopup: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -112,6 +119,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	highlightAcrossViews: true,
 	dropBlockTitle: '',
 	gridShowRollupProjects: false,
+	protoAddInPopup: false,
 };
 
 /** Every control key is a settings property, so the default value resolver works. */
@@ -230,6 +238,18 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					type: 'toggle',
 					key: 'followGrid',
 					defaultValue: DEFAULT_SETTINGS.followGrid,
+				},
+			},
+			{
+				name: 'Type new tasks in the Unscheduled list (prototype)',
+				desc:
+					"Where the grid's + opens a field for a new task. Off: in the cell " +
+					"you clicked. On: in the day's Unscheduled list. The task is only " +
+					'made once you press Enter.',
+				control: {
+					type: 'toggle',
+					key: 'protoAddInPopup',
+					defaultValue: DEFAULT_SETTINGS.protoAddInPopup,
 				},
 			},
 			{

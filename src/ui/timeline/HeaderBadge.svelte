@@ -25,6 +25,8 @@
 		tone?: "neutral" | "warn";
 		/** Open state, bindable so the view can open it (after a cell's "+"). */
 		open?: boolean;
+		/** Stay open when the pointer leaves (a field in it has the focus). */
+		pinned?: boolean;
 		/** A task drag is running anywhere: close, and don't open. */
 		dragging?: boolean;
 		/** Makes the badge a drop target that unschedules onto this date. */
@@ -44,6 +46,7 @@
 		// No default: the views bind it to a per-day map whose entries start
 		// undefined, and Svelte rejects undefined on a bound prop with a fallback.
 		open = $bindable(),
+		pinned = false,
 		dragging = false,
 		dropDate,
 		dropTarget = false,
@@ -117,7 +120,7 @@
 	function onLeave(e: PointerEvent) {
 		if (e.pointerType !== "mouse") return;
 		clearTimer();
-		if (inside(e.relatedTarget)) return;
+		if (inside(e.relatedTarget) || pinned) return;
 		if (open) timer = window.setTimeout(hide, CLOSE_MS);
 	}
 	function onClick(e: MouseEvent) {

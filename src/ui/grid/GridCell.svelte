@@ -18,6 +18,7 @@
 	// (add task, association, delete), a click on the title to rename it, and a long-press to
 	// drag it to another row or day.
 
+	import DraftTask from "../task/DraftTask.svelte";
 	import { Menu } from "obsidian";
 	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
@@ -47,6 +48,10 @@
 		onEditAssoc: (task: ResolvedTask, anchor: DOMRect) => void;
 		onNavigate: (assoc: Association) => void;
 		onCreate: () => void;
+		// PROTOTYPE (add flow): the "+" opened its new-task field in this cell.
+		draftOpen?: boolean;
+		onDraftSubmit?: (text: string) => void;
+		onDraftClose?: () => void;
 		// Jump to this task's block in the Day view.
 		onReveal: (task: ResolvedTask) => void;
 		// Jump to a block in the Day view (its header's ctrl+click).
@@ -104,6 +109,9 @@
 		onEditAssoc,
 		onNavigate,
 		onCreate,
+		draftOpen = false,
+		onDraftSubmit,
+		onDraftClose,
 		onReveal,
 		onRevealBlock,
 		onNest,
@@ -431,7 +439,11 @@
 		</div>
 	{/if}
 
-	{#if showCellAdd && !unscheduledSlot}
+	{#if draftOpen && onDraftSubmit && onDraftClose}
+		<!-- PROTOTYPE (add flow): typed here, filed in the day's Unscheduled
+		     (its badge pulses when it lands). -->
+		<DraftTask {color} placeholder="New task, to Unscheduled" onSubmit={onDraftSubmit} onClose={onDraftClose} />
+	{:else if showCellAdd && !unscheduledSlot}
 		<!-- No Unscheduled group here yet, so the cell's "+" wears the header that
 		     group would have: it says where a new task goes. Shown on hover only.
 		     In an empty cell it sits where the group would; under other groups
