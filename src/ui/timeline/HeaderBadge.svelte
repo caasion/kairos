@@ -38,7 +38,9 @@
 		children,
 		actions,
 		tone = "neutral",
-		open = $bindable(false),
+		// No default: the views bind it to a per-day map whose entries start
+		// undefined, and Svelte rejects undefined on a bound prop with a fallback.
+		open = $bindable(),
 		dragging = false,
 		dropDate,
 		dropTarget = false,
@@ -162,7 +164,7 @@
 	<button
 		class="hb-trigger"
 		bind:this={triggerEl}
-		aria-expanded={open}
+		aria-expanded={!!open}
 		aria-label={`${title}: ${count}`}
 		onclick={onClick}
 	>
