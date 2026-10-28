@@ -275,7 +275,7 @@ export function buildRows(snap: GridSnapshot, asOf: ISODate): GridRow[] {
 	rows.push({
 		kind: "unassigned",
 		key: "unassigned",
-		name: "Unassigned",
+		name: "Unassociated",
 		depth: 0,
 	});
 
