@@ -17,6 +17,8 @@
 	} from "../../types";
 	import {
 		copyBlockIntoDay,
+		deleteBlock,
+		deleteBlocks,
 		makeBlock,
 		nestTaskUnderBlock,
 		notesWithAdded,
@@ -48,6 +50,7 @@
 	import { nextDraftLine } from "../../draftLine";
 	import TimelineBlock from "./TimelineBlock.svelte";
 	import TaskRow from "../task/Task.svelte";
+	import { commitNumber } from "./numberField";
 	import { requestRepeat } from "../../routines/repeat";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
 	import { routinesToOffer } from "../../routines/preview";
@@ -62,6 +65,7 @@
 		hitTestTimeline,
 		type TaskDragState,
 	} from "./taskDrag";
+	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline } from "./dropTask";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
@@ -196,26 +200,35 @@
 	let showControls = $state(false);
 	let controlsRef = $state<HTMLDivElement>();
 
-	function setStartHour(value: number) {
+	// Each returns the value now in effect, for commitNumber (a cleared field
+	// keeps the current value).
+	function setStartHour(value: number): number {
+		if (Number.isNaN(value)) return geo.startHour;
 		const v = Math.max(0, Math.min(23, Math.floor(value)));
 		updateSettings((s) => {
 			s.timelineStartHour = v;
 			if (s.timelineEndHour <= v) s.timelineEndHour = v + 1;
 		});
+		return v;
 	}
 
-	function setEndHour(value: number) {
+	function setEndHour(value: number): number {
+		if (Number.isNaN(value)) return geo.endHour;
 		const v = Math.max(1, Math.min(24, Math.floor(value)));
 		updateSettings((s) => {
 			s.timelineEndHour = v;
 			if (s.timelineStartHour >= v) s.timelineStartHour = v - 1;
 		});
+		return v;
 	}
 
-	function setHourHeight(value: number) {
+	function setHourHeight(value: number): number {
+		if (Number.isNaN(value)) return geo.hourHeight;
+		const v = Math.max(20, Math.min(240, Math.floor(value)));
 		updateSettings((s) => {
-			s.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
+			s.timelineHourHeight = v;
 		});
+		return v;
 	}
 
 	function handleClickOutside(event: MouseEvent) {
@@ -482,7 +495,7 @@
 		selection = new Set();
 		// Deletion changes the array, so reassign locally (removal doesn't have
 		// the reorder/identity problem an edit does), then write.
-		blocks = blocks.filter((b) => b !== real);
+		blocks = deleteBlock(blocks, real);
 		void writeToDisk();
 	}
 
@@ -763,6 +776,8 @@
 	// the live insertion slot passed down so the hovered block draws an indicator.
 	let taskDrag = $state<TaskDragState | null>(null);
 	let taskDrop = $state<TimelineDrop | null>(null);
+	// Scrolls the timeline when the drag nears its edge (see dragScroll.ts).
+	let dragScroll: DragScroll | undefined;
 
 	// What every timeline draws for the live task drag, whichever view started
 	// it (this one, a Week column, or the Grid): the drop line in a block, the
@@ -1018,6 +1033,8 @@
 		// Any timeline is a target: this one, a Week column, another Day view.
 		taskDrop = hitTestTimeline(event);
 		publishDrag();
+		dragScroll?.stop();
+		dragScroll = startDragScroll(event, onTaskDragMove);
 	}
 
 	function onTaskDragMove(event: PointerEvent) {
@@ -1030,6 +1047,7 @@
 		};
 		taskDrop = hitTestTimeline(event);
 		publishDrag();
+		dragScroll?.update(event);
 	}
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
@@ -1067,6 +1085,8 @@
 		if (!taskDrag) return;
 		taskDrag = null;
 		taskDrop = null;
+		dragScroll?.stop();
+		dragScroll = undefined;
 		links.setDrag(null);
 	}
 
@@ -1084,9 +1104,9 @@
 
 	async function deleteSelected() {
 		if (selection.size === 0) return;
-		const doomed = new Set([...selection].map((b) => b.source.line));
+		const doomed = [...selection];
 		selection = new Set();
-		blocks = blocks.filter((b) => !doomed.has(b.source.line));
+		blocks = deleteBlocks(blocks, doomed);
 		await writeToDisk();
 	}
 
@@ -1296,7 +1316,7 @@
 							min="0"
 							max="23"
 							value={geo.startHour}
-							oninput={(e) => setStartHour(+e.currentTarget.value)}
+							onchange={(e) => commitNumber(e.currentTarget, setStartHour)}
 						/>
 					</label>
 					<label class="controls-field">
@@ -1307,7 +1327,7 @@
 							min="1"
 							max="24"
 							value={geo.endHour}
-							oninput={(e) => setEndHour(+e.currentTarget.value)}
+							onchange={(e) => commitNumber(e.currentTarget, setEndHour)}
 						/>
 					</label>
 					<label class="controls-field">
@@ -1319,7 +1339,7 @@
 							max="240"
 							step="5"
 							value={geo.hourHeight}
-							oninput={(e) => setHourHeight(+e.currentTarget.value)}
+							onchange={(e) => commitNumber(e.currentTarget, setHourHeight)}
 						/>
 					</label>
 				</div>
@@ -1344,7 +1364,7 @@
 
 	<!-- The timeline always renders, even for a day with no note yet: creating a
 	     block on an empty day lazily creates the daily note (see writeToDisk). -->
-	<div class="day-scroll" bind:this={scrollEl}>
+	<div class="day-scroll" data-drag-scroll bind:this={scrollEl}>
 		<!-- Shown during any task drag too, even when empty: dropping on it takes
 		     a task out of its block. -->
 		{#if unscheduled.length > 0 || dragPreview}

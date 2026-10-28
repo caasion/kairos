@@ -119,6 +119,43 @@ describe("moveBlockAcrossDays", () => {
 	});
 });
 
+describe("deleteBlock", () => {
+	it("moves the block's tasks to Unscheduled instead of deleting them", () => {
+		const block = sampleBlock("mon.md");
+		const out = deleteBlock([block], block);
+
+		expect(out).toHaveLength(1);
+		const inbox = out[0]!;
+		expect(inbox.title).toBe("Unscheduled");
+		expect(inbox.time).toBeUndefined();
+		expect(inbox.tasks.map((t) => t.text)).toEqual(["Design", "Emails"]);
+		// An inheriting task keeps its block's association; an explicit one keeps its own.
+		expect(inbox.tasks.map((t) => t.assoc)).toEqual([
+			{ kind: "project", id: "Kairos" },
+			{ kind: "domain", id: "Admin" },
+		]);
+	});
+
+	it("appends to an existing Unscheduled block", () => {
+		const block = sampleBlock("mon.md");
+		const day = addTaskToUnscheduled([block], "mon.md", "Buy milk", undefined);
+		const out = deleteBlock(day, block);
+
+		expect(out.map((b) => b.title)).toEqual(["Unscheduled"]);
+		expect(out[0]!.tasks.map((t) => t.text)).toEqual(["Buy milk", "Design", "Emails"]);
+	});
+
+	it("deletes an empty block outright", () => {
+		const empty = makeBlock({ start: 540, end: 600 }, "mon.md", "Gym");
+		expect(deleteBlock([empty], empty)).toEqual([]);
+	});
+
+	it("deletes the Unscheduled block with its tasks", () => {
+		const day = addTaskToUnscheduled([], "mon.md", "Buy milk", undefined);
+		expect(deleteBlock(day, day[0]!)).toEqual([]);
+	});
+});
+
 describe("unnestTask", () => {
 	// The nested tasks of sampleBlock: line 4 "Design" (inherits the block's
 	// [Kairos] project), line 5 "Emails" (its own [D:Admin] domain).

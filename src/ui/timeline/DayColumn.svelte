@@ -14,7 +14,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
+	import { deleteBlock, deleteBlocks, makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
 	import { moveTaskToBacklog } from "../../backlogActions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
@@ -23,6 +23,7 @@
 		type TaskDragState,
 		type UnscheduledItem,
 	} from "./taskDrag";
+	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline } from "./dropTask";
 	import type { DragPreview, HoverTarget, ViewLinks } from "../../viewLinks";
@@ -197,7 +198,7 @@
 		const real = ownerFor(blockToDelete);
 		if (!real) return;
 		selection = new Set();
-		blocks = blocks.filter((b) => b !== real);
+		blocks = deleteBlock(blocks, real);
 		writeToDisk();
 	}
 
@@ -397,6 +398,8 @@
 	// on any timeline: this day, another Week column, or the Day view. See
 	// taskDrag.ts for the hit-test contract and taskDrop.ts for what a drop writes.
 	let taskDrag = $state<TaskDragState | null>(null);
+	// Scrolls the Week timeline when the drag nears its edge (see dragScroll.ts).
+	let dragScroll: DragScroll | undefined;
 	let taskDrop = $state<TimelineDrop | null>(null);
 
 	// What this column draws for the live task drag, whichever view started it:
@@ -553,6 +556,8 @@
 		};
 		taskDrop = hitTestTimeline(event);
 		publishDrag();
+		dragScroll?.stop();
+		dragScroll = startDragScroll(event, (last) => handlePointerMove(last));
 	}
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
@@ -580,6 +585,8 @@
 		if (!taskDrag) return;
 		taskDrag = null;
 		taskDrop = null;
+		dragScroll?.stop();
+		dragScroll = undefined;
 		links.setDrag(null);
 	}
 
@@ -597,6 +604,7 @@
 			};
 			taskDrop = hitTestTimeline(event);
 			publishDrag();
+			dragScroll?.update(event);
 			return true;
 		}
 		if (!gesture) return false;
@@ -734,9 +742,9 @@
 
 	async function deleteSelected() {
 		if (selection.size === 0) return;
-		const doomed = new Set([...selection].map((b) => b.source.line));
+		const doomed = [...selection];
 		selection = new Set();
-		blocks = blocks.filter((b) => !doomed.has(b.source.line));
+		blocks = deleteBlocks(blocks, doomed);
 		writeToDisk();
 	}
 
