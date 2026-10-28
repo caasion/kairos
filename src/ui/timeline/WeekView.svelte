@@ -1137,8 +1137,6 @@
 		display: flex;
 		flex-shrink: 0;
 		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
-		background: var(--background-secondary);
-		background-clip: content-box;
 	}
 
 	.week-gutter-spacer {
@@ -1151,6 +1149,10 @@
 		   flex edges. */
 		border-right: 1px solid var(--background-modifier-border);
 		border-bottom: 1px solid var(--background-modifier-border);
+		/* The strip's outer top corners round like the Grid's (its corner cell
+		   and last card); everything between is square. */
+		border-radius: 8px 0 0 0;
+		background: var(--background-secondary);
 	}
 
 	/* Holos-style date card: an uppercase day-of-week label over a large serif
@@ -1181,8 +1183,9 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 1px;
-		background: transparent;
+		background: var(--background-secondary);
 		border: none;
+		border-radius: 0;
 		/* The header's bottom rule; carried on each column cell so it spans exactly the
 		   body's column extents (no overhang past the timeline). */
 		border-bottom: 1px solid var(--background-modifier-border);
@@ -1193,6 +1196,9 @@
 		height: 100%;
 	}
 
+	.col-head-wrap:last-child > .col-head.date-card {
+		border-top-right-radius: 8px;
+	}
 	.col-head.date-card:hover {
 		filter: brightness(1.15);
 	}
@@ -1226,7 +1232,7 @@
 	}
 
 	.col-head.today {
-		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
+		background: color-mix(in srgb, var(--interactive-accent) 5%, var(--background-secondary));
 	}
 	/* ── Body ── */
 	.week-scroll {

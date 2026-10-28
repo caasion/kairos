@@ -1759,10 +1759,17 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
 		padding: 8px 8px 12px 12px;
+		/* Square, not Obsidian's button radius: the cards sit edge to edge on
+		   their columns, and only the strip's outer top corners round (the
+		   corner cell's, and the last card's below), like the Week view. */
+		border-radius: 0;
 		cursor: pointer;
 		box-shadow: none;
 		transition: filter 150ms ease;
 		height: 100%;
+	}
+	.grid-colhead-wrap:last-child > .grid-colhead.date-card {
+		border-top-right-radius: 8px;
 	}
 	.grid-colhead.date-card:hover {
 		filter: brightness(1.15);
