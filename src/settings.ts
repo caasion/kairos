@@ -129,10 +129,10 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
-			case 'protoAddInPopup': {
+			case 'gridUnscheduledInCells': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {
-					s.protoAddInPopup = on;
+					s.gridUnscheduledInCells = on;
 				});
 				return;
 			}

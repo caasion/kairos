@@ -94,11 +94,11 @@ export interface KairosSettings {
 	gridShowRollupProjects: boolean;
 
 	/**
-	 * PROTOTYPE (add flow): where a Grid "+" opens its new-task field. Off: in
-	 * the cell you clicked. On: in the day's Unscheduled list, where the task
-	 * goes. Either way nothing is made until it has a name.
+	 * Show each day's Unscheduled tasks in the Grid's cells, on their row. Off:
+	 * they're behind the Unscheduled badge on the day's header instead, which
+	 * pulses when a task typed in a cell lands in it. On by default.
 	 */
-	protoAddInPopup: boolean;
+	gridUnscheduledInCells: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -119,7 +119,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	highlightAcrossViews: true,
 	dropBlockTitle: '',
 	gridShowRollupProjects: false,
-	protoAddInPopup: false,
+	gridUnscheduledInCells: true,
 };
 
 /** Every control key is a settings property, so the default value resolver works. */
@@ -241,15 +241,15 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 				},
 			},
 			{
-				name: 'Type new tasks in the Unscheduled list (prototype)',
+				name: 'Show unscheduled tasks in the grid',
 				desc:
-					"Where the grid's + opens a field for a new task. Off: in the cell " +
-					"you clicked. On: in the day's Unscheduled list. The task is only " +
-					'made once you press Enter.',
+					"Show each day's unscheduled tasks in the grid's cells, on their " +
+					"project or domain's row. Off: they're listed behind the " +
+					"Unscheduled badge on the day's header.",
 				control: {
 					type: 'toggle',
-					key: 'protoAddInPopup',
-					defaultValue: DEFAULT_SETTINGS.protoAddInPopup,
+					key: 'gridUnscheduledInCells',
+					defaultValue: DEFAULT_SETTINGS.gridUnscheduledInCells,
 				},
 			},
 			{
