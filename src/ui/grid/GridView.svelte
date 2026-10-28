@@ -78,7 +78,10 @@
 		type GridRow,
 	} from "../../gridModel";
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
-	import type { RoutineActions } from "../../routines/routinesFeed";
+	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
+	import type { Leftover } from "../../carry";
+	import LeftoverBanner from "../timeline/LeftoverBanner.svelte";
+	import { todayLeftovers } from "../timeline/todayLeftovers";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
 	import { dayLabel } from "../../routines/plan";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
@@ -121,6 +124,8 @@
 		showDay: (date: ISODate) => void;
 		// Each day's missing routines, behind a pill on its date header.
 		routineActions: RoutineActions;
+		// PROTOTYPE: yesterday's open tasks, for the banner above the table.
+		leftoverActions: LeftoverActions;
 	}
 
 	let {
@@ -132,6 +137,7 @@
 		links,
 		showDay,
 		routineActions,
+		leftoverActions,
 	}: Props = $props();
 
 	// ── Bridge to the timelines (viewLinks.ts) ──
@@ -393,6 +399,19 @@
 	function nudgesFor(row: GridRow, date: ISODate): BacklogEntry[] {
 		const due = surfacedOn(backlogEntries, date, todayISO());
 		return due.filter((e) => rowMatchesEntry(row, e));
+	}
+
+	// PROTOTYPE: yesterday's open tasks, for the banner above the table.
+	// svelte-ignore state_referenced_locally
+	const left$ = todayLeftovers(index, leftoverActions);
+	const leftFrom = $derived($left$ ? dayLabel($left$.from.date) : "");
+	function settleLeftover(l: Leftover, status: "x" | "-") {
+		const day = $left$?.from;
+		if (!day) return;
+		index.applyDayEdit(day.date, day.path, setTaskStatus(day.blocks, l.owner, l.task, status));
+	}
+	function bringLeftover(l: Leftover) {
+		if ($left$) leftoverActions.bring($left$.today, $left$.from.date, [l.task.source]);
 	}
 
 	// Same routing as tasks (`ownerRowKey`): canonical name, so an alias-tagged
@@ -1378,6 +1397,20 @@
 		{/each}
 	</div>
 
+	<!-- PROTOTYPE: yesterday's open tasks as a banner above the table, while
+	     today is in the window, rather than in today's cells (LeftoverBanner). -->
+	{#if $left$ && dates.includes($left$.today)}
+		<LeftoverBanner
+			items={$left$.items}
+			fromLabel={leftFrom}
+			{resolve}
+			onSettle={settleLeftover}
+			onBring={bringLeftover}
+			onBringAll={() => $left$ && leftoverActions.bring($left$.today, $left$.from.date)}
+			onLeave={() => $left$ && leftoverActions.leave($left$.today, $left$.from.date)}
+		/>
+	{/if}
+
 	<div class="grid-scroll" data-drag-scroll>
 		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
 			<!-- Body rows -->
@@ -1445,6 +1478,7 @@
 									<BacklogNudge
 										{entry}
 										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+										showAssociation={false}
 										onInsert={(e) => onNudgeInsert(e, date)}
 										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
 										onResurfaceAt={onNudgeResurfaceAt}
@@ -1517,6 +1551,7 @@
 
 {#if blockPickerTask && blockPickerAnchor}
 	<BlockPicker
+		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}

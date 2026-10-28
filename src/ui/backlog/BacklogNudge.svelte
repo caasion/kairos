@@ -33,6 +33,10 @@
 		onResurfaceAt: (entry: BacklogEntry, anchor: DOMRect) => void;
 		/** Ctrl-click the association line → open its project/domain. */
 		onNavigate?: (assoc: Association) => void;
+		/** PROTOTYPE: false when a group header above already names it. */
+		showAssociation?: boolean;
+		/** PROTOTYPE: a short label for where the row came from ("Backlog"). */
+		sourceTag?: string;
 	}
 
 	let {
@@ -42,6 +46,8 @@
 		onResurfaceTomorrow,
 		onResurfaceAt,
 		onNavigate,
+		showAssociation = true,
+		sourceTag,
 	}: Props = $props();
 
 	const accent = $derived(resolved?.color || "var(--interactive-accent)");
@@ -120,9 +126,10 @@
 		</button>
 
 		<span class="nudge-text">{entry.text}</span>
+		{#if sourceTag}<span class="src-tag" title="Resurfaced from the backlog"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>{sourceTag}</span>{/if}
 	</div>
 
-	{#if entry.assoc}
+	{#if entry.assoc && showAssociation}
 		<!-- Association line beneath the text — icon + canonical name, aligned
 		     under the text past the arrow, ctrl-click to open. Literally the task
 		     row's association line now: same shared `.kairos-meta` classes, and the
@@ -147,6 +154,16 @@
 </div>
 
 <style>
+	/* PROTOTYPE: where an Inbox row came from, at the row's right. */
+	.src-tag {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex-shrink: 0;
+		font-size: var(--kairos-meta-font-size);
+		color: var(--text-faint);
+		white-space: nowrap;
+	}
 	.nudge {
 		display: flex;
 		flex-direction: column;

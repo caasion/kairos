@@ -170,6 +170,19 @@
     block.assoc ? resolve(block.assoc).color : undefined,
   );
 
+  // PROTOTYPE: a task whose association is the block's own — inherited, or
+  // written on the task but naming the same project or domain — draws no
+  // association line; the block's header already says it.
+  const blockResolved = $derived(block.assoc ? resolve(block.assoc) : undefined);
+  function sameAsBlock(task: ResolvedTask): boolean {
+    const a = task.owner;
+    const b = block.assoc;
+    if (!a || !b || a.kind !== b.kind) return false;
+    if (a.id === b.id) return true;
+    const target = resolve(a).target;
+    return target !== undefined && target === blockResolved?.target;
+  }
+
   const chips = $derived(tasks);
   const notes = $derived(block.notes ?? []);
 
@@ -535,6 +548,7 @@
     {task}
     association={task.owner}
     inherited={task.assoc === undefined}
+    showAssociation={!sameAsBlock(task)}
     resolved={tr}
     color={tr?.color}
     onNavigate={() => task.owner && onNavigate(task.owner)}

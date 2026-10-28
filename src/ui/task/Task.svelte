@@ -130,6 +130,9 @@
 	const assocLabel = $derived(resolved?.displayName ?? association?.id ?? "");
 	// The association button's tooltip and accessible name.
 	const assocAction = $derived(association ? "Edit association" : "Add association");
+	// PROTOTYPE: an inherited association gets no line of its own — the block
+	// above already shows it, so repeating it on every task only costs height.
+	const showAssocLine = $derived(!!association && showAssociation && !inherited);
 
 	// ── Hover link ──────────────────────────────────────────────────
 	// Reported on enter/leave. A row removed while the pointer is on it gets no
@@ -497,12 +500,12 @@
 		{/if}
 	</div>
 
-	{#if (association && showAssociation) || meta}
+	{#if showAssocLine || meta}
 		<!-- Association and any extra metadata (e.g. the grid's block-nesting badge)
 		     share one inline row: association first, then the metadata. Both align
 		     under the task text, past the checkbox. -->
 		<div class="kairos-meta-row is-indented">
-			{#if association && showAssociation}
+			{#if showAssocLine && association}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div

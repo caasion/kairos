@@ -11,7 +11,7 @@
 		Task,
 	} from "../../types";
 	import type { TimeRange } from "../../types";
-	import { moveBlockAcrossDays } from "../../writer";
+	import { moveBlockAcrossDays, setTaskStatus } from "../../writer";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { navigateToAssociation } from "../../navigate";
 	import type { GridDay, KairosIndex, Resolver } from "../../index";
@@ -36,7 +36,12 @@
 	import TaskRow from "../task/Task.svelte";
 	import { commitNumber } from "./numberField";
 	import { requestRepeat } from "../../routines/repeat";
-	import type { RoutineActions } from "../../routines/routinesFeed";
+	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
+	import type { Leftover } from "../../carry";
+	import LeftoverBanner from "./LeftoverBanner.svelte";
+	import AssocGroupHeader from "./AssocGroupHeader.svelte";
+	import { groupByAssoc } from "./groupByAssoc";
+	import { todayLeftovers } from "./todayLeftovers";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
 	import { dayLabel } from "../../routines/plan";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
@@ -70,9 +75,12 @@
 		links: ViewLinks;
 		// Each day's missing routines, behind a pill on its column header.
 		routineActions: RoutineActions;
+		// PROTOTYPE: yesterday's open tasks, for today's column of the Inbox strip.
+		leftoverActions: LeftoverActions;
 	}
 
-	let { app, index, settings$, updateSettings, links, routineActions }: Props = $props();
+	let { app, index, settings$, updateSettings, links, routineActions, leftoverActions }: Props =
+		$props();
 
 	// The hovered item, for the unscheduled strip this view renders itself
 	// (subscribed on mount, like the resolver).
@@ -326,6 +334,37 @@
 		dates.reduce((n, d) => n + (surfacedByDate[d]?.length ?? 0), 0),
 	);
 	let resurfacingOpen = $state(true);
+
+	// PROTOTYPE: the Inbox strip — resurfacing backlog entries per day, plus
+	// yesterday's open tasks in today's column, grouped by association.
+	// svelte-ignore state_referenced_locally
+	const left$ = todayLeftovers(index, leftoverActions);
+	const leftFrom = $derived($left$ ? dayLabel($left$.from.date) : "");
+	const leftCount = $derived(
+		$left$ && dates.includes($left$.today) ? $left$.items.length : 0,
+	);
+	const totalInbox = $derived(totalSurfaced);
+	function inboxGroupsFor(date: ISODate) {
+		return groupByAssoc(surfacedByDate[date] ?? [], (e) => e.assoc, resolve);
+	}
+	function settleLeftover(l: Leftover, status: "x" | "-") {
+		const day = $left$?.from;
+		if (!day) return;
+		index.applyDayEdit(day.date, day.path, setTaskStatus(day.blocks, l.owner, l.task, status));
+	}
+	function bringLeftover(l: Leftover) {
+		if ($left$) leftoverActions.bring($left$.today, $left$.from.date, [l.task.source]);
+	}
+	function bringAllLeftovers() {
+		if ($left$) leftoverActions.bring($left$.today, $left$.from.date);
+	}
+	function leaveLeftovers() {
+		if ($left$) leftoverActions.leave($left$.today, $left$.from.date);
+	}
+	// PROTOTYPE: each column's Unscheduled tasks, grouped by association.
+	function unscheduledGroupsFor(date: ISODate) {
+		return groupByAssoc(unscheduledByDate[date] ?? [], (i) => i.task.owner, resolve);
+	}
 
 	function onNudgeInsert(entry: BacklogEntry, date: ISODate) {
 		void insertEntry(index, entry, date);
@@ -750,6 +789,20 @@
 		</div>
 	</div>
 
+	<!-- PROTOTYPE: yesterday's open tasks as a banner under the header, while
+	     today is in the window (LeftoverBanner.svelte). -->
+	{#if $left$ && leftCount > 0}
+		<LeftoverBanner
+			items={$left$.items}
+			fromLabel={leftFrom}
+			{resolve}
+			onSettle={settleLeftover}
+			onBring={bringLeftover}
+			onBringAll={bringAllLeftovers}
+			onLeave={leaveLeftovers}
+		/>
+	{/if}
+
 	<!-- Column titles row, aligned with the columns below (offset by the gutter). -->
 	<div class="week-colheads">
 		<div class="week-gutter-spacer"></div>
@@ -821,13 +874,21 @@
 							class:drop-target={inboxDropDate() === date}
 							data-unscheduled-date={date}
 						>
-							{#each unscheduledByDate[date] ?? [] as { block, task } (task.source.line)}
+							{#each unscheduledGroupsFor(date) as group (group.key)}
+								<AssocGroupHeader
+									assoc={group.assoc}
+									resolved={group.resolved}
+									count={group.items.length}
+									onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+								/>
+							{#each group.items as { block, task } (task.source.line)}
 								{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}
 								<TaskRow
 									{task}
 									color={r?.color}
 									association={task.assoc ?? task.owner}
 									inherited={task.assoc === undefined && task.owner !== undefined}
+									showAssociation={false}
 									resolved={r}
 									onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
 									onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
@@ -842,6 +903,7 @@
 									onHoverChange={(on: boolean) => stripHover(task, on)}
 								/>
 							{/each}
+							{/each}
 						</div>
 					{/each}
 				</div>
@@ -851,7 +913,7 @@
 
 	<!-- Resurfacing: backlog nudges due somewhere in the window. A strip of its
 	     own, like Unscheduled, but the items live in the backlog until inserted. -->
-	{#if totalSurfaced > 0}
+	{#if totalInbox > 0}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="week-resurfacing">
@@ -862,8 +924,8 @@
 			>
 				<div class="week-us-gutter-spacer">
 					<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
-					<span>Resurfacing</span>
-					<span class="us-count">{totalSurfaced}</span>
+					<span>Inbox</span>
+					<span class="us-count">{totalInbox}</span>
 				</div>
 				{#each dates as date (date)}
 					<div class="week-us-head-cell"></div>
@@ -874,16 +936,25 @@
 					<div class="week-us-gutter-spacer"></div>
 					{#each dates as date (date)}
 						<div class="week-us-col week-rs-col">
-							{#each surfacedByDate[date] ?? [] as entry (entry.source.line)}
-								<BacklogNudge
-									{entry}
-									resolved={entry.assoc ? resolve(entry.assoc) : undefined}
-									onInsert={(e) => onNudgeInsert(e, date)}
-									onResurfaceTomorrow={onNudgeResurfaceTomorrow}
-									onResurfaceAt={onNudgeResurfaceAt}
-									onNavigate={(assoc) =>
-										navigateToAssociation(app, resolve(assoc))}
+							{#each inboxGroupsFor(date) as group (group.key)}
+								<AssocGroupHeader
+									assoc={group.assoc}
+									resolved={group.resolved}
+									count={group.items.length}
+									onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
 								/>
+								{#each group.items as entry (entry.source.line)}
+									<BacklogNudge
+										{entry}
+										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+										showAssociation={false}
+										onInsert={(e) => onNudgeInsert(e, date)}
+										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+										onResurfaceAt={onNudgeResurfaceAt}
+										onNavigate={(assoc) =>
+											navigateToAssociation(app, resolve(assoc))}
+									/>
+								{/each}
 							{/each}
 						</div>
 					{/each}
@@ -973,6 +1044,7 @@
 
 {#if blockPickerTarget && blockPickerAnchor}
 	<BlockPicker
+		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}
