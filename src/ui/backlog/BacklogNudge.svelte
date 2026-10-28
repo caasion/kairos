@@ -33,6 +33,8 @@
 		onResurfaceAt: (entry: BacklogEntry, anchor: DOMRect) => void;
 		/** Ctrl-click the association line → open its project/domain. */
 		onNavigate?: (assoc: Association) => void;
+		/** PROTOTYPE: false when a group header above already names it. */
+		showAssociation?: boolean;
 	}
 
 	let {
@@ -42,6 +44,7 @@
 		onResurfaceTomorrow,
 		onResurfaceAt,
 		onNavigate,
+		showAssociation = true,
 	}: Props = $props();
 
 	const accent = $derived(resolved?.color || "var(--interactive-accent)");
@@ -122,7 +125,7 @@
 		<span class="nudge-text">{entry.text}</span>
 	</div>
 
-	{#if entry.assoc}
+	{#if entry.assoc && showAssociation}
 		<!-- Association line beneath the text — icon + canonical name, aligned
 		     under the text past the arrow, ctrl-click to open. Literally the task
 		     row's association line now: same shared `.kairos-meta` classes, and the

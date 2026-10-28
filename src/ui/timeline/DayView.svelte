@@ -25,6 +25,8 @@
 	} from "../../writer";
 	import { leftovers, type Leftover } from "../../carry";
 	import LeftoverTask from "./LeftoverTask.svelte";
+	import AssocGroupHeader from "./AssocGroupHeader.svelte";
+	import { groupByAssoc } from "./groupByAssoc";
 	import TrayPill from "./TrayPill.svelte";
 	import { surfacedOn } from "../../backlogModel";
 	import {
@@ -849,6 +851,20 @@
 	const unscheduledCount = $derived(
 		unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).length, 0),
 	);
+	// PROTOTYPE: each tray list grouped by association (groupByAssoc.ts).
+	const unscheduledGroups = $derived(
+		groupByAssoc(
+			unscheduled.flatMap((block) =>
+				(tasksBySource.get(block.source.line) ?? []).map((task) => ({ block, task })),
+			),
+			(i) => i.task.owner,
+			resolve,
+		),
+	);
+	const leftoverGroups = $derived(
+		groupByAssoc(offeredLeftovers, (l) => l.task.assoc ?? l.owner.assoc, resolve),
+	);
+	const surfacedGroups = $derived(groupByAssoc(surfaced, (e) => e.assoc, resolve));
 
 	// The strip of pills above the timeline, and what its peeks hang under.
 	let trayEl = $state<HTMLDivElement>();
@@ -1366,16 +1382,24 @@
 
 	<!-- Each tray list, rendered in its pill's hover peek or, toggled on with a
 	     click, in the view under the strip. -->
+	<!-- PROTOTYPE: each list is grouped under one header per project or domain
+	     (groupByAssoc.ts), so its rows drop their own association line. -->
 	{#snippet unscheduledList()}
-		{#each unscheduled as block (block.source.line)}
-			{@const tasks = tasksBySource.get(block.source.line) ?? []}
-			{#each tasks as task (task.source.line)}
+		{#each unscheduledGroups as group (group.key)}
+			<AssocGroupHeader
+				assoc={group.assoc}
+				resolved={group.resolved}
+				count={group.items.length}
+				{onNavigate}
+			/>
+			{#each group.items as { block, task } (task.source.line)}
 				{@const r = task.owner ? resolve(task.owner) : undefined}
 				<TaskRow
 					{task}
 					color={r?.color}
 					association={task.assoc ?? task.owner}
 					inherited={task.assoc === undefined && task.owner !== undefined}
+					showAssociation={false}
 					resolved={r}
 					onNavigate={() => task.owner && onNavigate(task.owner)}
 					onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
@@ -1398,31 +1422,45 @@
 		<button class="lo-action" title={`Leave the rest open on ${leftFrom}`} onclick={leaveLeftovers}>Leave the rest</button>
 	{/snippet}
 	{#snippet leftoverList()}
-		{#each offeredLeftovers as l (l.task.source.line)}
-			{@const assoc = l.task.assoc ?? l.owner.assoc}
-			<LeftoverTask
-				task={l.task}
-				association={assoc}
-				resolved={assoc ? resolve(assoc) : undefined}
-				fromLabel={leftFrom}
-				onDone={() => settleLeftover(l, "x")}
-				onCancel={() => settleLeftover(l, "-")}
-				onBring={() => bringLeftover(l)}
+		{#each leftoverGroups as group (group.key)}
+			<AssocGroupHeader
+				assoc={group.assoc}
+				resolved={group.resolved}
+				count={group.items.length}
 				{onNavigate}
 			/>
+			{#each group.items as l (l.task.source.line)}
+				<LeftoverTask
+					task={l.task}
+					fromLabel={leftFrom}
+					onDone={() => settleLeftover(l, "x")}
+					onCancel={() => settleLeftover(l, "-")}
+					onBring={() => bringLeftover(l)}
+					{onNavigate}
+				/>
+			{/each}
 		{/each}
 	{/snippet}
 	{#snippet resurfacingList()}
 		<div class="rs-list">
-			{#each surfaced as entry (entry.source.line)}
-				<BacklogNudge
-					{entry}
-					resolved={entry.assoc ? resolve(entry.assoc) : undefined}
-					onInsert={onNudgeInsert}
-					onResurfaceTomorrow={onNudgeResurfaceTomorrow}
-					onResurfaceAt={onNudgeResurfaceAt}
+			{#each surfacedGroups as group (group.key)}
+				<AssocGroupHeader
+					assoc={group.assoc}
+					resolved={group.resolved}
+					count={group.items.length}
 					{onNavigate}
 				/>
+				{#each group.items as entry (entry.source.line)}
+					<BacklogNudge
+						{entry}
+						resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+						showAssociation={false}
+						onInsert={onNudgeInsert}
+						onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+						onResurfaceAt={onNudgeResurfaceAt}
+						{onNavigate}
+					/>
+				{/each}
 			{/each}
 		</div>
 	{/snippet}
