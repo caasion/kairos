@@ -106,6 +106,7 @@
 	import Datepicker from "../components/Datepicker.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
+	import { intoViewHeader } from "../actions/viewHeader";
 
 	interface Props {
 		app: App;
@@ -121,6 +122,8 @@
 		showDay: (date: ISODate) => void;
 		// Each day's missing routines, behind a pill on its date header.
 		routineActions: RoutineActions;
+		// The leaf's tab header, which the header bar moves into.
+		viewHeader?: HTMLElement;
 	}
 
 	let {
@@ -132,6 +135,7 @@
 		links,
 		showDay,
 		routineActions,
+		viewHeader,
 	}: Props = $props();
 
 	// ── Bridge to the timelines (viewLinks.ts) ──
@@ -1238,7 +1242,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
-	<div class="grid-header">
+	<div class="grid-header" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
 				class="icon-btn nav-btn"

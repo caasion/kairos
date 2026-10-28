@@ -367,3 +367,28 @@ body {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+
+/* ── Header bar in the tab header (src/ui/actions/viewHeader.ts) ──
+   The Week, Grid and Timeline views move their header bar (date navigator,
+   settings) into Obsidian's tab header, in place of the tab's title. The
+   bar's popovers drop below the header over the view, so the title container
+   can't clip them and the header has to sit above the view's content. */
+.view-header.kairos-header-host {
+	position: relative;
+	z-index: var(--layer-popover);
+}
+.view-header.kairos-header-host .view-header-title-container {
+	overflow: visible;
+	justify-content: flex-start;
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+.view-header.kairos-header-host .view-header-title-parent,
+.view-header.kairos-header-host .view-header-title {
+	display: none;
+}
+.view-header.kairos-header-host .kairos-header-bar {
+	flex: 1;
+	min-width: 0;
+	padding: 0 4px 0 0;
+}
