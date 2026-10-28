@@ -15,9 +15,10 @@ import type { ISODate } from "../types";
 export const ROW_HEIGHT = 38;
 export const ROW_GAP = 6;
 export const BAR_HEIGHT = 26;
-// Least space above and below a row label that outgrows ROW_HEIGHT (a name
-// with a two-line note), so it never touches the next row.
-export const LABEL_PAD_Y = 4;
+// Space above and below a row label, the Grid's row-label padding. The label
+// sits at the top of its row like the Grid's, and a row grows to fit a name
+// with a two-line note.
+export const LABEL_PAD_Y = 8;
 // The header carries two stacked rows: a coarse grouping row over a fine row.
 export const HEADER_COARSE_HEIGHT = 20;
 export const HEADER_FINE_HEIGHT = 20;
@@ -25,11 +26,15 @@ export const HEADER_HEIGHT = HEADER_COARSE_HEIGHT + HEADER_FINE_HEIGHT;
 
 /**
  * A row's height: ROW_HEIGHT, or taller when its label (measured, in px) needs
- * more room. The bar stays centered in whatever height the row gets.
+ * more room. The bar stays level with the label's first line (`barOffset`).
  */
 export function rowHeightFor(labelHeight: number | undefined): number {
 	return Math.max(ROW_HEIGHT, Math.ceil(labelHeight ?? 0) + 2 * LABEL_PAD_Y);
 }
+
+/** A bar's offset from its row's top: centered in a ROW_HEIGHT row, so it
+ * lines up with the label's name in a row of any height. */
+export const BAR_OFFSET = (ROW_HEIGHT - BAR_HEIGHT) / 2;
 
 /** Each row's top, starting at `start`, with ROW_GAP between rows. */
 export function rowTops(heights: readonly number[], start: number): number[] {

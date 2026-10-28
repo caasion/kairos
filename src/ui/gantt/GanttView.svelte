@@ -31,11 +31,13 @@
 	} from "../../projectActions";
 	import {
 		BAR_HEIGHT,
+		BAR_OFFSET,
 		HEADER_COARSE_HEIGHT,
 		HEADER_FINE_HEIGHT,
 		HEADER_HEIGHT,
 		INTERVALS,
 		INTERVAL_LABEL,
+		LABEL_PAD_Y,
 		ROW_GAP,
 		ROW_HEIGHT,
 		rowHeightFor,
@@ -206,7 +208,7 @@
 	const tops = $derived(rowTops(rowHeights, HEADER_HEIGHT));
 	const rowTop = (i: number) => tops[i] ?? HEADER_HEIGHT;
 	const rowHeight = (i: number) => rowHeights[i] ?? ROW_HEIGHT;
-	const barTop = (i: number) => rowTop(i) + (rowHeight(i) - BAR_HEIGHT) / 2;
+	const barTop = (i: number) => rowTop(i) + BAR_OFFSET;
 	const contentHeight = $derived(
 		rows.length === 0 ? HEADER_HEIGHT + ROW_GAP : rowTop(rows.length - 1) + rowHeight(rows.length - 1) + 2 * ROW_GAP,
 	);
@@ -762,7 +764,11 @@
 	{:else}
 		<div class="gantt-grid">
 			<!-- Sidebar labels -->
-			<div class="gantt-labels">
+			<div
+				class="gantt-labels"
+				style:--label-pad-y={`${LABEL_PAD_Y}px`}
+				style:--row-gap={`${ROW_GAP}px`}
+			>
 				<div class="gantt-corner" style:height={`${HEADER_HEIGHT}px`}></div>
 				{#each rows as row, i (row.key)}
 					{@const group = ganttGroup(i)}
@@ -776,13 +782,9 @@
 						style:margin-bottom={`${ROW_GAP}px`}
 						style={row.color ? `--row-accent: ${row.color};` : undefined}
 					>
-						<!-- Continuous group accent: a domain + its projects share one stripe.
-						     Extends through the row gap on non-terminal rows so it reads as
-						     unbroken across the fixed-height, gapped Gantt rows. -->
-						<span
-							class="gantt-accent"
-							style:height={group.end ? `${rowHeight(i)}px` : `${rowHeight(i) + ROW_GAP}px`}
-						></span>
+						<!-- The accent runs through the row gap, so the stripe is unbroken
+						     down the column like the Grid's left border. -->
+						<span class="gantt-accent" style:height={`${rowHeight(i) + ROW_GAP}px`}></span>
 						<div class="gantt-label-body" bind:offsetHeight={labelHeights[row.key]}>
 							<RowLabel info={row.info} />
 						</div>
@@ -834,6 +836,16 @@
 				{#if atToday && todayX >= 0 && todayX <= plotWidth}
 					<div class="gantt-today" style:left={`${todayX}px`} style:height={`${contentHeight}px`}></div>
 				{/if}
+
+				<!-- The line under each group, level with the label column's. -->
+				{#each rows as row, i (row.key)}
+					{#if ganttGroup(i).end}
+						<div
+							class="gantt-group-line"
+							style:top={`${rowTop(i) + rowHeight(i) + ROW_GAP - 1}px`}
+						></div>
+					{/if}
+				{/each}
 
 				<!-- Create zones: empty row space; press here to author a new active
 				     period (click = open-ended, drag = bounded). Sits behind the bars. -->
@@ -1121,12 +1133,13 @@
 		background: var(--background-secondary);
 	}
 	/* Insets and indent are the Grid's (--kairos-row-label-* in styles.css), so
-	   the two label columns read as one; the label is centered on its bar. */
+	   the two label columns read as one. Like the Grid, the label sits at the
+	   top of its row; the bar lines up with its first line (BAR_OFFSET). */
 	.gantt-label {
 		position: relative;
 		display: flex;
-		align-items: center;
-		padding: 0 var(--kairos-row-label-pad-right) 0
+		align-items: flex-start;
+		padding: var(--label-pad-y) var(--kairos-row-label-pad-right) 0
 			calc(var(--kairos-row-label-accent-width) + var(--kairos-row-label-pad-left));
 		overflow: visible;
 	}
@@ -1139,9 +1152,7 @@
 		flex: 1;
 		min-width: 0;
 	}
-	/* Continuous group accent stripe, mirroring the Grid's left border: rounded
-	   only at the group's top/bottom, and extended through the row gap between
-	   grouped rows so it reads as unbroken across the gapped Gantt rows. */
+	/* The group accent stripe, square like the Grid's left border. */
 	.gantt-accent {
 		position: absolute;
 		left: 0;
@@ -1149,13 +1160,24 @@
 		width: var(--kairos-row-label-accent-width);
 		background: var(--row-accent, var(--text-faint));
 	}
-	.gantt-label.group-start .gantt-accent {
-		border-top-left-radius: 2px;
-		border-top-right-radius: 2px;
+	/* A line under each group, at the foot of the row gap, like the Grid's
+	   border under a group's last row. The plot draws the same line. */
+	.gantt-label.group-end::after {
+		content: "";
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: calc(-1 * var(--row-gap));
+		height: 1px;
+		background: var(--background-modifier-border);
 	}
-	.gantt-label.group-end .gantt-accent {
-		border-bottom-left-radius: 2px;
-		border-bottom-right-radius: 2px;
+	.gantt-group-line {
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 1px;
+		background: var(--background-modifier-border);
+		pointer-events: none;
 	}
 	.gantt-plot {
 		position: relative;
