@@ -1692,6 +1692,7 @@
 
 {#if blockPickerTarget && blockPickerAnchor}
 	<BlockPicker
+		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}

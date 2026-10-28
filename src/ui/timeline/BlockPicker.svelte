@@ -41,9 +41,12 @@
 		// Offer a last row that makes a new block, named by the search text when
 		// there is any. Caller closes the popup.
 		onCreate?: (title: string) => void;
+		// PROTOTYPE: a block's domain color, so each row reads like its block on
+		// the timeline. Undefined (or omitted) leaves the row plain.
+		colorOf?: (option: BlockOption) => string | undefined;
 	}
 
-	let { options, anchor, onPick, onClose, placeholder = "Nest under block…", onCreate }: Props =
+	let { options, anchor, onPick, onClose, placeholder = "Nest under block…", onCreate, colorOf }: Props =
 		$props();
 
 	let query = $state("");
@@ -152,9 +155,12 @@
 			{#each filtered as option, i (option.block.source.line)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_interactive_supports_focus -->
+				{@const color = colorOf?.(option)}
 				<div
 					class="block-row"
 					class:highlighted={i === highlighted}
+					class:colored={color !== undefined}
+					style:--block-color={color}
 					role="option"
 					aria-selected={i === highlighted}
 					onmouseenter={() => (highlighted = i)}
@@ -237,6 +243,26 @@
 
 	.block-row.highlighted {
 		background: var(--background-modifier-hover);
+	}
+
+	/* PROTOTYPE: a colored row, like its block on the timeline: a bar in the
+	   domain color on the left edge and a light tint, stronger when highlighted. */
+	.block-row.colored {
+		border-radius: 0;
+		box-shadow: inset 3px 0 0 var(--block-color);
+		background: color-mix(in srgb, var(--block-color) 10%, transparent);
+	}
+
+	.block-row.colored + .block-row.colored {
+		margin-top: 2px;
+	}
+
+	.block-row.colored.highlighted {
+		background: color-mix(in srgb, var(--block-color) 24%, transparent);
+	}
+
+	.block-row.colored svg {
+		color: var(--block-color);
 	}
 
 	.block-row svg {
