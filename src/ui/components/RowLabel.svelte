@@ -60,6 +60,15 @@
 	const statusLabel = $derived(
 		info.status.charAt(0).toUpperCase() + info.status.slice(1),
 	);
+	// The status dot goes before the first line under the name: the note,
+	// else the description, else the name itself.
+	const dotLine = $derived(
+		info.note.trim() !== ""
+			? "note"
+			: info.description.trim() !== ""
+				? "description"
+				: "name",
+	);
 	const rolledUp = $derived(info.rolledUp ?? []);
 	const rolledUpText = $derived(rolledUp.join(", "));
 	const hasCardBody = $derived(
@@ -121,11 +130,22 @@
 	{/if}
 </div>
 
+{#snippet statusDot()}
+	<span
+		class="rlc-dot"
+		class:active={info.status === "active"}
+		class:archived={info.status === "archived"}
+		role="img"
+		aria-label={statusLabel}
+		title={statusLabel}
+	></span>
+{/snippet}
+
 {#if hovering && hasCardBody}
 	<Portal>
 		<!-- PROTOTYPE: the card in Kairos's own type — a full-height bar in the
-		     entity's color, the status in small capitals, the name in serif,
-		     the note and description in the UI font, and the dates as a small
+		     entity's color, the name in serif, the status as a dot before the
+		     first line under it, the note and description in the UI font, and the dates as a small
 		     labelled list with intensity drawn as its stacked bars. -->
 		<div class="row-label-card" bind:this={cardEl} style={cardStyle}>
 			<span
@@ -133,18 +153,16 @@
 				style={info.color ? `background: ${info.color};` : undefined}
 			></span>
 			<div class="rlc-body">
-				<span
-					class="rlc-status"
-					class:active={info.status === "active"}
-					class:inactive={info.status === "inactive"}
-					class:archived={info.status === "archived"}
-				>{statusLabel}</span>
-				<span class="rlc-name">{info.name}</span>
+				<span class="rlc-name">
+					{#if dotLine === "name"}{@render statusDot()}{/if}{info.name}
+				</span>
 				{#if info.note.trim() !== ""}
-					<div class="rlc-note">{info.note}</div>
+					<div class="rlc-note">{@render statusDot()}{info.note}</div>
 				{/if}
 				{#if info.description.trim() !== ""}
-					<div class="rlc-desc">{info.description}</div>
+					<div class="rlc-desc">
+						{#if dotLine === "description"}{@render statusDot()}{/if}{info.description}
+					</div>
 				{/if}
 				{#if info.intensity || info.since !== null || rolledUp.length > 0}
 					<dl class="rlc-facts">
@@ -274,17 +292,20 @@
 		flex-direction: column;
 		padding: 12px 14px;
 	}
-	:global(.row-label-card) .rlc-status {
-		font-size: var(--font-ui-smaller);
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--text-muted);
+	:global(.row-label-card) .rlc-dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		margin-right: 6px;
+		border-radius: 50%;
+		vertical-align: 0.15em;
+		background: var(--text-faint);
 	}
-	:global(.row-label-card) .rlc-status.active {
-		color: var(--color-green);
+	:global(.row-label-card) .rlc-dot.active {
+		background: var(--color-green);
 	}
-	:global(.row-label-card) .rlc-status.archived {
-		color: var(--color-red);
+	:global(.row-label-card) .rlc-dot.archived {
+		background: var(--color-red);
 	}
 	:global(.row-label-card) .rlc-name {
 		margin: 1px 0 6px;
