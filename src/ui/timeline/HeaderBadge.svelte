@@ -49,6 +49,12 @@
 		dropTarget = false,
 	}: Props = $props();
 	const headId = $props.id();
+	// "Wed 28" splits into the weekday and the day number, to set like a
+	// date card; any other label shows as it is.
+	const dateParts = $derived.by(() => {
+		const m = dateLabel?.match(/^(\S+)\s+(\d+)$/);
+		return m ? { dow: m[1]!, num: m[2]! } : null;
+	});
 
 	let rootEl = $state<HTMLDivElement>();
 	let triggerEl = $state<HTMLButtonElement>();
@@ -193,7 +199,12 @@
 			<div class="hb-head" id={headId}>
 				<span class="hb-title">{title}</span>
 				{#if actions}{@render actions()}{/if}
-				{#if dateLabel}<span class="hb-date">{dateLabel}</span>{/if}
+				{#if dateLabel}
+					<!-- Set like a date card: bold weekday, serif day number. -->
+					<span class="hb-date">
+						{#if dateParts}<span class="hb-dow">{dateParts.dow}</span><span class="hb-num">{dateParts.num}</span>{:else}{dateLabel}{/if}
+					</span>
+				{/if}
 			</div>
 			<div class="hb-list">
 				{@render children()}
@@ -293,11 +304,23 @@
 	}
 
 	.hb-date {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 4px;
 		flex-shrink: 0;
+	}
+	.hb-dow {
 		font-size: var(--font-ui-smaller);
+		font-weight: var(--font-semibold);
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
 		color: var(--text-muted);
+	}
+	.hb-num {
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 15px;
+		font-variant-numeric: tabular-nums;
+		color: var(--text-normal);
 	}
 
 	.hb-head :global(button) {

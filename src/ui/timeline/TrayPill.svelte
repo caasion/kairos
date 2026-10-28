@@ -35,6 +35,9 @@
 		dragging?: boolean;
 		/** The drag is over this pill. */
 		dropTarget?: boolean;
+		/** "warn" tints it, for a list that's waiting on a decision (the Inbox
+		 *  with leftovers), like a day header's badge. */
+		tone?: "neutral" | "warn";
 	}
 
 	let {
@@ -50,6 +53,7 @@
 		dropDate,
 		dragging = false,
 		dropTarget = false,
+		tone = "neutral",
 	}: Props = $props();
 
 	let pillEl = $state<HTMLButtonElement>();
@@ -159,6 +163,7 @@
 	class:open
 	class:expanded
 	class:drop-target={dropTarget}
+	class:warn={tone === "warn"}
 	data-unscheduled-date={dropDate}
 	aria-expanded={expanded}
 	aria-label={`${label}, ${count}`}
@@ -221,6 +226,11 @@
 		border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
 		background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
 		color: var(--text-normal);
+	}
+	.tray-pill.warn {
+		border-color: color-mix(in srgb, var(--color-orange) 45%, transparent);
+		background: color-mix(in srgb, var(--color-orange) 12%, var(--background-primary));
+		color: var(--color-orange);
 	}
 	.tray-pill.drop-target {
 		border-color: var(--interactive-accent);

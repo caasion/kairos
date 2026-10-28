@@ -1463,20 +1463,6 @@
 		<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
 	{/snippet}
 
-	<!-- PROTOTYPE: yesterday's open tasks, first thing in the view, as a banner
-	     that asks to be dealt with (LeftoverBanner.svelte). -->
-	{#if showLeftovers}
-		<LeftoverBanner
-			items={offeredLeftovers}
-			fromLabel={leftFrom}
-			label={leftDay ? leftOpenLabel(leftDay.date, date) : ""}
-			{resolve}
-			onSettle={settleLeftover}
-			onBring={bringLeftover}
-			onBringAll={bringAllLeftovers}
-			onLeave={leaveLeftovers}
-		/>
-	{/if}
 
 	<!-- The tray: routines, Unscheduled, "Left from" and Resurfacing as one strip
 	     of pills. Pointing at a pill peeks at its list over the timeline; a click
@@ -1519,6 +1505,7 @@
 				<TrayPill
 					label="Inbox"
 					count={inboxCount}
+					tone={offeredLeftovers.length > 0 ? "warn" : "neutral"}
 					title="Inbox"
 					expanded={trayOpen.inbox}
 					onToggle={() => toggleTray("inbox")}
@@ -1530,6 +1517,21 @@
 				</TrayPill>
 			{/if}
 		</div>
+	{/if}
+
+	<!-- Under the tray, one quiet line while there are leftovers to answer:
+	     "Left open 5", Review, and leave / bring all (LeftoverBanner.svelte). -->
+	{#if showLeftovers}
+		<LeftoverBanner
+			items={offeredLeftovers}
+			fromLabel={leftFrom}
+			label={leftDay ? leftOpenLabel(leftDay.date, date) : ""}
+			{resolve}
+			onSettle={settleLeftover}
+			onBring={bringLeftover}
+			onBringAll={bringAllLeftovers}
+			onLeave={leaveLeftovers}
+		/>
 	{/if}
 
 	<!-- The lists toggled into the view, in the strip's order. -->
