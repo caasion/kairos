@@ -48,6 +48,7 @@
 		dropDate,
 		dropTarget = false,
 	}: Props = $props();
+	const headId = $props.id();
 
 	let rootEl = $state<HTMLDivElement>();
 	let triggerEl = $state<HTMLButtonElement>();
@@ -168,9 +169,12 @@
 		class="hb-trigger"
 		bind:this={triggerEl}
 		aria-expanded={!!open}
-		aria-label={`${title}${dateLabel ? ` · ${dateLabel}` : ""}: ${count}`}
 		onclick={onClick}
 	>
+		<!-- The name is hidden text, not aria-label: Obsidian shows every
+		     aria-label as a tooltip, which would cover the panel that opens
+		     on the same hover and says the same thing. -->
+		<span class="hb-hidden">{title}{dateLabel ? ` · ${dateLabel}` : ""}: </span>
 		{@render icon()}
 		<span class="hb-count">{count}</span>
 	</button>
@@ -180,13 +184,13 @@
 			style={panelStyle}
 			role="dialog"
 			tabindex="-1"
-			aria-label={dateLabel ? `${title} · ${dateLabel}` : title}
+			aria-labelledby={headId}
 			bind:this={panelEl}
 			use:portal
 			onpointerenter={onEnter}
 			onpointerleave={onLeave}
 		>
-			<div class="hb-head">
+			<div class="hb-head" id={headId}>
 				<span class="hb-title">{title}</span>
 				{#if actions}{@render actions()}{/if}
 				{#if dateLabel}<span class="hb-date">{dateLabel}</span>{/if}
@@ -199,6 +203,14 @@
 </div>
 
 <style>
+	.hb-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
 	.hb {
 		display: inline-flex;
 	}
