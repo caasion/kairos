@@ -116,6 +116,51 @@ textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
 	}
 }
 
+/* The dog-ear (`actionZone`): pointing at a row folds its corner in the accent
+   colour, 6px across, growing to 12px as the pointer nears the corner that
+   wakes the bar (`--kairos-action-ear-near`, 0–1). It's the same triangle as
+   the wake zone, so it shows where to point. Gone while the bar is up, and
+   never on touch, where a tap shows the bar. A "right"-anchored row gets a
+   notch on its right edge's middle instead. */
+.kairos-action-ear {
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 4;
+	width: calc(6px + 6px * var(--kairos-action-ear-near, 0));
+	height: calc(6px + 6px * var(--kairos-action-ear-near, 0));
+	border-top-right-radius: inherit;
+	background: linear-gradient(225deg, var(--interactive-accent) 50%, transparent 50%);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.1s;
+}
+.kairos-action-ear.kairos-action-ear-right {
+	top: 50%;
+	width: calc(4px + 3px * var(--kairos-action-ear-near, 0));
+	height: calc(8px + 6px * var(--kairos-action-ear-near, 0));
+	transform: translateY(-50%);
+	border-radius: 0;
+	background: var(--interactive-accent);
+	clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+.kairos-action-ear.is-shown {
+	opacity: calc(0.6 + 0.4 * var(--kairos-action-ear-near, 0));
+}
+.kairos-actions-awake > .kairos-action-ear {
+	opacity: 0;
+}
+@media (hover: none) {
+	.kairos-action-ear {
+		display: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.kairos-action-ear {
+		transition: none;
+	}
+}
+
 /* ── Vertical action stack (`actionZone` with `layout: "stack"`,
    src/ui/actions/actionStack.ts) ──
    A mouse-woken bar becomes a stack one button wide, `fixed` so the row's
