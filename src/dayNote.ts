@@ -41,6 +41,20 @@ export function dateFromISO(date: ISODate): Date {
 }
 
 /**
+ * A date the way the views' date navigators show one: month before day
+ * ("Oct 27"), with the year only when it isn't the current year ("Oct 27,
+ * 2025"), in the user's locale.
+ */
+export function formatShortDate(date: ISODate, today: Date = new Date()): string {
+	const d = dateFromISO(date);
+	return d.toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric",
+		...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}),
+	});
+}
+
+/**
  * The path of the existing daily note for `date`, or `null` if none exists yet.
  * Never creates anything — a view can show an empty day without touching disk.
  */

@@ -9,7 +9,7 @@
 	// Purely presentational: it owns only the hover/popover state. The group
 	// accent stripe is drawn by the parent (it spans multiple rows), not here.
 
-	import type { ISODate } from "../../types";
+	import { formatShortDate } from "../../dayNote";
 	import type { RowLabelInfo } from "./rowLabel";
 	import Portal from "./Portal.svelte";
 	import IntensityBars from "./IntensityBars.svelte";
@@ -51,11 +51,6 @@
 		if (!hovering) cardStyle = "left: -9999px; top: -9999px;";
 	});
 
-	function fmtDate(iso: ISODate): string {
-		const [y, m, d] = iso.split("-");
-		const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-		return `${Number(d)} ${months[Number(m) - 1]} ${y}`;
-	}
 
 	const statusLabel = $derived(
 		info.status.charAt(0).toUpperCase() + info.status.slice(1),
@@ -174,13 +169,13 @@
 									style={info.color ? `color: ${info.color};` : undefined}
 								><IntensityBars level={info.intensity.level} /></span>
 								<span class="rlc-dim">({info.intensity.level})</span>
-								<span>on {fmtDate(info.intensity.on)}</span>
+								<span>on {formatShortDate(info.intensity.on)}</span>
 							</dd>
 						{/if}
 						{#if info.since !== null}
 							<dt>{statusLabel}</dt>
 							<dd>
-								Since {fmtDate(info.since)}{#if info.until !== null}<span class="rlc-dim">&nbsp;· until {fmtDate(info.until)}</span>{/if}
+								Since {formatShortDate(info.since)}{#if info.until !== null}<span class="rlc-dim">&nbsp;· until {formatShortDate(info.until)}</span>{/if}
 							</dd>
 						{/if}
 						{#if rolledUp.length > 0}
