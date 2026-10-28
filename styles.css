@@ -387,27 +387,31 @@ body {
 .view-header.kairos-header-host .view-header-title {
 	display: none;
 }
-/* Spaced like Obsidian's own header: buttons in a group sit side by side
-   with no gap, and only groups are set apart, by the header's own gap. The
-   bar's end tucks into that gap, so the settings button sits against the
-   tab's ⋯ the way the tab's back and forward buttons sit together. */
+/* In the tab header the bar's end tucks into the header's own gap, so the
+   settings button sits against the tab's ⋯ the way the tab's back and
+   forward buttons sit together. */
 .view-header.kairos-header-host .kairos-header-bar {
 	flex: 1;
 	min-width: 0;
-	gap: 0;
 	margin-right: calc(-1 * var(--size-4-2));
 	padding: 0;
 }
-.view-header.kairos-header-host .kairos-header-bar .day-nav {
+
+/* ── Obsidian's header look for a Kairos header bar (.kairos-header-bar.is-native) ──
+   The Week, Grid and Timeline bars get it when they move into the tab header
+   (viewHeader.ts); the Day view's bar has it in the sidebar. It's built from
+   Obsidian's own variables, so themes restyle it too: frameless icon buttons
+   like the tab's back/forward and ⋯, the date set like the tab title, text
+   buttons that only fill on hover, and spacing like Obsidian's header (no gap
+   inside a group, only between groups). `body` lifts these over the views'
+   own scoped rules, which keep their framed look for a bar without it. */
+body .kairos-header-bar.is-native {
 	gap: 0;
 }
-
-/* In the tab header the bar takes Obsidian's header look, built from its own
-   variables so themes restyle it too: frameless icon buttons like the tab's
-   back/forward and ⋯ buttons, the date set like the tab title, and text
-   buttons that only show a fill on hover. The views' own framed look stays
-   for a bar that isn't in a tab header (a view in the sidebar). */
-.view-header.kairos-header-host .kairos-header-bar .icon-btn {
+body .kairos-header-bar.is-native .day-nav {
+	gap: 0;
+}
+body .kairos-header-bar.is-native .icon-btn {
 	width: auto;
 	height: auto;
 	padding: var(--size-2-2) var(--size-2-3);
@@ -418,17 +422,22 @@ body {
 	color: var(--icon-color);
 	opacity: var(--icon-opacity);
 }
-.view-header.kairos-header-host .kairos-header-bar .icon-btn:hover {
+body .kairos-header-bar.is-native .icon-btn:hover {
 	background: var(--background-modifier-hover);
 	color: var(--icon-color-hover);
 	opacity: var(--icon-opacity-hover);
 }
-.view-header.kairos-header-host .kairos-header-bar .icon-btn svg {
+/* A toggle that's on (the Day view's Follow) keeps Obsidian's active color. */
+body .kairos-header-bar.is-native .icon-btn[aria-pressed="true"] {
+	color: var(--icon-color-active);
+	opacity: 1;
+}
+body .kairos-header-bar.is-native .icon-btn svg {
 	width: var(--icon-s);
 	height: var(--icon-s);
 	stroke-width: var(--icon-stroke);
 }
-.view-header.kairos-header-host .kairos-header-bar .day-date {
+body .kairos-header-bar.is-native .day-date {
 	padding: var(--size-2-2) var(--size-2-3);
 	border: none;
 	border-radius: var(--radius-s);
@@ -437,8 +446,12 @@ body {
 	font-weight: var(--file-header-font-weight, 400);
 	color: var(--text-muted);
 }
-.view-header.kairos-header-host .kairos-header-bar .today-btn,
-.view-header.kairos-header-host .kairos-header-bar .interval-tab {
+/* Today's date keeps its accent, the one cue the bar gives that it's today. */
+body .kairos-header-bar.is-native .day-date.today {
+	color: var(--text-accent);
+}
+body .kairos-header-bar.is-native .today-btn,
+body .kairos-header-bar.is-native .interval-tab {
 	height: auto;
 	padding: var(--size-2-2) var(--size-2-3);
 	border: none;
@@ -449,21 +462,21 @@ body {
 	font-weight: var(--font-normal);
 	color: var(--text-muted);
 }
-.view-header.kairos-header-host .kairos-header-bar :is(.day-date, .today-btn, .interval-tab):hover {
+body .kairos-header-bar.is-native :is(.day-date, .today-btn, .interval-tab):hover {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
-.view-header.kairos-header-host .kairos-header-bar .interval-tabs {
+body .kairos-header-bar.is-native .interval-tabs {
 	gap: 0;
 	padding: 0;
 	border: none;
 	background: transparent;
 }
-.view-header.kairos-header-host .kairos-header-bar .interval-tab.active {
+body .kairos-header-bar.is-native .interval-tab.active {
 	background: var(--background-modifier-hover);
 	color: var(--text-normal);
 }
-.view-header.kairos-header-host .kairos-header-bar .day-range-label {
+body .kairos-header-bar.is-native .day-range-label {
 	margin-right: var(--size-4-2);
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);

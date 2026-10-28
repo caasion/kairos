@@ -9,7 +9,8 @@
 // Obsidian hides it), the bar stays at the top of the view.
 
 const HOST_CLASS = "kairos-header-host";
-const BAR_CLASS = "kairos-header-bar";
+// The bar takes Obsidian's header look (styles.css) while it's in the header.
+const BAR_CLASSES = ["kairos-header-bar", "is-native"];
 
 export function findViewHeader(containerEl: HTMLElement): HTMLElement | undefined {
 	return containerEl.querySelector<HTMLElement>(":scope > .view-header") ?? undefined;
@@ -22,13 +23,13 @@ export function intoViewHeader(node: HTMLElement, viewHeader: HTMLElement | unde
 	const home = node.parentElement;
 	const next = node.nextSibling;
 	viewHeader.addClass(HOST_CLASS);
-	node.addClass(BAR_CLASS);
+	node.addClasses(BAR_CLASSES);
 	slot.appendChild(node);
 
 	return {
 		destroy() {
 			viewHeader.removeClass(HOST_CLASS);
-			node.removeClass(BAR_CLASS);
+			node.removeClasses(BAR_CLASSES);
 			// Put the node back so Svelte can remove it from where it expects it.
 			if (home?.isConnected) home.insertBefore(node, next);
 			else node.remove();
