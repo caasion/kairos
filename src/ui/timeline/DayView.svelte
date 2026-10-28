@@ -1454,11 +1454,13 @@
 							onDone={() => settleLeftover(l, "x")}
 							onCancel={() => settleLeftover(l, "-")}
 							onBring={() => bringLeftover(l)}
+							sourceTag={leftFrom.split(",")[0]}
 							{onNavigate}
 						/>
 					{:else}
 						<BacklogNudge
 							entry={item.entry}
+							sourceTag="Backlog"
 							resolved={item.entry.assoc ? resolve(item.entry.assoc) : undefined}
 							showAssociation={false}
 							onInsert={onNudgeInsert}
