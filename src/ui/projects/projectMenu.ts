@@ -3,7 +3,7 @@
 // "None") and the Grid rollup toggle (#11). Writes go through projectActions →
 // the index, exactly like every other project edit.
 
-import type { Menu, MenuItem } from "obsidian";
+import { MenuItem, type Menu } from "obsidian";
 import type { KairosIndex } from "../../index";
 import { setProjectDomain, setProjectRollup } from "../../projectActions";
 import type { Domain, Project } from "../../types";
@@ -14,6 +14,14 @@ import type { Domain, Project } from "../../types";
  */
 export function submenuOf(item: MenuItem): Menu {
 	return (item as MenuItem & { setSubmenu(): Menu }).setSubmenu();
+}
+
+/**
+ * Whether this Obsidian's menu items have `setSubmenu`, so a caller can fall
+ * back to listing the items flat in the parent menu when they don't.
+ */
+export function hasSubmenus(): boolean {
+	return typeof (MenuItem.prototype as MenuItem & { setSubmenu?: unknown }).setSubmenu === "function";
 }
 
 /** Domains in page order (the user's `order`, then name). */

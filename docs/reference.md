@@ -175,8 +175,9 @@ status:
 | Click an empty part of a row | Start an open-ended active stretch |
 | Drag a bar's left or right edge | Move its start or end |
 | Click a bounded bar's right edge without dragging | Remove its end date |
-| Select one of a bar's five dots | Set its intensity (select it again to clear) |
+| Select the left or right half of one of a bar's three intensity bars | Set its intensity (select it again to clear) |
 | Select a bar, then press **0**–**5** | Set its intensity |
+| Right-click a bar, then **Intensity** | Set or clear its intensity |
 | Select a bar, then press **Delete** | Delete the stretch |
 | Double-click a bar | Edit its intention |
 

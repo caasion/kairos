@@ -51,11 +51,12 @@
 		type Interval,
 	} from "../../gantt/ganttUtils";
 	import { historyToSpans, type Span } from "../../gantt/spans";
-	import { INTENSITY_MAX } from "../../projectFile";
+	import { addIntensityItem } from "./intensityMenu";
 	import { visibleEntities } from "../../gantt/rows";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
+	import IntensityBars from "../components/IntensityBars.svelte";
 	import { peek } from "../actions/peek";
 	import { rowLabelInfo, type RowLabelInfo } from "../components/rowLabel";
 
@@ -524,9 +525,8 @@
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
 		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
 	}
-	// A pip click sets that level; clicking the level already set clears it.
-	function clickPip(e: MouseEvent, row: GanttRow, span: Span, level: number) {
-		e.stopPropagation();
+	// A click on the bars sets that level; clicking the level already set clears it.
+	function pickLevel(row: GanttRow, span: Span, level: number) {
 		setIntensity(row, span, span.intensity === level ? undefined : level);
 	}
 	// The bar's fill, as a share of the project colour: 10% a level, so 5 is 50%
@@ -611,23 +611,7 @@
 		menu.addItem((item) =>
 			item.setTitle("Edit intention").setIcon("pencil").onClick(() => beginEditDesc(row, span)),
 		);
-		for (let level = 0; level <= INTENSITY_MAX; level++) {
-			menu.addItem((item) =>
-				item
-					.setTitle(`Intensity ${level}`)
-					.setSection("intensity")
-					.setChecked(span.intensity === level)
-					.onClick(() => setIntensity(row, span, level)),
-			);
-		}
-		if (span.intensity !== undefined) {
-			menu.addItem((item) =>
-				item
-					.setTitle("Clear intensity")
-					.setSection("intensity")
-					.onClick(() => setIntensity(row, span, undefined)),
-			);
-		}
+		addIntensityItem(menu, span.intensity, (level) => setIntensity(row, span, level));
 		menu.addItem((item) =>
 			item.setTitle("Edit start date…").setIcon("calendar").onClick(() => openDateEdit(row, span, "start")),
 		);
@@ -901,21 +885,12 @@
 											title="Drag to move the start date"
 										></div>
 									{/if}
-									<!-- Intensity pips: N of five filled. Hidden on an unrated bar until
-									     hover, so they double as the way to rate it; dropped on a bar
-									     too narrow to hold them beside a label. -->
-									{#if box.width >= 64}
-										<span class="gantt-pips" title="Intensity: click a dot to set · 0–5 keys on a selected bar">
-											{#each [1, 2, 3, 4, 5] as level (level)}
-												<!-- svelte-ignore a11y_click_events_have_key_events -->
-												<!-- svelte-ignore a11y_no_static_element_interactions -->
-												<span
-													class="gantt-pip"
-													class:on={(span.intensity ?? 0) >= level}
-													onpointerdown={(e) => e.stopPropagation()}
-													onclick={(e) => clickPip(e, row, span, level)}
-												></span>
-											{/each}
+									<!-- Intensity bars: three stacked, two levels a bar. Hidden on an
+									     unrated bar until hover, so they double as the way to rate it;
+									     dropped on a bar too narrow to hold them beside a label. -->
+									{#if box.width >= 40}
+										<span class="gantt-pips" title="Intensity: click a bar to set · 0–5 keys on a selected bar">
+											<IntensityBars level={span.intensity} onpick={(level) => pickLevel(row, span, level)} />
 										</span>
 									{/if}
 									{#if editingKey === key}
@@ -1287,21 +1262,11 @@
 	}
 	.gantt-pips {
 		display: flex;
-		gap: 3px;
-		padding-left: 9px;
+		padding-left: 6px;
 		flex-shrink: 0;
-	}
-	.gantt-pip {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		border: 1px solid var(--bar-color);
-		cursor: pointer;
+		color: var(--bar-color);
 		position: relative;
 		z-index: 3; /* above the left handle */
-	}
-	.gantt-pip.on {
-		background-color: var(--bar-color);
 	}
 	.gantt-bar.unrated .gantt-pips {
 		visibility: hidden;

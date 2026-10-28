@@ -1,6 +1,6 @@
 <script lang="ts">
 	// A Grid/Gantt row label: the entity name, top-left aligned, with its status
-	// note as a muted subline (hidden when empty), intensity pips beside the name
+	// note as a muted subline (hidden when empty), intensity bars beside the name
 	// when the caller supplies a level, and — for domains — the domain icon on the
 	// right, tinted the domain's color. Hovering the label opens a
 	// portaled info card (description, status + note, active since/until) so the
@@ -12,6 +12,7 @@
 	import type { ISODate } from "../../types";
 	import type { RowLabelInfo } from "./rowLabel";
 	import Portal from "./Portal.svelte";
+	import IntensityBars from "./IntensityBars.svelte";
 
 	let { info }: { info: RowLabelInfo } = $props();
 
@@ -86,9 +87,7 @@
 					class="row-label-pips"
 					style={info.color ? `color: ${info.color};` : undefined}
 				>
-					{#each [1, 2, 3, 4, 5] as l (l)}
-						<span class="row-label-pip" class:on={info.intensity.level >= l}></span>
-					{/each}
+					<IntensityBars level={info.intensity.level} />
 				</span>
 			{/if}
 		</span>
@@ -181,7 +180,7 @@
 		flex: 1;
 	}
 
-	/* Name and intensity pips share the first line; the name gives way first. */
+	/* Name and intensity bars share the first line; the name gives way first. */
 	.row-label-line {
 		display: flex;
 		align-items: center;
@@ -191,19 +190,9 @@
 	}
 	.row-label-pips {
 		display: inline-flex;
-		gap: 2px;
 		flex-shrink: 0;
 		/* currentColor is the row's accent, set inline; faint without one. */
 		color: var(--text-faint);
-	}
-	.row-label-pip {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		border: 1px solid currentColor;
-	}
-	.row-label-pip.on {
-		background: currentColor;
 	}
 
 	.row-label-name {

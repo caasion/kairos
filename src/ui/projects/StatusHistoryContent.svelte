@@ -35,6 +35,7 @@
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
 	import { INTENSITY_MAX } from "../../projectFile";
 	import Datepicker from "../components/Datepicker.svelte";
+	import IntensityBars from "../components/IntensityBars.svelte";
 
 	interface Props {
 		index: KairosIndex;
@@ -224,7 +225,7 @@
 							<span class="history-status">{STATUS_LABEL[rec.status]}</span>
 							{#if rec.status === "active" && rec.intensity !== undefined}
 								<span class="history-intensity" title={`Intensity ${rec.intensity} of ${INTENSITY_MAX}`}>
-									{#each LEVELS.slice(1) as l (l)}<span class="history-pip" class:on={rec.intensity >= l}></span>{/each}
+									<IntensityBars level={rec.intensity} />
 								</span>
 							{/if}
 							{#if rec.note}<span class="history-note">{rec.note}</span>{/if}
@@ -368,16 +369,7 @@
 	}
 	.history-intensity {
 		display: inline-flex;
-		gap: 2px;
-	}
-	.history-pip {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		border: 1px solid var(--text-muted);
-	}
-	.history-pip.on {
-		background: var(--text-muted);
+		color: var(--text-muted);
 	}
 	.history-edit-actions {
 		display: flex;
