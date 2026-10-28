@@ -538,8 +538,11 @@
 		line-height: 1.4;
 		font-variant-numeric: tabular-nums;
 	}
+	/* Dim like a block's start time: it labels where the tasks are, it isn't
+	   one of them. */
 	.grid-cell-block-header.unscheduled {
 		font-style: italic;
+		color: var(--text-faint);
 	}
 	/* A block's own header: it anchors its action stack, and a long-press on
 	   it lifts the block, so no text selection paints under the press. */

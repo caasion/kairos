@@ -363,6 +363,11 @@
 			s.highlightAcrossViews = on;
 		});
 	}
+	function setUnscheduledInCells(on: boolean) {
+		updateSettings((s) => {
+			s.gridUnscheduledInCells = on;
+		});
+	}
 	function setShowRollupProjects(on: boolean) {
 		updateSettings((s) => {
 			s.gridShowRollupProjects = on;
@@ -1442,6 +1447,10 @@
 					<label class="controls-field">
 						<span class="controls-label">Days after today</span>
 						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
+					</label>
+					<label class="controls-field">
+						<span class="controls-label">Show unscheduled tasks in the grid</span>
+						<input type="checkbox" checked={settings.gridUnscheduledInCells} onchange={(e) => setUnscheduledInCells(e.currentTarget.checked)} />
 					</label>
 					<label class="controls-field">
 						<span class="controls-label">Show projects on rolled-up tasks</span>
