@@ -149,7 +149,7 @@ Edit these in **Status history…**, or in the Timeline view.
 
 The Timeline view draws each project's active stretches as bars. Switch between **Week**, **Month**, **Quarter** and **Year** in the header.
 
-- **Add an active stretch:** drag across an empty part of a row. A single click starts an open-ended one.
+- **Add an active stretch:** drag across an empty part of a row. It covers every day you drag over, including the one you let go on. A single click starts an open-ended one.
 - **Move its start or end:** drag the bar's left or right edge.
 - **Set its intensity:** select one of the five dots on the bar, or select the bar and press **0** to **5**. Select the current level again to clear it.
 - **Edit its intention:** double-click the bar.

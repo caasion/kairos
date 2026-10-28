@@ -223,6 +223,37 @@ export function xToDay(x: number, viewportStart: ISODate, pxPerDay: number): ISO
 	return shiftDays(viewportStart, days);
 }
 
+/**
+ * The active period a create-drag writes, from the day column pressed to the
+ * column released on. Both columns are part of the period, so it closes on the
+ * day after the later one: a span ends at its closing record's date, which the
+ * span doesn't include. Dragging leftwards gives the same period.
+ */
+export function dragPeriod(pressed: ISODate, released: ISODate): { start: ISODate; end: ISODate } {
+	const [first, last] = pressed <= released ? [pressed, released] : [released, pressed];
+	return { start: first, end: shiftDays(last, 1) };
+}
+
+/**
+ * How far a create-drag pressed on `date` may reach: the dates of the nearest
+ * records strictly before and after it (null when there's none). The released
+ * column stays strictly between them, so the new period never swallows a
+ * record. A record on `date` itself bounds neither side; the period's start
+ * replaces it, as a click there would.
+ */
+export function dragBounds(
+	history: readonly { date: ISODate }[],
+	date: ISODate,
+): { lower: ISODate | null; upper: ISODate | null } {
+	let lower: ISODate | null = null;
+	let upper: ISODate | null = null;
+	for (const r of history) {
+		if (r.date < date) lower = r.date;
+		else if (r.date > date && upper === null) upper = r.date;
+	}
+	return { lower, upper };
+}
+
 /** Total pixel width of a viewport (inclusive of both endpoints). */
 export function getViewportWidth(
 	viewportStart: ISODate,
