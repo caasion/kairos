@@ -378,7 +378,7 @@
 					</div>
 					{#if renaming === group.key}
 						<div class="grid-cell-block-edit">
-							{#if block.time}<span>{formatClock(block.time.start)}</span>{/if}
+							{#if block.time}<span class="grid-cell-block-time">{formatClock(block.time.start)}</span>{/if}
 							<input
 								class="grid-cell-block-input kairos-inline-input"
 								type="text"
@@ -516,9 +516,9 @@
 	/* A block header starts a group; a little air above every one but the first.
 	   Tabular digits keep the times lined up down a column. */
 	.grid-cell-block-header {
-		/* Start the header where task text starts (the row's 4px padding plus the
-		   checkbox and its gap), so its time lines up with the task text under it. */
-		padding-left: calc(4px + var(--kairos-meta-indent));
+		/* Flush left: the header starts where a task row starts (its 4px
+		   padding, the checkbox's left edge), not indented to the task text. */
+		padding-left: 4px;
 		/* Room at the right end for the group's "+", so it never covers the title. */
 		padding-right: 24px;
 		/* The same type as the task text. */
@@ -549,7 +549,13 @@
 		overflow-wrap: anywhere;
 		touch-action: none;
 	}
+	/* The start time, smaller and lighter than the title so the title leads.
+	   The rename state wears it too, so the header doesn't jump. */
 	.grid-cell-block-time {
+		font-size: var(--font-ui-smaller);
+		color: var(--text-faint);
+	}
+	.grid-cell-block-label .grid-cell-block-time {
 		margin-right: 0.3em;
 	}
 	/* A click on the title renames the block, as on a task or the timeline. */
@@ -686,7 +692,7 @@
 		height: auto;
 		min-height: 18px;
 		/* Lined up with a real group header (see .grid-cell-block-header). */
-		padding: 0 4px 0 calc(4px + var(--kairos-meta-indent));
+		padding: 0 4px;
 		border: none;
 		border-radius: var(--radius-s);
 		color: var(--text-muted);
