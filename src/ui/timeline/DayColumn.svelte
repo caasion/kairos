@@ -14,7 +14,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
+	import { deleteBlock, deleteBlocks, makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
 	import { moveTaskToBacklog } from "../../backlogActions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
@@ -197,7 +197,7 @@
 		const real = ownerFor(blockToDelete);
 		if (!real) return;
 		selection = new Set();
-		blocks = blocks.filter((b) => b !== real);
+		blocks = deleteBlock(blocks, real);
 		writeToDisk();
 	}
 
@@ -734,9 +734,9 @@
 
 	async function deleteSelected() {
 		if (selection.size === 0) return;
-		const doomed = new Set([...selection].map((b) => b.source.line));
+		const doomed = [...selection];
 		selection = new Set();
-		blocks = blocks.filter((b) => !doomed.has(b.source.line));
+		blocks = deleteBlocks(blocks, doomed);
 		writeToDisk();
 	}
 

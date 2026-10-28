@@ -17,6 +17,8 @@
 	} from "../../types";
 	import {
 		copyBlockIntoDay,
+		deleteBlock,
+		deleteBlocks,
 		makeBlock,
 		nestTaskUnderBlock,
 		notesWithAdded,
@@ -492,7 +494,7 @@
 		selection = new Set();
 		// Deletion changes the array, so reassign locally (removal doesn't have
 		// the reorder/identity problem an edit does), then write.
-		blocks = blocks.filter((b) => b !== real);
+		blocks = deleteBlock(blocks, real);
 		void writeToDisk();
 	}
 
@@ -1094,9 +1096,9 @@
 
 	async function deleteSelected() {
 		if (selection.size === 0) return;
-		const doomed = new Set([...selection].map((b) => b.source.line));
+		const doomed = [...selection];
 		selection = new Set();
-		blocks = blocks.filter((b) => !doomed.has(b.source.line));
+		blocks = deleteBlocks(blocks, doomed);
 		await writeToDisk();
 	}
 

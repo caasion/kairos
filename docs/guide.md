@@ -14,7 +14,7 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 - **Move it:** drag an empty part of the block. In the Week view you can drag it to another day.
 - **Resize it:** drag its top or bottom edge.
 - **Select several:** Shift+click or Ctrl/Cmd+click them, then drag any one to move them all.
-- **Delete it:** point at its top-right corner and select **Delete block**, or select it and press **Delete**. Deleting a block deletes the tasks and notes inside it.
+- **Delete it:** point at its top-right corner and select **Delete block**, or select it and press **Delete**. Deleting a block deletes its notes; its tasks move to Unscheduled.
 - **Associate it with a project or domain:** right-click it and select **Add association**. Type a name that doesn't exist yet to create it: select **Create project** or **Create domain**.
 
 **Tasks**
