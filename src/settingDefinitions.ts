@@ -92,6 +92,13 @@ export interface KairosSettings {
 	 * the end of its line on its domain's row (decision 74). Off by default.
 	 */
 	gridShowRollupProjects: boolean;
+
+	/**
+	 * Show each day's Unscheduled tasks in the Grid's cells, on their row. Off:
+	 * they're behind the Unscheduled badge on the day's header instead, which
+	 * pulses when a task typed in a cell lands in it. On by default.
+	 */
+	gridUnscheduledInCells: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -112,6 +119,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	highlightAcrossViews: true,
 	dropBlockTitle: '',
 	gridShowRollupProjects: false,
+	gridUnscheduledInCells: true,
 };
 
 /** Every control key is a settings property, so the default value resolver works. */
@@ -230,6 +238,18 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					type: 'toggle',
 					key: 'followGrid',
 					defaultValue: DEFAULT_SETTINGS.followGrid,
+				},
+			},
+			{
+				name: 'Show unscheduled tasks in the grid',
+				desc:
+					"Show each day's unscheduled tasks in the grid's cells, on their " +
+					"project or domain's row. Off: they're listed behind the " +
+					"Unscheduled badge on the day's header.",
+				control: {
+					type: 'toggle',
+					key: 'gridUnscheduledInCells',
+					defaultValue: DEFAULT_SETTINGS.gridUnscheduledInCells,
 				},
 			},
 			{

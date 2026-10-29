@@ -314,13 +314,12 @@
 	// row, and each block's tasks in theirs.
 	function cellFor(row: GridRow, day: GridDay): { blocks: BlockGroup[] } {
 		if (!snapshot) return { blocks: [] };
-		// PROTOTYPE: Unscheduled lives behind each day's header badge now, so a
-		// cell drops its Unscheduled group — except during a drag, where that
-		// group is still where a task lands to come out of its block.
+		// With Unscheduled behind each day's header badge instead (the setting
+		// off), a cell drops its Unscheduled group, except during a drag, where
+		// that group is still where a task lands to come out of its block.
 		const groups = blockGroups(row, day.tasks, snapshot, day.blocks);
-		return {
-			blocks: taskDrag ? groups : groups.filter((g) => !isUnscheduledBlock(g.block)),
-		};
+		if (settings.gridUnscheduledInCells || taskDrag) return { blocks: groups };
+		return { blocks: groups.filter((g) => !isUnscheduledBlock(g.block)) };
 	}
 
 	// The project chip on a rolled-up task's line (domain rows, when on).
@@ -589,18 +588,37 @@
 		reveal(task.date, task.block.source.line);
 	}
 
-	async function onCreate(row: GridRow, date: ISODate) {
+	// A "+" opens a field in its cell for the new task instead of making a
+	// "New task" at once (DraftTask), so nothing is made until it has a name.
+	let draft = $state<{ rowKey: GridRow["key"]; date: ISODate } | null>(null);
+	function draftInCell(row: GridRow, date: ISODate): boolean {
+		return draft?.rowKey === row.key && draft.date === date;
+	}
+	// With Unscheduled behind the header badge, the badge pulses when a task
+	// typed in a cell lands in it, to show where it went.
+	let pulsed = $state<ISODate | null>(null);
+	let pulseTimer: number | undefined;
+	function pulse(date: ISODate) {
+		window.clearTimeout(pulseTimer);
+		pulsed = null;
+		requestAnimationFrame(() => {
+			pulsed = date;
+			pulseTimer = window.setTimeout(() => (pulsed = null), 900);
+		});
+	}
+
+	function onCreate(row: GridRow, date: ISODate) {
 		focusDay(date);
+		draft = { rowKey: row.key, date };
+	}
+
+	async function addDraft(row: GridRow, date: ISODate, text: string) {
 		const assoc = rowAssociation(row);
 		const day = dayOf(date);
 		const path = day?.path ?? (await ensureNoteForDate(date));
-		const blocks = day?.blocks ?? [];
-		commit(
-			date,
-			path,
-			addTaskToUnscheduled(blocks, path, "New task", assoc, nextDraftLine()),
-		);
-		unscheduledOpen = { ...unscheduledOpen, [date]: true };
+		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
+		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
+		if (!settings.gridUnscheduledInCells) pulse(date);
 	}
 
 	// A group's "+" (grouping on): a new task in that block, filed under the row
@@ -1450,6 +1468,7 @@
 		{#each dates as date (date)}
 			{@const offered = routinesByDate.get(date)}
 			{@const usTasks = unscheduledOn(date)}
+			{@const usBadge = !settings.gridUnscheduledInCells && usTasks.length > 0}
 			{@const inCount = surfacedOnDate(date).length + leftoversOn(date).length}
 			<div class="grid-colhead-wrap">
 				<button
@@ -1478,19 +1497,21 @@
 				</button>
 				<!-- PROTOTYPE: the day's lists as badges, bottom-right of its date cell:
 				     Unscheduled, Inbox, then routines (listed on hover, each addable). -->
-				{#if usTasks.length > 0 || inCount > 0 || (offered && offered.count > 0)}
+				{#if usBadge || inCount > 0 || (offered && offered.count > 0)}
 					<div class="grid-badges">
-						{#if usTasks.length > 0}
-							<HeaderBadge
-								title="Unscheduled"
-								dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
-								count={usTasks.length}
-								icon={listIcon}
-								bind:open={unscheduledOpen[date]}
-								dragging={taskDrag !== null}
-							>
-								{@render unscheduledList(usTasks)}
-							</HeaderBadge>
+						{#if usBadge}
+							<span class="grid-badge-pulse" class:pulsed={pulsed === date}>
+								<HeaderBadge
+									title="Unscheduled"
+									dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
+									count={usTasks.length}
+									icon={listIcon}
+									bind:open={unscheduledOpen[date]}
+									dragging={taskDrag !== null}
+								>
+									{@render unscheduledList(usTasks)}
+								</HeaderBadge>
+							</span>
 						{/if}
 						{#if inCount > 0}
 							<HeaderBadge
@@ -1599,7 +1620,10 @@
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
-								onCreate={() => void onCreate(row, date)}
+								onCreate={() => onCreate(row, date)}
+								draftOpen={draftInCell(row, date)}
+								onDraftSubmit={(text: string) => void addDraft(row, date, text)}
+								onDraftClose={() => (draft = null)}
 								onTaskGrab={onTaskGrab}
 								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, row.key, e)}
 								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}
@@ -2140,5 +2164,26 @@
 		font-size: 11px;
 		font-weight: 700;
 		line-height: 1;
+	}
+
+	/* The Unscheduled badge pulses when a task typed in a cell lands in it. */
+	.grid-badge-pulse {
+		display: contents;
+	}
+	.grid-badge-pulse.pulsed :global(.hb-trigger) {
+		animation: grid-badge-pulse 900ms ease-out;
+	}
+	@keyframes grid-badge-pulse {
+		0% {
+			box-shadow: 0 0 0 0 color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+			transform: scale(1);
+		}
+		25% {
+			transform: scale(1.15);
+		}
+		100% {
+			box-shadow: 0 0 0 8px transparent;
+			transform: scale(1);
+		}
 	}
 </style>
