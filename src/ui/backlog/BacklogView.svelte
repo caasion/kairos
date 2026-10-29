@@ -348,7 +348,10 @@
 							{/if}
 						</span>
 					{/if}
-					<span class="group-name" class:unassociated={group.kind === "none"}
+					<span
+						class="group-name"
+						class:domain={group.kind === "domain"}
+						class:unassociated={group.kind === "none"}
 						>{group.name}</span
 					>
 					<span class="group-count">{group.entries.length}</span>
@@ -621,18 +624,24 @@
 		color: var(--text-muted);
 		flex-shrink: 0;
 	}
+	/* Named like the Grid and Timeline row labels: serif, as written, with
+	   domains a size up from projects. */
 	.group-name {
-		font-size: 12px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-family: Georgia, "Times New Roman", serif;
+		font-size: 13px;
+		font-weight: 400;
 		color: var(--text-normal);
+	}
+	.group-name.domain {
+		font-size: 15px;
 	}
 	.group-name.unassociated {
 		color: var(--text-faint);
 		font-style: italic;
-		text-transform: none;
-		letter-spacing: 0;
 	}
 	.group-count {
 		font-size: 11px;
@@ -644,18 +653,19 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		height: 22px;
-		width: 22px;
-		min-width: min-content;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary-alt);
-		color: var(--text-muted);
+		height: auto;
+		padding: var(--size-2-2) var(--size-2-3);
+		border: none;
+		border-radius: var(--clickable-icon-radius);
+		background: transparent;
+		box-shadow: none;
+		color: var(--icon-color);
 		cursor: pointer;
 	}
+	/* Frameless like Obsidian's own icon buttons. */
 	.add-btn:hover {
 		background: var(--background-modifier-hover);
-		color: var(--text-normal);
+		color: var(--icon-color-hover);
 	}
 	.group-empty {
 		font-size: 12px;
