@@ -214,9 +214,21 @@ function shiftNotes(notes: Note[], i: number, by: number): Note[] {
   return notes.map((n) => (n.at > i ? { ...n, at: n.at + by } : n));
 }
 
-/** Return a copy of `blocks` with `target` removed. */
+/**
+ * Return a copy of `blocks` with `target` removed. Its tasks aren't deleted
+ * with it: they move to the day's Unscheduled block, each keeping the
+ * association it had (materialize-on-move, as in `unnestTask`), so deleting a
+ * block to rearrange the day never loses work (#69). Its notes go with it.
+ * Deleting the Unscheduled block itself removes its tasks.
+ */
 export function deleteBlock(blocks: Block[], target: Block): Block[] {
-  return blocks.filter((b) => !isOwner(b, target));
+  const source = blocks.find((b) => isOwner(b, target));
+  const rest = blocks.filter((b) => !isOwner(b, target));
+  if (!source || source === findUnscheduled(blocks)) return rest;
+  return source.tasks.reduce(
+    (acc, task) => insertIntoUnscheduled(acc, pinAssoc(task, source), source.source.path),
+    rest,
+  );
 }
 
 // ─── unscheduled inbox ─────────────────────────────────────────
@@ -927,14 +939,17 @@ export function copyTaskIntoNewBlock(
   return [...toBlocks, blockForTask(copy, time, toPath, title)];
 }
 
-/** Return a copy of `blocks` with every block in `targets` removed. */
+/**
+ * Return a copy of `blocks` with every block in `targets` removed, each one's
+ * tasks moving to Unscheduled as in `deleteBlock`.
+ */
 export function deleteBlocks(
   blocks: Block[],
   targets: Iterable<Block>,
 ): Block[] {
-  const lines = new Set<string>();
-  for (const t of targets) lines.add(`${t.source.path}:${t.source.line}`);
-  return blocks.filter((b) => !lines.has(`${b.source.path}:${b.source.line}`));
+  let out = blocks;
+  for (const t of targets) out = deleteBlock(out, t);
+  return out;
 }
 
 /**

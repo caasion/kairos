@@ -755,8 +755,12 @@
 		pointer-events: auto;
 	}
 
+	/* Every hover rule repeats the reset: a theme's `button:not(.clickable-icon):hover`
+	   (Blue Topaz gives it a shadow) outranks the base rule above and would dress
+	   the label as a button. */
 	.grid-cell-add:hover {
 		color: var(--text-normal);
+		box-shadow: none;
 	}
 	.grid-cell-add:hover .grid-cell-add-icon {
 		opacity: 1;
@@ -804,6 +808,7 @@
 		opacity: 1;
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+		box-shadow: none;
 	}
 	.grid-cell-block-group:has(:global(.kairos-actions-awake)) > .grid-cell-group-add {
 		opacity: 0;

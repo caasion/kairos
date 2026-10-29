@@ -34,6 +34,7 @@
 	import DayColumn from "./DayColumn.svelte";
 	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
+	import { commitNumber } from "./numberField";
 	import { tooltip } from "../actions/tooltip";
 	import { requestRepeat } from "../../routines/repeat";
 	import type { RoutineActions } from "../../routines/routinesFeed";
@@ -235,34 +236,49 @@
 	let showControls = $state(false);
 	let controlsRef = $state<HTMLDivElement>();
 
-	function setStartHour(value: number) {
+	// Each returns the value now in effect, for commitNumber (a cleared field
+	// keeps the current value).
+	function setStartHour(value: number): number {
+		if (Number.isNaN(value)) return geo.startHour;
 		const v = Math.max(0, Math.min(23, Math.floor(value)));
 		updateSettings((s) => {
 			s.timelineStartHour = v;
 			if (s.timelineEndHour <= v) s.timelineEndHour = v + 1;
 		});
+		return v;
 	}
-	function setEndHour(value: number) {
+	function setEndHour(value: number): number {
+		if (Number.isNaN(value)) return geo.endHour;
 		const v = Math.max(1, Math.min(24, Math.floor(value)));
 		updateSettings((s) => {
 			s.timelineEndHour = v;
 			if (s.timelineStartHour >= v) s.timelineStartHour = v - 1;
 		});
+		return v;
 	}
-	function setHourHeight(value: number) {
+	function setHourHeight(value: number): number {
+		if (Number.isNaN(value)) return geo.hourHeight;
+		const v = Math.max(20, Math.min(240, Math.floor(value)));
 		updateSettings((s) => {
-			s.timelineHourHeight = Math.max(20, Math.min(240, Math.floor(value)));
+			s.timelineHourHeight = v;
 		});
+		return v;
 	}
-	function setDaysBefore(value: number) {
+	function setDaysBefore(value: number): number {
+		if (Number.isNaN(value)) return before;
+		const v = clampSpan(value);
 		updateSettings((s) => {
-			s.weekDaysBefore = clampSpan(value);
+			s.weekDaysBefore = v;
 		});
+		return v;
 	}
-	function setDaysAfter(value: number) {
+	function setDaysAfter(value: number): number {
+		if (Number.isNaN(value)) return after;
+		const v = clampSpan(value);
 		updateSettings((s) => {
-			s.weekDaysAfter = clampSpan(value);
+			s.weekDaysAfter = v;
 		});
+		return v;
 	}
 
 	function handleClickOutside(event: MouseEvent) {
@@ -712,23 +728,23 @@
 				<div class="controls-popup">
 					<label class="controls-field">
 						<span class="controls-label">Start hour</span>
-						<input type="number" class="controls-input" min="0" max="23" value={geo.startHour} oninput={(e) => setStartHour(+e.currentTarget.value)} />
+						<input type="number" class="controls-input" min="0" max="23" value={geo.startHour} onchange={(e) => commitNumber(e.currentTarget, setStartHour)} />
 					</label>
 					<label class="controls-field">
 						<span class="controls-label">End hour</span>
-						<input type="number" class="controls-input" min="1" max="24" value={geo.endHour} oninput={(e) => setEndHour(+e.currentTarget.value)} />
+						<input type="number" class="controls-input" min="1" max="24" value={geo.endHour} onchange={(e) => commitNumber(e.currentTarget, setEndHour)} />
 					</label>
 					<label class="controls-field">
 						<span class="controls-label">Hour height</span>
-						<input type="number" class="controls-input" min="20" max="240" step="5" value={geo.hourHeight} oninput={(e) => setHourHeight(+e.currentTarget.value)} />
+						<input type="number" class="controls-input" min="20" max="240" step="5" value={geo.hourHeight} onchange={(e) => commitNumber(e.currentTarget, setHourHeight)} />
 					</label>
 					<label class="controls-field">
 						<span class="controls-label">Days before today</span>
-						<input type="number" class="controls-input" min="1" max="7" value={before} oninput={(e) => setDaysBefore(+e.currentTarget.value)} />
+						<input type="number" class="controls-input" min="1" max="7" value={before} onchange={(e) => commitNumber(e.currentTarget, setDaysBefore)} />
 					</label>
 					<label class="controls-field">
 						<span class="controls-label">Days after today</span>
-						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
+						<input type="number" class="controls-input" min="1" max="7" value={after} onchange={(e) => commitNumber(e.currentTarget, setDaysAfter)} />
 					</label>
 				</div>
 			{/if}
@@ -891,7 +907,7 @@
 		</div>
 	{/if}
 
-	<div class="week-scroll">
+	<div class="week-scroll" data-drag-scroll>
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
 			<div class="week-gutter" style={`height: ${bodyHeight}px;`}>

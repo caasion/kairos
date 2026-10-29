@@ -151,7 +151,7 @@ status:
 | Drag a block's top or bottom edge | Resize it |
 | Select a block's time | Type a new time range |
 | Shift+click or Ctrl/Cmd+click blocks | Select several |
-| **Delete**, **Backspace** or **X** | Delete the selected blocks and everything in them |
+| **Delete**, **Backspace** or **X** | Delete the selected blocks (their tasks move to Unscheduled) |
 | Point at or select "N more" | Grow the block to show all its tasks |
 | Drop a task on empty time | Make a 30-minute block around it |
 | Drop a task on Unscheduled | Take its time away |
