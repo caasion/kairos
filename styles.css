@@ -116,6 +116,51 @@ textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
 	}
 }
 
+/* The dog-ear (`actionZone`): pointing at a row folds its corner in the accent
+   colour, 6px across, growing to 12px as the pointer nears the corner that
+   wakes the bar (`--kairos-action-ear-near`, 0–1). It's the same triangle as
+   the wake zone, so it shows where to point. Gone while the bar is up, and
+   never on touch, where a tap shows the bar. A "right"-anchored row gets a
+   notch on its right edge's middle instead. */
+.kairos-action-ear {
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 4;
+	width: calc(6px + 6px * var(--kairos-action-ear-near, 0));
+	height: calc(6px + 6px * var(--kairos-action-ear-near, 0));
+	border-top-right-radius: inherit;
+	background: linear-gradient(225deg, var(--interactive-accent) 50%, transparent 50%);
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.1s;
+}
+.kairos-action-ear.kairos-action-ear-right {
+	top: 50%;
+	width: calc(4px + 3px * var(--kairos-action-ear-near, 0));
+	height: calc(8px + 6px * var(--kairos-action-ear-near, 0));
+	transform: translateY(-50%);
+	border-radius: 0;
+	background: var(--interactive-accent);
+	clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+.kairos-action-ear.is-shown {
+	opacity: calc(0.6 + 0.4 * var(--kairos-action-ear-near, 0));
+}
+.kairos-actions-awake > .kairos-action-ear {
+	opacity: 0;
+}
+@media (hover: none) {
+	.kairos-action-ear {
+		display: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.kairos-action-ear {
+		transition: none;
+	}
+}
+
 /* ── Vertical action stack (`actionZone` with `layout: "stack"`,
    src/ui/actions/actionStack.ts) ──
    A mouse-woken bar becomes a stack one button wide, `fixed` so the row's
@@ -366,4 +411,132 @@ body {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* ── Header bar in the tab header (src/ui/actions/viewHeader.ts) ──
+   The Week, Grid and Timeline views move their header bar (date navigator,
+   settings) into Obsidian's tab header, in place of the tab's title. The
+   bar's popovers drop below the header over the view, so the title container
+   can't clip them and the header has to sit above the view's content. */
+.view-header.kairos-header-host {
+	position: relative;
+	z-index: var(--layer-popover);
+}
+.view-header.kairos-header-host .view-header-title-container {
+	overflow: visible;
+	justify-content: flex-start;
+	-webkit-mask-image: none;
+	mask-image: none;
+}
+.view-header.kairos-header-host .view-header-title-parent,
+.view-header.kairos-header-host .view-header-title {
+	display: none;
+}
+/* In the tab header the bar's end tucks into the header's own gap, so the
+   settings button sits against the tab's ⋯ the way the tab's back and
+   forward buttons sit together. */
+.view-header.kairos-header-host .kairos-header-bar {
+	flex: 1;
+	min-width: 0;
+	margin-right: calc(-1 * var(--size-4-2));
+	padding: 0;
+}
+
+/* ── Obsidian's header look for a Kairos header bar (.kairos-header-bar.is-native) ──
+   The Week, Grid and Timeline bars get it when they move into the tab header
+   (viewHeader.ts); the Day view's bar has it in the sidebar. It's built from
+   Obsidian's own variables, so themes restyle it too: frameless icon buttons
+   like the tab's back/forward and ⋯, the date set like the tab title, text
+   buttons that only fill on hover, and spacing like Obsidian's header (no gap
+   inside a group, only between groups). `body` lifts these over the views'
+   own scoped rules, which keep their framed look for a bar without it. */
+body .kairos-header-bar.is-native {
+	gap: 0;
+}
+body .kairos-header-bar.is-native .day-nav {
+	gap: 0;
+}
+body .kairos-header-bar.is-native .icon-btn {
+	width: auto;
+	height: auto;
+	padding: var(--size-2-2) var(--size-2-3);
+	border: none;
+	border-radius: var(--clickable-icon-radius);
+	background: transparent;
+	box-shadow: none;
+	color: var(--icon-color);
+	opacity: var(--icon-opacity);
+}
+body .kairos-header-bar.is-native .icon-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--icon-color-hover);
+	opacity: var(--icon-opacity-hover);
+}
+/* A toggle that's on (the Day view's Follow) keeps Obsidian's active color. */
+body .kairos-header-bar.is-native .icon-btn[aria-pressed="true"] {
+	color: var(--icon-color-active);
+	opacity: 1;
+}
+body .kairos-header-bar.is-native .icon-btn svg {
+	width: var(--icon-s);
+	height: var(--icon-s);
+	stroke-width: var(--icon-stroke);
+}
+body .kairos-header-bar.is-native .day-date {
+	padding: var(--size-2-2) var(--size-2-3);
+	border: none;
+	border-radius: var(--radius-s);
+	box-shadow: none;
+	font-size: var(--file-header-font-size, var(--font-ui-small));
+	font-weight: var(--file-header-font-weight, 400);
+	color: var(--text-muted);
+}
+/* Today's date keeps its accent, the one cue the bar gives that it's today. */
+body .kairos-header-bar.is-native .day-date.today {
+	color: var(--text-accent);
+}
+body .kairos-header-bar.is-native .today-btn,
+body .kairos-header-bar.is-native .interval-tab {
+	height: auto;
+	padding: var(--size-2-2) var(--size-2-3);
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-normal);
+	color: var(--text-muted);
+}
+body .kairos-header-bar.is-native :is(.day-date, .today-btn, .interval-tab):hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+body .kairos-header-bar.is-native .interval-tabs {
+	gap: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+}
+body .kairos-header-bar.is-native .interval-tab.active {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+body .kairos-header-bar.is-native .day-range-label {
+	margin-right: var(--size-4-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+}
+
+/* ── Row label column (Grid and Timeline) ──
+   Both views draw the same column: a group accent stripe on the left, then the
+   RowLabel, with a project indented under its domain. Shared here so the two
+   can't drift apart again; RowLabel.svelte owns the text sizes. */
+body {
+	--kairos-row-label-width: 180px;
+	--kairos-row-label-accent-width: 3px;
+	/* From the accent stripe to the text. */
+	--kairos-row-label-pad-left: 8px;
+	--kairos-row-label-pad-right: 10px;
+	/* Extra inset for a project under its domain. */
+	--kairos-row-label-indent: 14px;
 }

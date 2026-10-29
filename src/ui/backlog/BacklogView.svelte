@@ -509,16 +509,20 @@
 	}
 
 	/* ── Header ── */
+	/* Set like the Week, Grid and Timeline bars in the tab header, in
+	   Obsidian's own type and buttons, since the Backlog sits in the sidebar
+	   where there's no tab header to move into. */
 	.backlog-header {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 10px 12px 8px;
+		gap: 0;
+		padding: var(--size-4-2) var(--size-4-2) var(--size-4-1) var(--size-4-3);
 		flex-shrink: 0;
 	}
 	.backlog-title {
-		font-size: 14px;
-		font-weight: 700;
+		margin-right: var(--size-4-2);
+		font-size: var(--font-ui-medium);
+		font-weight: var(--font-semibold);
 		color: var(--text-normal);
 	}
 	.backlog-header-spacer {
@@ -547,22 +551,30 @@
 	.filter-pill:hover .filter-x {
 		opacity: 1;
 	}
+	/* Frameless, like Obsidian's header buttons: a fill only on hover. */
 	.sort-btn {
 		display: flex;
 		align-items: center;
-		gap: 5px;
-		font-size: 11px;
-		font-weight: 600;
+		gap: var(--size-2-2);
+		height: auto;
+		font-size: var(--font-ui-smaller);
+		font-weight: var(--font-normal);
 		color: var(--text-muted);
-		background: var(--background-primary-alt);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		padding: 4px 8px;
+		background: transparent;
+		border: none;
+		border-radius: var(--clickable-icon-radius);
+		box-shadow: none;
+		padding: var(--size-2-2) var(--size-2-3);
 		cursor: pointer;
 	}
 	.sort-btn:hover {
 		background: var(--background-modifier-hover);
 		color: var(--text-normal);
+	}
+	.sort-btn :global(svg) {
+		width: var(--icon-xs);
+		height: var(--icon-xs);
+		stroke-width: var(--icon-stroke);
 	}
 
 	/* ── Scroll body ── */

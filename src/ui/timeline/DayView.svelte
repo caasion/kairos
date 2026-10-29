@@ -1273,7 +1273,9 @@
 	onclick={handleClickOutside}
 	onkeydown={onKeyDown}
 >
-	<div class="day-header">
+	<!-- In the sidebar there's no tab header to move into, so the bar takes
+	     Obsidian's header look in place (kairos-header-bar is-native). -->
+	<div class="day-header kairos-header-bar is-native">
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
 				class="icon-btn nav-btn"
@@ -1333,6 +1335,9 @@
 		</div>
 
 		<span class="day-header-spacer"></span>
+		<span class="day-range-label">
+			{String(geo.startHour).padStart(2, "0")}:00–{String(geo.endHour).padStart(2, "0")}:00
+		</span>
 		<button
 			class="icon-btn follow-btn"
 			class:on={settings.followGrid}
@@ -1348,9 +1353,6 @@
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
 		</button>
-		<span class="day-range-label">
-			{String(geo.startHour).padStart(2, "0")}:00–{String(geo.endHour).padStart(2, "0")}:00
-		</span>
 		<div class="controls-wrap" bind:this={controlsRef}>
 			<button
 				class="icon-btn"
