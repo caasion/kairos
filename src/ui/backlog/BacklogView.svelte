@@ -334,14 +334,14 @@
 		{#each groups as group (group.key)}
 			{@const assoc = group.kind === "none"
 				? undefined
-				: ({ kind: group.kind, id: group.name } as Association)}
+				: { kind: group.kind, id: group.name }}
 			<AssocGroup
 				{assoc}
 				resolved={assoc ? resolve(assoc) : undefined}
 				count={group.entries.length}
 				{onNavigate}
 				noneLabel="Unassociated"
-				onAdd={(anchor) => onCreate(group, anchor)}
+				onAdd={(anchor: DOMRect) => onCreate(group, anchor)}
 				addLabel="Add a backlog item here"
 			>
 
