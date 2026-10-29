@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionZoneWidth, inActionZone } from "./actionZoneGeometry";
+import { actionZoneWidth, cornerNearness, inActionZone } from "./actionZoneGeometry";
 
 describe("actionZoneWidth", () => {
 	it("is the rightmost 20% of a wide row", () => {
@@ -80,5 +80,33 @@ describe("inActionZone (right-edge triangle, bar centred vertically)", () => {
 	it("is false outside the row", () => {
 		expect(at(690, 241)).toBe(false);
 		expect(at(701, 220)).toBe(false);
+	});
+});
+
+describe("cornerNearness", () => {
+	// A 600×40 row at (100, 200)–(700, 240): reach is 360px (60% of the row).
+	const row = { top: 200, right: 700, width: 600, height: 40 };
+
+	it("is 1 on the top-right corner and falls off with distance", () => {
+		expect(cornerNearness(700, 200, row)).toBe(1);
+		expect(cornerNearness(520, 200, row)).toBeCloseTo(0.5);
+		expect(cornerNearness(340, 200, row)).toBe(0);
+		expect(cornerNearness(150, 200, row)).toBe(0);
+	});
+
+	it("measures from the right edge's middle for a right anchor", () => {
+		expect(cornerNearness(700, 220, row, "right")).toBe(1);
+		expect(cornerNearness(700, 200, row, "right")).toBeLessThan(1);
+	});
+
+	it("reaches at least 120px on a narrow row", () => {
+		const narrow = { top: 0, right: 100, width: 100, height: 20 };
+		expect(cornerNearness(40, 0, narrow)).toBeCloseTo(0.5);
+	});
+
+	it("is 0 outside the row", () => {
+		expect(cornerNearness(701, 210, row)).toBe(0);
+		expect(cornerNearness(690, 199, row)).toBe(0);
+		expect(cornerNearness(690, 241, row)).toBe(0);
 	});
 });

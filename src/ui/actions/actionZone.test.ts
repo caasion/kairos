@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACTION_BAR_CLASS, ACTIONS_AWAKE_CLASS, actionZone } from "./actionZone";
+import { ACTION_BAR_CLASS, ACTION_EAR_CLASS, ACTIONS_AWAKE_CLASS, actionZone } from "./actionZone";
 
 // A minimal stand-in for the row and its bar: just the DOM surface the action
 // touches, so it runs without a browser environment.
@@ -9,9 +9,50 @@ interface FakeHost {
 	removeEventListener(type: string, fn: (e: PointerEvent) => void): void;
 	getBoundingClientRect(): { top: number; right: number; width: number; height: number };
 	querySelector(selector: string): unknown;
-	ownerDocument: { activeElement: null; defaultView: unknown };
+	ownerDocument: { activeElement: null; defaultView: unknown; createElement(tag: string): FakeEar };
+	appendChild(child: FakeEar): void;
 	setAttribute(name: string, value: string): void;
 	removeAttribute(name: string): void;
+}
+
+// The dog-ear the action appends to the row.
+interface FakeEar {
+	className: string;
+	classList: { add(c: string): void; remove(c: string): void; toggle(c: string, force?: boolean): boolean; contains(c: string): boolean };
+	style: { setProperty(name: string, value: string): void; getPropertyValue(name: string): string };
+	setAttribute(name: string, value: string): void;
+	remove(): void;
+}
+
+function makeEar(onRemove: () => void): FakeEar {
+	const classes = new Set<string>();
+	const props = new Map<string, string>();
+	return {
+		set className(v: string) {
+			classes.clear();
+			for (const c of v.split(" ")) if (c) classes.add(c);
+		},
+		get className() {
+			return [...classes].join(" ");
+		},
+		classList: {
+			add: (c) => void classes.add(c),
+			remove: (c) => void classes.delete(c),
+			toggle: (c, force) => {
+				const on = force ?? !classes.has(c);
+				if (on) classes.add(c);
+				else classes.delete(c);
+				return on;
+			},
+			contains: (c) => classes.has(c),
+		},
+		style: {
+			setProperty: (n, v) => void props.set(n, v),
+			getPropertyValue: (n) => props.get(n) ?? "",
+		},
+		setAttribute: () => {},
+		remove: onRemove,
+	};
 }
 
 function makeRow(withBar = true) {
@@ -46,8 +87,17 @@ function makeRow(withBar = true) {
 		addEventListener: (type: string) => void winListeners.add(type),
 		removeEventListener: (type: string) => void winListeners.delete(type),
 	};
+	const children: FakeEar[] = [];
 	const fake: FakeHost = {
-		ownerDocument: { activeElement: null, defaultView: win },
+		ownerDocument: {
+			activeElement: null,
+			defaultView: win,
+			createElement: () => {
+				const ear: FakeEar = makeEar(() => void children.splice(children.indexOf(ear), 1));
+				return ear;
+			},
+		},
+		appendChild: (child) => void children.push(child),
 		setAttribute: () => {},
 		removeAttribute: () => {},
 		classList: {
@@ -76,10 +126,42 @@ function makeRow(withBar = true) {
 	const move = (clientX: number, clientY: number, init: Partial<PointerEvent> = {}) =>
 		fire("pointermove", { clientX, clientY, ...init });
 	const awake = () => classes.has(ACTIONS_AWAKE_CLASS);
-	return { host, bar, barChild, listeners, winListeners, tick, selectors, fire, move, awake };
+	const ear = () => children.find((c) => c.classList.contains(ACTION_EAR_CLASS));
+	return { host, bar, barChild, listeners, winListeners, tick, selectors, fire, move, awake, ear };
 }
 
 describe("actionZone", () => {
+	it("adds a dog-ear that shows on the row and grows toward the corner", () => {
+		const row = makeRow();
+		actionZone(row.host);
+		const ear = row.ear();
+		expect(ear).toBeDefined();
+		expect(ear?.classList.contains("is-shown")).toBe(false);
+		row.move(400, 205);
+		expect(ear?.classList.contains("is-shown")).toBe(true);
+		const far = Number(ear?.style.getPropertyValue("--kairos-action-ear-near"));
+		row.move(650, 205);
+		const near = Number(ear?.style.getPropertyValue("--kairos-action-ear-near"));
+		expect(near).toBeGreaterThan(far);
+		row.fire("pointerleave");
+		expect(ear?.classList.contains("is-shown")).toBe(false);
+	});
+
+	it("shows no dog-ear on a row without a bar", () => {
+		const row = makeRow(false);
+		actionZone(row.host);
+		row.move(690, 202);
+		expect(row.ear()?.classList.contains("is-shown")).toBe(false);
+	});
+
+	it("gives a right-anchored row the edge notch, and removes the ear on destroy", () => {
+		const row = makeRow();
+		const zone = actionZone(row.host, { anchor: "right" });
+		expect(row.ear()?.classList.contains("kairos-action-ear-right")).toBe(true);
+		zone.destroy();
+		expect(row.ear()).toBeUndefined();
+	});
+
 	it("wakes the row only inside the top-right triangle", () => {
 		const row = makeRow();
 		actionZone(row.host);
