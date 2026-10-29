@@ -1171,7 +1171,7 @@
 
 	// The grid's fixed template: a label column + one column per day.
 	const gridTemplate = $derived(
-		`180px repeat(${windowSize}, minmax(0, 1fr))`,
+		`var(--kairos-row-label-width) repeat(${windowSize}, minmax(0, 1fr))`,
 	);
 
 	function onKeyDown(event: KeyboardEvent) {
@@ -1840,11 +1840,11 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 8px;
-		padding: 8px 10px 8px 8px;
+		padding: 8px var(--kairos-row-label-pad-right) 8px var(--kairos-row-label-pad-left);
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
-		border-left: 3px solid var(--row-accent, var(--text-faint));
+		border-left: var(--kairos-row-label-accent-width) solid var(--row-accent, var(--text-faint));
 		min-width: 0;
 		position: sticky;
 		left: 0;
@@ -1858,7 +1858,7 @@
 	   the divider between a domain and its children is dropped — the group reads as
 	   one block. */
 	.grid-rowlabel.child {
-		padding-left: 16px;
+		padding-left: calc(var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent));
 	}
 	.grid-rowlabel.child:not(.group-end),
 	.grid-rowlabel.domain {

@@ -12,14 +12,35 @@
 
 import type { ISODate } from "../types";
 
-export const ROW_HEIGHT = 34;
+export const ROW_HEIGHT = 38;
 export const ROW_GAP = 6;
-export const BAR_HEIGHT = 22;
+export const BAR_HEIGHT = 26;
+// Least space above and below a row label that outgrows ROW_HEIGHT (a name
+// with a two-line note), so it never touches the next row.
+export const LABEL_PAD_Y = 4;
 // The header carries two stacked rows: a coarse grouping row over a fine row.
 export const HEADER_COARSE_HEIGHT = 20;
 export const HEADER_FINE_HEIGHT = 20;
 export const HEADER_HEIGHT = HEADER_COARSE_HEIGHT + HEADER_FINE_HEIGHT;
-export const LABEL_WIDTH = 160;
+
+/**
+ * A row's height: ROW_HEIGHT, or taller when its label (measured, in px) needs
+ * more room. The bar stays centered in whatever height the row gets.
+ */
+export function rowHeightFor(labelHeight: number | undefined): number {
+	return Math.max(ROW_HEIGHT, Math.ceil(labelHeight ?? 0) + 2 * LABEL_PAD_Y);
+}
+
+/** Each row's top, starting at `start`, with ROW_GAP between rows. */
+export function rowTops(heights: readonly number[], start: number): number[] {
+	const tops: number[] = [];
+	let y = start;
+	for (const h of heights) {
+		tops.push(y);
+		y += h + ROW_GAP;
+	}
+	return tops;
+}
 
 // ── Interval presets ─────────────────────────────────────────────────────────
 export type Interval = "week" | "month" | "quarter" | "year";
