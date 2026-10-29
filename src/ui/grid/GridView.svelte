@@ -99,6 +99,7 @@
 	import { nextDraftLine } from "../../draftLine";
 	import GridCell from "./GridCell.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
+	import IntensityBars from "../components/IntensityBars.svelte";
 	import type { RowLabelInfo } from "../components/rowLabel";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { createAssociation } from "../association/createAssociation";
@@ -363,7 +364,7 @@
 	// A row's label shows its intensity on the first visible day; a cell where a
 	// record moves the level later in the window carries a small marker, so the
 	// window reads left to right like the Gantt does. The label's intention stays
-	// today's (prose is too long to be a starting point the way five pips are),
+	// today's (prose is too long to be a starting point the way the intensity bars are),
 	// so a new intention anywhere in the window, the first day included, gets a
 	// notebook icon in its cell whose tooltip reads it out.
 	function labelInfo(row: Exclude<GridRow, { kind: "unassigned" }>): RowLabelInfo {
@@ -1170,7 +1171,7 @@
 
 	// The grid's fixed template: a label column + one column per day.
 	const gridTemplate = $derived(
-		`180px repeat(${windowSize}, minmax(0, 1fr))`,
+		`var(--kairos-row-label-width) repeat(${windowSize}, minmax(0, 1fr))`,
 	);
 
 	function onKeyDown(event: KeyboardEvent) {
@@ -1432,9 +1433,7 @@
 										title={`Intensity ${change.from ?? "unset"} → ${change.to} from this day`}
 									>
 										<span class="grid-intensity-arrow">{change.from === null || change.to > change.from ? "↑" : "↓"}</span>
-										{#each [1, 2, 3, 4, 5] as l (l)}
-											<span class="grid-intensity-pip" class:on={change.to >= l}></span>
-										{/each}
+										<IntensityBars level={change.to} />
 									</span>
 								{/if}
 							</span>
@@ -1841,11 +1840,11 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 8px;
-		padding: 8px 10px 8px 8px;
+		padding: 8px var(--kairos-row-label-pad-right) 8px var(--kairos-row-label-pad-left);
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
-		border-left: 3px solid var(--row-accent, var(--text-faint));
+		border-left: var(--kairos-row-label-accent-width) solid var(--row-accent, var(--text-faint));
 		min-width: 0;
 		position: sticky;
 		left: 0;
@@ -1859,7 +1858,7 @@
 	   the divider between a domain and its children is dropped — the group reads as
 	   one block. */
 	.grid-rowlabel.child {
-		padding-left: 16px;
+		padding-left: calc(var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent));
 	}
 	.grid-rowlabel.child:not(.group-end),
 	.grid-rowlabel.domain {
@@ -1911,7 +1910,7 @@
 		min-width: 0;
 	}
 	/* Where a row's intention or intensity changes: a notebook icon and/or a small
-	   arrow with five pips, in the row's accent, tucked in the cell's bottom-right
+	   arrow with the intensity bars, in the row's accent, tucked in the cell's bottom-right
 	   corner, under task action bars and the cell's "+" (both sit higher). */
 	.grid-cell-marks {
 		position: absolute;
@@ -1936,15 +1935,6 @@
 	}
 	.grid-intensity-arrow {
 		margin-right: 1px;
-	}
-	.grid-intensity-pip {
-		width: 4px;
-		height: 4px;
-		border-radius: 50%;
-		border: 1px solid currentColor;
-	}
-	.grid-intensity-pip.on {
-		background: currentColor;
 	}
 	/* Faint tint marking the currently active day's column. */
 	.grid-datacell.today {

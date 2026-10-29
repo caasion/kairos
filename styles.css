@@ -367,3 +367,17 @@ body {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+
+/* ── Row label column (Grid and Timeline) ──
+   Both views draw the same column: a group accent stripe on the left, then the
+   RowLabel, with a project indented under its domain. Shared here so the two
+   can't drift apart again; RowLabel.svelte owns the text sizes. */
+body {
+	--kairos-row-label-width: 180px;
+	--kairos-row-label-accent-width: 3px;
+	/* From the accent stripe to the text. */
+	--kairos-row-label-pad-left: 8px;
+	--kairos-row-label-pad-right: 10px;
+	/* Extra inset for a project under its domain. */
+	--kairos-row-label-indent: 14px;
+}
