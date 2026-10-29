@@ -724,7 +724,7 @@
 	// Open the (parent-owned) association picker on a block that was just created,
 	// anchored to its element — which only exists once the create has rendered.
 	function askAssocFor(block: Block) {
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			const el = canvasEl?.querySelector<HTMLElement>(
 				`[data-block-line="${block.source.line}"]`,
 			);
@@ -879,15 +879,15 @@
 						inherited={task.assoc === undefined && task.owner !== undefined}
 						resolved={r}
 						onNavigate={() => task.owner && onNavigate(task.owner)}
-						onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
-						onNest={(rect) => openBlockPicker(block, task, rect)}
+						onEditAssoc={(rect: DOMRect) => openTaskAssocPicker(block, task, rect)}
+						onNest={(rect: DOMRect) => openBlockPicker(block, task, rect)}
 						onMoveToBacklog={() =>
 							void handleMoveTaskToBacklog(block, task)}
 						onRepeat={() => requestRepeat(task, block)}
-						onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
-						onSetText={(_t, text) => handleSetTaskText(block, task, text)}
+						onSetStatus={(_t: Task, status: TaskStatus) => handleSetTaskStatus(block, task, status)}
+						onSetText={(_t: Task, text: string) => handleSetTaskText(block, task, text)}
 						onDelete={(_t) => handleDeleteTask(block, task)}
-						onGrab={(e) => onTaskGrab(block, task, e)}
+						onGrab={(e: PointerEvent) => onTaskGrab(block, task, e)}
 						highlight={isLinked(task) ? "task" : null}
 						onHoverChange={(on: boolean) => taskHover(task, on)}
 					/>
@@ -939,7 +939,7 @@
 				onEditAssoc={openAssocPicker}
 				onEditTaskAssoc={openTaskAssocPicker}
 				onNestTask={openBlockPicker}
-				onMoveTaskToBacklog={(owner, task) =>
+				onMoveTaskToBacklog={(owner: Block, task: Task) =>
 					void handleMoveTaskToBacklog(owner, task)}
 				onTaskGrab={onTaskGrab}
 				{dragTaskLine}

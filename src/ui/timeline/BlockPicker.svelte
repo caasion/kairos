@@ -55,7 +55,7 @@
 
 	// Keep the highlight in range as the list shrinks/grows while typing.
 	$effect(() => {
-		filtered;
+		void filtered;
 		if (highlighted >= filtered.length)
 			highlighted = Math.max(0, filtered.length - 1);
 	});

@@ -10,6 +10,9 @@ import {
 export { DEFAULT_SETTINGS } from './settingDefinitions';
 export type { KairosSettings } from './settingDefinitions';
 
+/** What a settings control hands back: slider/text/toggle values. */
+type ControlValue = string | number | boolean;
+
 /**
  * The settings tab, rendered from the one array in settingDefinitions.ts.
  *
@@ -39,7 +42,7 @@ export class KairosSettingTab extends PluginSettingTab {
 	 * The per-key normalisation, the paired-hour clamp and the index reseed live
 	 * here for the same reason: they have to happen on both Obsidian versions.
 	 */
-	async setControlValue(key: string, value: unknown): Promise<void> {
+	async setControlValue(key: string, value: ControlValue): Promise<void> {
 		switch (key as KairosSettingKey) {
 			case 'timelineStartHour': {
 				const hour = Number(value);
@@ -175,7 +178,7 @@ export class KairosSettingTab extends PluginSettingTab {
 		// Not a key this tab describes. Store it anyway rather than dropping the
 		// user's change, still through the one write path.
 		await this.plugin.updateSettings((s) => {
-			(s as unknown as Record<string, unknown>)[key] = value;
+			Object.assign(s, { [key]: value });
 		});
 	}
 
@@ -227,7 +230,7 @@ export class KairosSettingTab extends PluginSettingTab {
 		if (def.desc) setting.setDesc(def.desc);
 
 		const current = this.plugin.settings[control.key];
-		const commit = (value: unknown) => {
+		const commit = (value: ControlValue) => {
 			void this.setControlValue(control.key, value);
 		};
 

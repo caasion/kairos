@@ -38,7 +38,6 @@ export class KairosBacklogView extends ItemView {
 		this.component = mount(BacklogView as Component, {
 			target: container,
 			props: {
-				app: this.app,
 				index: this.plugin.indexAdapter.index,
 				settings$: this.plugin.settings$,
 				filter$: this.plugin.backlogFilter$,

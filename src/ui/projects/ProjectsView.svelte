@@ -14,7 +14,7 @@
 	// active/inactive for them and the Archived filter shows projects only.
 
 	import type { App } from "obsidian";
-	import { Menu, TFile } from "obsidian";
+	import { Menu, Notice, TFile } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Unsubscriber } from "svelte/store";
 	import type {
@@ -78,7 +78,7 @@
 	}
 
 	function passesFilter(e: Project | Domain): boolean {
-		return filter.has(statusOf(e) as Filter);
+		return filter.has(statusOf(e));
 	}
 
 	// Active entities always sort above non-active ones (inactive/archived sink to
@@ -132,14 +132,13 @@
 		const clash = index.nameCollision(next, e);
 		if (clash) {
 			// A collision would make the name-match model ambiguous (spec §4.4).
-			// eslint-disable-next-line no-alert
-			window.alert(
+			new Notice(
 				`"${next}" collides with "${clash}". Names and aliases must be unique.`,
 			);
 			return;
 		}
 		if (isDomain) void renameDomain(index, e as Domain, next);
-		else void renameProject(index, e as Project, next);
+		else void renameProject(index, e, next);
 	}
 
 	// ── Status ──
@@ -159,7 +158,7 @@
 		const next: LifecycleState =
 			statusOf(e) === "active" ? (isDomain ? "inactive" : lastNonActive(e)) : "active";
 		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
-		else setProjectStatus(index, e as Project, todayISO(), next);
+		else setProjectStatus(index, e, todayISO(), next);
 		askWhy(e, isDomain, next);
 	}
 
@@ -202,7 +201,7 @@
 		if (!live || !rec) return;
 		const next = { date, status: rec.status, note: rec.note ?? "", why };
 		if (isDomain) editDomainStatusRecord(index, live as Domain, date, next);
-		else editProjectStatusRecord(index, live as Project, date, next);
+		else editProjectStatusRecord(index, live, date, next);
 	}
 
 	// ── Status history (native modal) ──
@@ -381,7 +380,7 @@
 			onSubmit: (name) => {
 				const clash = index.nameCollision(name);
 				if (clash) {
-					window.alert(`"${name}" collides with "${clash}".`);
+					new Notice(`"${name}" collides with "${clash}".`);
 					return;
 				}
 				void index.createDomain(name);
@@ -396,7 +395,7 @@
 			onSubmit: (name) => {
 				const clash = index.nameCollision(name);
 				if (clash) {
-					window.alert(`"${name}" collides with "${clash}".`);
+					new Notice(`"${name}" collides with "${clash}".`);
 					return;
 				}
 				void index.createProject(name, domainId);
@@ -414,7 +413,7 @@
 			allowEmpty: true,
 			onSubmit: (desc) => {
 				if (isDomain) setDomainDescription(index, e as Domain, desc);
-				else setProjectDescription(index, e as Project, desc);
+				else setProjectDescription(index, e, desc);
 			},
 		}).open();
 	}
@@ -477,7 +476,7 @@
 		<span class="pv-spacer"></span>
 
 		<div class="filter-group">
-			{#each ["active", "inactive", "archived"] as const as f}
+			{#each ["active", "inactive", "archived"] as const as f (f)}
 				<button
 					class="filter-btn"
 					class:on={filter.has(f)}
@@ -651,7 +650,6 @@
 </div>
 
 {#snippet projectRow(project: Project, disabled: boolean)}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- When the parent domain is inactive its projects are read-only history:
 	     the row dims and its rename / context-menu / action buttons go inert. -->
 	<li

@@ -540,17 +540,17 @@
     resolved={tr}
     color={tr?.color}
     onNavigate={() => task.owner && onNavigate(task.owner)}
-    onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
-    onNest={(rect) => onNestTask(block, task, rect)}
+    onEditAssoc={(rect: DOMRect) => onEditTaskAssoc(block, task, rect)}
+    onNest={(rect: DOMRect) => onNestTask(block, task, rect)}
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
     onRepeat={() => requestRepeat(task, block)}
-    onGrab={(e) => {
+    onGrab={(e: PointerEvent) => {
       collapse();
       onTaskGrab(block, task, e);
     }}
-    onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
-    onSetText={(t, text) => onSetTaskText(block, t, text)}
-    onDelete={(t) => onDeleteTask(block, t)}
+    onSetStatus={(t: Task, status: TaskStatus) => onSetTaskStatus(block, t, status)}
+    onSetText={(t: Task, text: string) => onSetTaskText(block, t, text)}
+    onDelete={(t: Task) => onDeleteTask(block, t)}
     highlight={taskHighlight(hover, task, block) === "task" ? "task" : null}
     onHoverChange={(on: boolean) => chipHover(task, on)}
   />
@@ -643,7 +643,6 @@
   >
     <div class="tl-block-header">
       {#if editingTitle}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <input
           class="tl-title-input kairos-inline-input"
           type="text"
@@ -764,7 +763,6 @@
             {#if dropIndex === i}
               <div class="tl-drop-line"></div>
             {/if}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="tl-task-wrap"
               class:dragging-origin={dragTaskLine === task.source.line}

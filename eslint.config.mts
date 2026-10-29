@@ -97,34 +97,24 @@ export default defineConfig(
 		// only: these rules stay errors in .ts files.
 		files: SVELTE_FILES,
 		rules: {
-			// Mostly `any` leaking across component boundaries: typescript-eslint
-			// cannot see a child component's prop types (svelte2tsx is not in
-			// the loop), so callback params such as `onGrab={(e) => ...}` and
-			// bind:this instances are `any`. Datepicker.svelte has genuinely
-			// untyped $props().
-			'@typescript-eslint/no-unsafe-argument': 'warn',
-			'@typescript-eslint/no-unsafe-assignment': 'warn',
-			'@typescript-eslint/no-unsafe-call': 'warn',
-			'@typescript-eslint/no-unsafe-member-access': 'warn',
-			'@typescript-eslint/no-unsafe-return': 'warn',
 			'@typescript-eslint/no-unnecessary-type-assertion': 'warn',
 			'@typescript-eslint/no-floating-promises': 'warn',
 			'@typescript-eslint/await-thenable': 'warn',
 			'obsidianmd/no-static-styles-assignment': 'warn',
 			'svelte/require-each-key': 'warn',
 			'svelte/no-unused-svelte-ignore': 'warn',
-			'svelte/prefer-svelte-reactivity': 'warn',
+			// Off: the flagged Map/Set are local scratch values built inside
+			// derived computations, never mutated reactively, so SvelteMap/SvelteSet
+			// would only add overhead.
+			'svelte/prefer-svelte-reactivity': 'off',
 			'svelte/prefer-writable-derived': 'warn',
 			'svelte/no-dom-manipulating': 'warn',
 			'svelte/no-unused-props': 'warn',
 		},
 	},
 	{
-		// The engine runs in plain Node under vitest and must not reference
-		// `window`. Its debounce timers live for the plugin's lifetime and are
-		// cleared in dispose(), so popout-window compatibility does not apply.
-		// Auto-fixing these breaks both the unit tests and tsc's timer typing.
-		files: ['src/index.ts'],
+		// Unit tests run in plain Node (no `window`), driven by vitest fake timers.
+		files: ['**/*.test.ts'],
 		rules: { 'obsidianmd/prefer-window-timers': 'off' },
 	},
 );
