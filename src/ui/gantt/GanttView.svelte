@@ -31,14 +31,17 @@
 	} from "../../projectActions";
 	import {
 		BAR_HEIGHT,
+		BAR_OFFSET,
 		HEADER_COARSE_HEIGHT,
 		HEADER_FINE_HEIGHT,
 		HEADER_HEIGHT,
 		INTERVALS,
 		INTERVAL_LABEL,
-		LABEL_WIDTH,
+		LABEL_PAD_Y,
 		ROW_GAP,
 		ROW_HEIGHT,
+		rowHeightFor,
+		rowTops,
 		dateToX,
 		getHeader,
 		getUnitViewport,
@@ -53,11 +56,12 @@
 		type Interval,
 	} from "../../gantt/ganttUtils";
 	import { historyToSpans, type Span } from "../../gantt/spans";
-	import { INTENSITY_MAX } from "../../projectFile";
+	import { addIntensityItem } from "./intensityMenu";
 	import { visibleEntities } from "../../gantt/rows";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
+	import IntensityBars from "../components/IntensityBars.svelte";
 	import { peek } from "../actions/peek";
 	import { rowLabelInfo, type RowLabelInfo } from "../components/rowLabel";
 
@@ -199,8 +203,17 @@
 		}
 	}
 
-	const rowTop = (i: number) => HEADER_HEIGHT + i * (ROW_HEIGHT + ROW_GAP);
-	const contentHeight = $derived(rowTop(rows.length) + ROW_GAP);
+	// Each label's measured height, by row key. A row grows past ROW_HEIGHT when
+	// its label needs it (a two-line note), and the plot follows the label column.
+	let labelHeights = $state<Record<string, number>>({});
+	const rowHeights = $derived(rows.map((r) => rowHeightFor(labelHeights[r.key])));
+	const tops = $derived(rowTops(rowHeights, HEADER_HEIGHT));
+	const rowTop = (i: number) => tops[i] ?? HEADER_HEIGHT;
+	const rowHeight = (i: number) => rowHeights[i] ?? ROW_HEIGHT;
+	const barTop = (i: number) => rowTop(i) + BAR_OFFSET;
+	const contentHeight = $derived(
+		rows.length === 0 ? HEADER_HEIGHT + ROW_GAP : rowTop(rows.length - 1) + rowHeight(rows.length - 1) + 2 * ROW_GAP,
+	);
 
 	// Base hue for a row: its color, or the theme accent when none.
 	const barColor = (row: GanttRow) => row.color || "var(--interactive-accent)";
@@ -506,7 +519,7 @@
 
 	// ── Intensity (0–5) ──
 	// Written onto the span's opening record through the same guarded edit as the
-	// intention; `undefined` clears it back to "no claim". Set from the bar's pips,
+	// intention; `undefined` clears it back to "no claim". Set from the bar's intensity bars,
 	// the number keys on a selected bar, or the context menu.
 	function setIntensity(row: GanttRow, span: Span, value: number | undefined) {
 		const live = currentRow(row.key);
@@ -519,11 +532,6 @@
 		};
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
 		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
-	}
-	// A pip click sets that level; clicking the level already set clears it.
-	function clickPip(e: MouseEvent, row: GanttRow, span: Span, level: number) {
-		e.stopPropagation();
-		setIntensity(row, span, span.intensity === level ? undefined : level);
 	}
 	// The bar's fill, as a share of the project colour: 10% a level, so 5 is 50%
 	// and the label stays readable over it. 0 and unset fill nothing.
@@ -607,23 +615,7 @@
 		menu.addItem((item) =>
 			item.setTitle("Edit intention").setIcon("pencil").onClick(() => beginEditDesc(row, span)),
 		);
-		for (let level = 0; level <= INTENSITY_MAX; level++) {
-			menu.addItem((item) =>
-				item
-					.setTitle(`Intensity ${level}`)
-					.setSection("intensity")
-					.setChecked(span.intensity === level)
-					.onClick(() => setIntensity(row, span, level)),
-			);
-		}
-		if (span.intensity !== undefined) {
-			menu.addItem((item) =>
-				item
-					.setTitle("Clear intensity")
-					.setSection("intensity")
-					.onClick(() => setIntensity(row, span, undefined)),
-			);
-		}
+		addIntensityItem(menu, span.intensity, (level) => setIntensity(row, span, level));
 		menu.addItem((item) =>
 			item.setTitle("Edit start date…").setIcon("calendar").onClick(() => openDateEdit(row, span, "start")),
 		);
@@ -768,7 +760,11 @@
 	{:else}
 		<div class="gantt-grid">
 			<!-- Sidebar labels -->
-			<div class="gantt-labels" style:width={`${LABEL_WIDTH}px`}>
+			<div
+				class="gantt-labels"
+				style:--label-pad-y={`${LABEL_PAD_Y}px`}
+				style:--row-gap={`${ROW_GAP}px`}
+			>
 				<div class="gantt-corner" style:height={`${HEADER_HEIGHT}px`}></div>
 				{#each rows as row, i (row.key)}
 					{@const group = ganttGroup(i)}
@@ -778,18 +774,16 @@
 						class:domain={row.isDomain}
 						class:group-start={group.start}
 						class:group-end={group.end}
-						style:height={`${ROW_HEIGHT}px`}
+						style:height={`${rowHeight(i)}px`}
 						style:margin-bottom={`${ROW_GAP}px`}
 						style={row.color ? `--row-accent: ${row.color};` : undefined}
 					>
-						<!-- Continuous group accent: a domain + its projects share one stripe.
-						     Extends through the row gap on non-terminal rows so it reads as
-						     unbroken across the fixed-height, gapped Gantt rows. -->
-						<span
-							class="gantt-accent"
-							style:height={group.end ? `${ROW_HEIGHT}px` : `${ROW_HEIGHT + ROW_GAP}px`}
-						></span>
-						<RowLabel info={row.info} />
+						<!-- The accent runs through the row gap, so the stripe is unbroken
+						     down the column like the Grid's left border. -->
+						<span class="gantt-accent" style:height={`${rowHeight(i) + ROW_GAP}px`}></span>
+						<div class="gantt-label-body" bind:offsetHeight={labelHeights[row.key]}>
+							<RowLabel info={row.info} />
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -839,6 +833,16 @@
 					<div class="gantt-today" style:left={`${todayX}px`} style:height={`${contentHeight}px`}></div>
 				{/if}
 
+				<!-- The line under each group, level with the label column's. -->
+				{#each rows as row, i (row.key)}
+					{#if ganttGroup(i).end}
+						<div
+							class="gantt-group-line"
+							style:top={`${rowTop(i) + rowHeight(i) + ROW_GAP - 1}px`}
+						></div>
+					{/if}
+				{/each}
+
 				<!-- Create zones: empty row space; press here to author a new active
 				     period (click = open-ended, drag = bounded). Sits behind the bars. -->
 				{#each rows as row, i (row.key)}
@@ -846,7 +850,7 @@
 					<div
 						class="gantt-create-zone"
 						style:top={`${rowTop(i)}px`}
-						style:height={`${ROW_HEIGHT}px`}
+						style:height={`${rowHeight(i)}px`}
 						title="Drag to add an active period · click to start one"
 						onpointerdown={(e) => beginCreateDrag(e, row)}
 					></div>
@@ -874,7 +878,7 @@
 									style:--fill={`${fillPercent(span)}%`}
 									style:left={`${box.left}px`}
 									style:width={`${box.width}px`}
-									style:top={`${rowTop(i) + (ROW_HEIGHT - BAR_HEIGHT) / 2}px`}
+									style:top={`${barTop(i)}px`}
 									style:height={`${BAR_HEIGHT}px`}
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
@@ -897,21 +901,12 @@
 											title="Drag to move the start date"
 										></div>
 									{/if}
-									<!-- Intensity pips: N of five filled. Hidden on an unrated bar until
-									     hover, so they double as the way to rate it; dropped on a bar
-									     too narrow to hold them beside a label. -->
-									{#if box.width >= 64}
-										<span class="gantt-pips" title="Intensity: click a dot to set · 0–5 keys on a selected bar">
-											{#each [1, 2, 3, 4, 5] as level (level)}
-												<!-- svelte-ignore a11y_click_events_have_key_events -->
-												<!-- svelte-ignore a11y_no_static_element_interactions -->
-												<span
-													class="gantt-pip"
-													class:on={(span.intensity ?? 0) >= level}
-													onpointerdown={(e) => e.stopPropagation()}
-													onclick={(e) => clickPip(e, row, span, level)}
-												></span>
-											{/each}
+									<!-- Intensity bars: three stacked, two levels a bar. Hidden on an
+									     unrated bar until hover, so they double as the way to rate it;
+									     dropped on a bar too narrow to hold them beside a label. -->
+									{#if box.width >= 40}
+										<span class="gantt-pips" title="Intensity: click a bar to set · 0–5 keys on a selected bar">
+											<IntensityBars level={span.intensity} onpick={(level) => setIntensity(row, span, level)} />
 										</span>
 									{/if}
 									{#if editingKey === key}
@@ -964,7 +959,7 @@
 						class="gantt-ghost"
 						style:left={`${dateToX(a, viewport.start, pxPerDay)}px`}
 						style:width={`${Math.max(3, dateToX(b, viewport.start, pxPerDay) - dateToX(a, viewport.start, pxPerDay))}px`}
-						style:top={`${rowTop(ri) + (ROW_HEIGHT - BAR_HEIGHT) / 2}px`}
+						style:top={`${barTop(ri)}px`}
 						style:height={`${BAR_HEIGHT}px`}
 					></div>
 				{/if}
@@ -1125,6 +1120,7 @@
 	}
 	.gantt-labels {
 		flex-shrink: 0;
+		width: var(--kairos-row-label-width);
 		border-right: 1px solid var(--background-modifier-border);
 		background: var(--background-secondary);
 		position: sticky;
@@ -1135,34 +1131,52 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		background: var(--background-secondary);
 	}
+	/* Insets and indent are the Grid's (--kairos-row-label-* in styles.css), so
+	   the two label columns read as one. Like the Grid, the label sits at the
+	   top of its row; the bar lines up with its first line (BAR_OFFSET). */
 	.gantt-label {
 		position: relative;
 		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 0 8px 0 12px;
-		font-size: 12px;
-		color: var(--text-normal);
+		align-items: flex-start;
+		padding: var(--label-pad-y) var(--kairos-row-label-pad-right) 0
+			calc(var(--kairos-row-label-accent-width) + var(--kairos-row-label-pad-left));
 		overflow: visible;
 	}
-	.gantt-label.indent { padding-left: 26px; }
-	/* Continuous group accent stripe, mirroring the Grid: rounded only at the
-	   group's top/bottom, and extended through the row gap between grouped rows so
-	   it reads as unbroken across the fixed-height, gapped Gantt rows. */
+	.gantt-label.indent {
+		padding-left: calc(
+			var(--kairos-row-label-accent-width) + var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent)
+		);
+	}
+	.gantt-label-body {
+		flex: 1;
+		min-width: 0;
+	}
+	/* The group accent stripe, square like the Grid's left border. */
 	.gantt-accent {
 		position: absolute;
-		left: 4px;
+		left: 0;
 		top: 0;
-		width: 3px;
+		width: var(--kairos-row-label-accent-width);
 		background: var(--row-accent, var(--text-faint));
 	}
-	.gantt-label.group-start .gantt-accent {
-		border-top-left-radius: 2px;
-		border-top-right-radius: 2px;
+	/* A line under each group, at the foot of the row gap, like the Grid's
+	   border under a group's last row. The plot draws the same line. */
+	.gantt-label.group-end::after {
+		content: "";
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: calc(-1 * var(--row-gap));
+		height: 1px;
+		background: var(--background-modifier-border);
 	}
-	.gantt-label.group-end .gantt-accent {
-		border-bottom-left-radius: 2px;
-		border-bottom-right-radius: 2px;
+	.gantt-group-line {
+		position: absolute;
+		left: 0;
+		right: 0;
+		height: 1px;
+		background: var(--background-modifier-border);
+		pointer-events: none;
 	}
 	.gantt-plot {
 		position: relative;
@@ -1286,21 +1300,15 @@
 	}
 	.gantt-pips {
 		display: flex;
-		gap: 3px;
-		padding-left: 9px;
+		padding-left: 6px;
 		flex-shrink: 0;
-	}
-	.gantt-pip {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		border: 1px solid var(--bar-color);
-		cursor: pointer;
+		color: var(--bar-color);
 		position: relative;
 		z-index: 3; /* above the left handle */
-	}
-	.gantt-pip.on {
-		background-color: var(--bar-color);
+		/* Bigger than the Grid label's icon, to match the taller bar. */
+		--intensity-bar-width: 12px;
+		--intensity-bar-height: 3px;
+		--intensity-bar-row: 5px;
 	}
 	.gantt-bar.unrated .gantt-pips {
 		visibility: hidden;
@@ -1324,10 +1332,10 @@
 	.gantt-bar.open-ended::after {
 		content: "";
 		position: absolute;
-		right: -8px;
-		border-top: calc(var(--bar-h, 22px) / 2 + 1px) solid transparent;
-		border-bottom: calc(var(--bar-h, 22px) / 2 + 1px) solid transparent;
-		border-left: 8px solid var(--bar-color);
+		right: -9px;
+		border-top: calc(var(--bar-h) / 2 + 1px) solid transparent;
+		border-bottom: calc(var(--bar-h) / 2 + 1px) solid transparent;
+		border-left: 9px solid var(--bar-color);
 	}
 	/* Span whose real start is off-screen left: square that edge (it's cut, not a boundary). */
 	.gantt-bar.clamped-start {
@@ -1343,7 +1351,7 @@
 	.gantt-bar-label {
 		flex: 1;
 		min-width: 0;
-		font-size: 10px;
+		font-size: 11px;
 		padding: 0 6px 0 8px;
 		color: var(--text-normal);
 		white-space: nowrap;
@@ -1364,7 +1372,7 @@
 		min-width: 0;
 		height: 100%;
 		padding: 0 6px 0 8px;
-		font-size: 10px;
+		font-size: 11px;
 		font-family: inherit;
 		border: none;
 		outline: none;
@@ -1388,7 +1396,7 @@
 	.gantt-handle.right { right: 0; }
 	.gantt-handle:hover { background: color-mix(in srgb, var(--bar-color) 45%, transparent); }
 	/* The open-ended arrow cap doubles as the right handle's visual affordance. */
-	.gantt-bar.open-ended .gantt-handle.right { right: -8px; width: 16px; }
+	.gantt-bar.open-ended .gantt-handle.right { right: -9px; width: 17px; }
 	.gantt-drag-marker {
 		position: absolute;
 		top: 0;
