@@ -228,7 +228,7 @@
 
 	.row-label-name {
 		max-width: 100%;
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 13px;
 		font-weight: 400;
 		line-height: 1.3;
@@ -314,7 +314,7 @@
 	}
 	:global(.row-label-card) .rlc-name {
 		margin: 1px 0 6px;
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 18px;
 		font-weight: 400;
 		line-height: 1.2;

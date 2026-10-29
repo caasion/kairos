@@ -7,6 +7,29 @@ If your plugin does not need CSS, delete this file.
 
 */
 
+/* ── Design tokens (DESIGN.md) ──
+   The sizes Kairos uses, named once. Components use these instead of typing a
+   pixel value, so the same role reads the same in every view. Values are what
+   1.1.0 already uses most. Colours are always Obsidian's variables. */
+body {
+	/* Type */
+	--kairos-font-serif: Georgia, "Times New Roman", serif;
+	--kairos-text-display: 24px; /* A date card's day number */
+	--kairos-text-domain: 15px; /* A domain's name in a row label or group */
+	--kairos-text-name: 13px; /* A project's name, picker rows, empty states */
+	--kairos-text-body: 12px; /* Item text, block titles, controls */
+	--kairos-text-label: 11px; /* Buttons, headings, day of week, counts */
+	--kairos-text-meta: 10px; /* Metadata lines, hour labels, tags */
+
+	/* Corners */
+	--kairos-radius-s: 4px; /* Small marks: tags, tiny swatches */
+	--kairos-radius-m: 6px; /* Buttons, pills, rows */
+	--kairos-radius-l: 8px; /* Popovers, cards, date cards */
+
+	/* Accent bar down a group or row, in the domain colour */
+	--kairos-accent-width: 3px;
+}
+
 /* ── Inline edit inputs ──
    Inputs that replace a label in place (task text, block title, backlog item,
    Gantt description, project/domain name) must look exactly like the label they

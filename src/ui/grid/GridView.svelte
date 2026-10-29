@@ -1999,7 +1999,7 @@
 		line-height: 1.4;
 	}
 	.grid-colhead .date-number {
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 24px;
 		font-weight: 400;
 		color: var(--text-normal);

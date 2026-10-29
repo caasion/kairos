@@ -298,7 +298,7 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 15px;
 		color: var(--text-normal);
 	}
@@ -317,7 +317,7 @@
 		color: var(--text-muted);
 	}
 	.hb-num {
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 15px;
 		font-variant-numeric: tabular-nums;
 		color: var(--text-normal);
