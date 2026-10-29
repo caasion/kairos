@@ -1,5 +1,5 @@
 <script lang="ts">
-	// PROTOTYPE: one association's rows in a grouped list (groupByAssoc.ts), in
+	// One association's rows in a grouped list (groupByAssoc.ts), in
 	// Kairos's own look: a bar in the domain color down the group's left edge,
 	// like a block on the timeline, then the project (folder) or domain icon,
 	// the name in serif and its count, and a "+" on the right. Ctrl/Cmd+click

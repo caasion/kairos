@@ -369,7 +369,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		/* PROTOTYPE: the same look as the header badges' lists (HeaderBadge). */
+		/* The same look as the header badges' lists (HeaderBadge). */
 		padding: 10px 12px;
 		border-radius: var(--radius-s);
 		border: 1px solid var(--background-modifier-border);

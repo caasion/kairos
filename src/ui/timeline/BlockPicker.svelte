@@ -41,7 +41,7 @@
 		// Offer a last row that makes a new block, named by the search text when
 		// there is any. Caller closes the popup.
 		onCreate?: (title: string) => void;
-		// PROTOTYPE: a block's domain color, so each row reads like its block on
+		// A block's domain color, so each row reads like its block on
 		// the timeline. Undefined (or omitted) leaves the row plain.
 		colorOf?: (option: BlockOption) => string | undefined;
 	}
@@ -245,7 +245,7 @@
 		background: var(--background-modifier-hover);
 	}
 
-	/* PROTOTYPE: a colored row, like its block on the timeline: a bar in the
+	/* A colored row, like its block on the timeline: a bar in the
 	   domain color on the left edge and a light tint, stronger when highlighted. */
 	.block-row.colored {
 		border-radius: 0;

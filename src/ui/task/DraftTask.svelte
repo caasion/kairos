@@ -1,5 +1,5 @@
 <script lang="ts">
-	// PROTOTYPE (add flow): a task row that isn't a task yet. A "+" opens one
+	// A task row that isn't a task yet. A "+" opens one
 	// instead of making a "New task" straight away, so nothing is written until
 	// it has a name. Enter adds the task and leaves the row open, empty, for the
 	// next one; Escape, or Enter on an empty row, closes it. Leaving it (a click

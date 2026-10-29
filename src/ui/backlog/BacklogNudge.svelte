@@ -33,9 +33,9 @@
 		onResurfaceAt: (entry: BacklogEntry, anchor: DOMRect) => void;
 		/** Ctrl-click the association line → open its project/domain. */
 		onNavigate?: (assoc: Association) => void;
-		/** PROTOTYPE: false when a group header above already names it. */
+		/** False when a group header above already names it. */
 		showAssociation?: boolean;
-		/** PROTOTYPE: a short label for where the row came from ("Backlog"). */
+		/** A short label for where the row came from ("Backlog"). */
 		sourceTag?: string;
 	}
 
@@ -154,7 +154,7 @@
 </div>
 
 <style>
-	/* PROTOTYPE: where an Inbox row came from, at the row's right. */
+	/* Where an Inbox row came from, at the row's right. */
 	.src-tag {
 		display: flex;
 		align-items: center;

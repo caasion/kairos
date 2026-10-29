@@ -170,7 +170,7 @@
     block.assoc ? resolve(block.assoc).color : undefined,
   );
 
-  // PROTOTYPE: a task whose association is the block's own — inherited, or
+  // A task whose association is the block's own — inherited, or
   // written on the task but naming the same project or domain — draws no
   // association line; the block's header already says it.
   const blockResolved = $derived(block.assoc ? resolve(block.assoc) : undefined);

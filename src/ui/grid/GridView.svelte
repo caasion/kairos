@@ -131,7 +131,7 @@
 		showDay: (date: ISODate) => void;
 		// Each day's missing routines, behind a pill on its date header.
 		routineActions: RoutineActions;
-		// PROTOTYPE: yesterday's open tasks, for today's Inbox badge.
+		// Yesterday's open tasks, for today's Inbox badge.
 		leftoverActions: LeftoverActions;
 		// The leaf's tab header, which the header bar moves into.
 		viewHeader?: HTMLElement;
@@ -409,10 +409,10 @@
 
 	// ── Resurfaced backlog nudges ──
 	// Entries with a resurface date surface on one day (max(resurface, today)),
-	// behind that day's Inbox badge (PROTOTYPE; they used to sit in its cells).
+	// behind that day's Inbox badge (they used to sit in its cells).
 	let backlogEntries = $state<BacklogEntry[]>([]);
 
-	// PROTOTYPE: each day's header badges — its Unscheduled tasks across every
+	// Each day's header badges — its Unscheduled tasks across every
 	// row, and its Inbox (resurfacing entries, plus yesterday's open tasks on
 	// today), both grouped by association like the rows they came out of.
 	function unscheduledOn(date: ISODate): ResolvedTask[] {
@@ -428,7 +428,7 @@
 	// opens that day's badge so the new task is in view.
 	let unscheduledOpen = $state<Record<string, boolean>>({});
 
-	// PROTOTYPE: yesterday's open tasks, for today's Inbox badge.
+	// Yesterday's open tasks, for today's Inbox badge.
 	// svelte-ignore state_referenced_locally
 	const left$ = todayLeftovers(index, leftoverActions);
 	const leftFrom = $derived($left$ ? dayLabel($left$.from.date) : "");
@@ -1306,7 +1306,7 @@
 	});
 </script>
 
-<!-- PROTOTYPE: the lists behind each day's header badges. -->
+<!-- The lists behind each day's header badges. -->
 {#snippet listIcon()}
 	<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></svg>
 {/snippet}
@@ -1331,7 +1331,6 @@
 				association={task.owner}
 				inherited={task.assoc === undefined && task.owner !== undefined}
 				showAssociation={false}
-				scheduleButton
 				resolved={r}
 				onNavigate={() => task.owner && onNavigate(task.owner)}
 				onEditAssoc={(rect) => openTaskAssoc(task, rect)}
@@ -1519,7 +1518,7 @@
 						<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
 					{/if}
 				</button>
-				<!-- PROTOTYPE: the day's lists as badges, bottom-right of its date cell:
+				<!-- The day's lists as badges, bottom-right of its date cell:
 				     Unscheduled, Inbox, then routines (listed on hover, each addable). -->
 				{#if usBadge || inCount > 0 || (offered && offered.count > 0)}
 					<div class="grid-badges">
@@ -1976,7 +1975,7 @@
 		gap: 3px;
 	}
 
-	/* PROTOTYPE: the "Left open on …" heading inside a day's Inbox list. */
+	/* The "Left open on …" heading inside a day's Inbox list. */
 	.inbox-left-head {
 		display: flex;
 		align-items: center;

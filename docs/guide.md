@@ -6,7 +6,7 @@ Tasks and blocks keep their actions in their top-right corner. Point at a task o
 
 ## Plan a day (Day and Week views)
 
-The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in its header (**Days before today**, **Days after today**).
+The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in the tab's header (**Days before today**, **Days after today**). The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
 
 **Blocks**
 
@@ -38,20 +38,25 @@ A note records what happened in a block, like "Ran late, skipped the review".
 
 **When a block is too small for its tasks**, its last row says "N more". Point at it or tap it, and the block grows to show everything.
 
-Above the timeline, a row of pills holds what isn't on it yet: **Unscheduled** (tasks without a time), **Left from** (see below), **Resurfacing** and missing routines. Point at a pill to peek at its list. Select it to open the list above the timeline, and select it again to close it. To schedule a task, drag it from the list onto the timeline. The **Unscheduled** pill also shows whenever you're dragging a task; drop on it to take a task out of its block. In the Week view, point at a day's part of the **Unscheduled** line and select **+** to add a task there.
+Above the timeline, a row of pills holds what isn't on it yet: **Unscheduled** (tasks without a time), the **Inbox** (tasks left open on an earlier day, and backlog items resurfacing today) and missing routines. The Inbox pill turns amber while tasks are left open (see [Carry unfinished tasks forward](#carry-unfinished-tasks-forward)). Point at a pill to peek at its list. Select it to open the list above the timeline, and select it again to close it. To schedule a task, drag it from the list onto the timeline. The **Unscheduled** pill also shows whenever you're dragging a task; drop on it to take a task out of its block.
+
+Lists are grouped by project or domain. To add a task to **Unscheduled**, select the **+** on a group and type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it.
+
+In the Week view, each day's header has the same **Unscheduled** and **Inbox** badges. Point at one to see its list. While you drag a task, an Unscheduled strip shows under the headers; drop on a day's part of it to take the task out of its block.
 
 ## Triage in the Grid
 
 The Grid has one row per project and domain, and one column per day. Use it to see what you're working on and when, and to move things around.
 
 - **Rows:** projects without a domain come first, then each domain followed by its projects. **Unassociated** at the bottom holds tasks with no project or domain.
-- **Cells:** tasks are grouped under their block's time and title. Tasks with no time are under **Unscheduled**, last.
+- **Cells:** tasks are grouped under their block's time and title. Tasks with no time are under **Unscheduled**, last. To keep them out of the cells, turn off **Show unscheduled tasks in the grid** in the Grid's gear menu; they're then listed behind the **Unscheduled** badge on each date.
+- **Inbox:** each date has an **Inbox** badge, the same as in the Week view.
 - **Dimmed cells** are days when that project or domain wasn't active. You can't add to them.
 
 **Adding and moving**
 
 - **Add a task to a block:** point at the top-right corner of the block's header and select **Add task**. A block header has the same corner actions as a block in the Day view.
-- **Add a task without a time:** select the **+** in the cell's corner, or the **+** on its Unscheduled header.
+- **Add a task without a time:** select the **+** in the cell's corner, or the **+** on its Unscheduled header, and type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it.
 - **Move a task:** press and hold its text, then drag.
   - Onto a block in the same cell: it moves into that block.
   - Onto another row: it changes project or domain.
@@ -82,7 +87,7 @@ The backlog holds things you mean to do but haven't given a day. It lives in one
 - **Edit an item:** select its text. Clear the text to delete it.
 - **Bring it back on a date:** point at the item's right edge and select **Set a resurface date**.
 
-On that date the item appears in your day: in the Day view under the **Resurfacing** pill, and in the Grid on its row. Select its **arrow** to schedule it into that day as a task. Point at its corner and select **Resurface later** to push it back.
+On that date the item appears in that day's **Inbox**: under the Inbox pill in the Day view, and behind the date's Inbox badge in the Week and Grid views. Select its **arrow** to schedule it into that day as a task. Point at its corner and select **Resurface later** to push it back.
 
 To send a task back to the backlog, right-click it and select **Move to backlog**.
 
@@ -114,12 +119,13 @@ A routine that belongs to an inactive project or domain is paused, and shows as 
 
 ## Carry unfinished tasks forward
 
-Open and half-done tasks from your most recent earlier note show in today's Day view under the **Left from** pill for that day. Nothing moves until you choose:
+Open and half-done tasks from your most recent earlier note wait in today's **Inbox**. In the Day view, a line under the pills says **Left open** and how many, or **Left open on Fri** when they're from before yesterday. Select **Review** to see them. In the Week and Grid views, they're behind today's Inbox badge. Nothing moves until you choose:
 
 - **Mark it done:** select the checkbox. The task is ticked on the day you left it, for something you did but forgot to tick. Long-press to cancel it instead.
+- **Cancel it:** select its **✕**.
 - **Bring it to today:** select the arrow. The task moves into today's **Unscheduled**.
-- **Bring all** moves every task in the list.
-- **Leave the rest** keeps the remaining tasks open where they are and hides the list for today.
+- **Bring all** (the stacked arrows) moves every task in the list.
+- **Leave the rest** (the struck-through list) keeps the remaining tasks open where they are and hides the list for today.
 
 Done and cancelled tasks are never listed. A task that today already has, such as a routine task, isn't listed either.
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	// PROTOTYPE: yesterday's open tasks as a one-line bar at the top of the Day
+	// Yesterday's open tasks as a one-line bar at the top of the Day
 	// view — there until dealt with, but folded: "Review" opens the list. Each row
 	// is a LeftoverTask (checkbox marks it done where it was left, the arrow
 	// brings it to today); the header brings all or leaves the rest. Purely

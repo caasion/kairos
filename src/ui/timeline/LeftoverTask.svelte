@@ -24,7 +24,7 @@
 		onCancel: () => void;
 		onBring: () => void;
 		onNavigate?: (assoc: Association) => void;
-		/** PROTOTYPE: a short label for where the row came from ("Mon"), shown
+		/** A short label for where the row came from ("Mon"), shown
 		 *  at the right so Inbox rows from yesterday read apart from backlog ones. */
 		sourceTag?: string;
 	}
@@ -101,7 +101,7 @@
 </div>
 
 <style>
-	/* PROTOTYPE: where an Inbox row came from, at the row's right. */
+	/* Where an Inbox row came from, at the row's right. */
 	.src-tag {
 		display: flex;
 		align-items: center;

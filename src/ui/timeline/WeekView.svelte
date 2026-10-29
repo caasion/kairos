@@ -80,7 +80,7 @@
 		links: ViewLinks;
 		// Each day's missing routines, behind a pill on its column header.
 		routineActions: RoutineActions;
-		// PROTOTYPE: yesterday's open tasks, for today's column of the Inbox strip.
+		// Yesterday's open tasks, for today's column of the Inbox strip.
 		leftoverActions: LeftoverActions;
 		// The leaf's tab header, which the header bar moves into.
 		viewHeader?: HTMLElement;
@@ -334,7 +334,7 @@
 		return map;
 	});
 
-	// PROTOTYPE: each day's Inbox badge — resurfacing backlog entries, plus
+	// Each day's Inbox badge — resurfacing backlog entries, plus
 	// yesterday's open tasks on today — grouped by association.
 	// svelte-ignore state_referenced_locally
 	const left$ = todayLeftovers(index, leftoverActions);
@@ -378,7 +378,7 @@
 			addTaskToUnscheduled(col.currentBlocks(), path, text, assoc, nextDraftLine()),
 		);
 	}
-	// PROTOTYPE: each column's Unscheduled tasks, grouped by association.
+	// Each column's Unscheduled tasks, grouped by association.
 	function unscheduledGroupsFor(date: ISODate) {
 		return groupByAssoc(unscheduledByDate[date] ?? [], (i) => i.task.owner, resolve);
 	}
@@ -715,7 +715,7 @@
 	void ensureNoteForDate;
 </script>
 
-<!-- PROTOTYPE: the lists behind each day's header badges. -->
+<!-- The lists behind each day's header badges. -->
 {#snippet listIcon()}
 	<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></svg>
 {/snippet}
@@ -740,7 +740,6 @@
 				association={task.assoc ?? task.owner}
 				inherited={task.assoc === undefined && task.owner !== undefined}
 				showAssociation={false}
-				scheduleButton
 				resolved={r}
 				onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
 				onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
@@ -914,7 +913,7 @@
 						<span class="today-indicator"></span>
 					{/if}
 				</button>
-				<!-- PROTOTYPE: the day's lists as badges on its header — Unscheduled,
+				<!-- The day's lists as badges on its header — Unscheduled,
 				     Inbox (yesterday's open tasks on today, and resurfacing entries),
 				     routines — instead of strips that push every column down. -->
 				{#if usCount > 0 || inCount > 0 || (offered && offered.count > 0)}
@@ -960,7 +959,7 @@
 
 	<!-- Shown during any task drag too, even when empty: dropping on a day's
 	     column takes a task out of its block. -->
-	<!-- PROTOTYPE: the strip only shows during a task drag now, as the drop
+	<!-- The strip only shows during a task drag now, as the drop
 	     target that unschedules; otherwise each day's header badge holds it. -->
 	{#if dragPreview}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1303,7 +1302,7 @@
 		gap: 3px;
 	}
 
-	/* PROTOTYPE: the "Left open on …" heading inside a day's Inbox list. */
+	/* The "Left open on …" heading inside a day's Inbox list. */
 	.inbox-left-head {
 		display: flex;
 		align-items: center;
