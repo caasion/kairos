@@ -367,6 +367,11 @@
 			s.highlightAcrossViews = on;
 		});
 	}
+	function setUnscheduledInCells(on: boolean) {
+		updateSettings((s) => {
+			s.gridUnscheduledInCells = on;
+		});
+	}
 	function setShowRollupProjects(on: boolean) {
 		updateSettings((s) => {
 			s.gridShowRollupProjects = on;
@@ -618,7 +623,6 @@
 		const path = day?.path ?? (await ensureNoteForDate(date));
 		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
 		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
-		if (!settings.gridUnscheduledInCells) pulse(date);
 	}
 
 	// A group's "+" (grouping on): a new task in that block, filed under the row
@@ -1448,6 +1452,10 @@
 						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
 					</label>
 					<label class="controls-field">
+						<span class="controls-label">Show unscheduled tasks in the grid</span>
+						<input type="checkbox" checked={settings.gridUnscheduledInCells} onchange={(e) => setUnscheduledInCells(e.currentTarget.checked)} />
+					</label>
+					<label class="controls-field">
 						<span class="controls-label">Show projects on rolled-up tasks</span>
 						<input type="checkbox" checked={settings.gridShowRollupProjects} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
 					</label>
@@ -1624,6 +1632,8 @@
 								draftOpen={draftInCell(row, date)}
 								onDraftSubmit={(text: string) => void addDraft(row, date, text)}
 								onDraftClose={() => (draft = null)}
+								holdLanded={!settings.gridUnscheduledInCells}
+								onLanded={() => pulse(date)}
 								onTaskGrab={onTaskGrab}
 								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, row.key, e)}
 								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}

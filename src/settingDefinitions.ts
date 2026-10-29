@@ -201,6 +201,18 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 		heading: 'Grid view',
 		items: [
 			{
+				name: 'Show unscheduled tasks in the grid',
+				desc:
+					"Show each day's unscheduled tasks in the grid's cells, on their " +
+					"project or domain's row. Off: they're listed behind the " +
+					"Unscheduled badge on the day's header.",
+				control: {
+					type: 'toggle',
+					key: 'gridUnscheduledInCells',
+					defaultValue: DEFAULT_SETTINGS.gridUnscheduledInCells,
+				},
+			},
+			{
 				name: 'Show projects on rolled-up tasks',
 				desc:
 					'On a domain row that includes rolled-up projects, show each ' +
@@ -238,18 +250,6 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					type: 'toggle',
 					key: 'followGrid',
 					defaultValue: DEFAULT_SETTINGS.followGrid,
-				},
-			},
-			{
-				name: 'Show unscheduled tasks in the grid',
-				desc:
-					"Show each day's unscheduled tasks in the grid's cells, on their " +
-					"project or domain's row. Off: they're listed behind the " +
-					"Unscheduled badge on the day's header.",
-				control: {
-					type: 'toggle',
-					key: 'gridUnscheduledInCells',
-					defaultValue: DEFAULT_SETTINGS.gridUnscheduledInCells,
 				},
 			},
 			{

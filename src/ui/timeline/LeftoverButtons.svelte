@@ -12,6 +12,8 @@
 	let { onLeave, onBringAll }: Props = $props();
 </script>
 
+<!-- One group, no gap between the two, like Obsidian's header buttons. -->
+<span class="lo-icon-group">
 <button
 	class="lo-icon-btn"
 	aria-label="Leave the rest"
@@ -32,15 +34,24 @@
 >
 	<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h14"/><path d="m15 2 3 3-3 3"/><path d="M4 12h14"/><path d="m15 9 3 3-3 3"/><path d="M4 19h14"/><path d="m15 16 3 3-3 3"/></svg>
 </button>
+</span>
 
 <style>
+	.lo-icon-group {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		gap: 0;
+		/* The icons' padding is their own gap from the text before them. */
+		margin-right: calc(-1 * var(--size-2-2));
+	}
 	/* Frameless like Obsidian's header icons, with a fill on hover. */
 	.lo-icon-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		height: auto;
-		padding: var(--size-2-1) var(--size-2-2);
+		padding: var(--size-2-1);
 		border: none;
 		border-radius: var(--clickable-icon-radius);
 		background: transparent;

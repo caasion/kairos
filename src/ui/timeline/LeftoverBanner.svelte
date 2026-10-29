@@ -25,14 +25,15 @@
 
 	let { items, fromLabel, label, resolve, onSettle, onBring, onBringAll, onLeave }: Props = $props();
 
-	const heading = $derived(`${items.length} ${label.charAt(0).toLowerCase()}${label.slice(1)}`);
+	const heading = $derived(`${label}: ${items.length}`);
 	let reviewing = $state(false);
 </script>
 
 <div class="lo-banner" role="region" aria-label={heading}>
 	<div class="lo-banner-head">
 		<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
-		<span class="lo-banner-title">{heading}</span>
+		<span class="lo-banner-title">{label}</span>
+		<span class="lo-banner-count">{items.length}</span>
 		<span class="lo-banner-spacer"></span>
 		<button class="lo-banner-btn" aria-expanded={reviewing} onclick={() => (reviewing = !reviewing)}>
 			{reviewing ? "Hide" : "Review"}
@@ -57,22 +58,23 @@
 </div>
 
 <style>
+	/* A quiet line under the tray, not a box: the Inbox pill above carries the
+	   alert color, and here only Review does. */
 	.lo-banner {
-		margin: 6px 8px 2px;
-		padding: 2px 4px;
-		border: 1px solid color-mix(in srgb, var(--color-orange) 45%, transparent);
-		background: color-mix(in srgb, var(--color-orange) 10%, var(--background-primary));
-		border-radius: var(--radius-m);
+		margin: 0 8px 2px;
+		padding: 0 2px;
 	}
 
 	.lo-banner-head {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 2px 2px;
-		color: var(--color-orange);
+		color: var(--text-muted);
 		font-size: var(--font-ui-smaller);
-		font-weight: var(--font-semibold);
+	}
+	.lo-banner-count {
+		color: var(--text-faint);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.lo-banner-head svg {
@@ -90,11 +92,21 @@
 		flex: 1;
 	}
 
+	/* Review is the step to take, so it carries the alert color. */
 	.lo-banner-btn {
 		flex-shrink: 0;
 		height: auto;
-		padding: 1px 8px;
+		padding: var(--size-2-1) var(--size-2-3);
+		border: none;
+		border-radius: var(--radius-s);
+		background: transparent;
+		box-shadow: none;
 		font-size: var(--font-ui-smaller);
-		font-weight: var(--font-normal);
+		font-weight: var(--font-semibold);
+		color: var(--color-orange);
+		cursor: pointer;
+	}
+	.lo-banner-btn:hover {
+		background: color-mix(in srgb, var(--color-orange) 12%, transparent);
 	}
 </style>
