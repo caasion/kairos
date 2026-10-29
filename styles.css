@@ -480,6 +480,7 @@ body .kairos-header-bar.is-native .day-range-label {
 	margin-right: var(--size-4-2);
 	font-size: var(--font-ui-smaller);
 	color: var(--text-faint);
+}
 
 /* ── Row label column (Grid and Timeline) ──
    Both views draw the same column: a group accent stripe on the left, then the
