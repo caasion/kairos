@@ -63,13 +63,16 @@
 	import RowLabel from "../components/RowLabel.svelte";
 	import IntensityBars from "../components/IntensityBars.svelte";
 	import { peek } from "../actions/peek";
+	import { intoViewHeader } from "../actions/viewHeader";
 	import { rowLabelInfo, type RowLabelInfo } from "../components/rowLabel";
 
 	interface Props {
 		app: App;
 		index: KairosIndex;
+		// The leaf's tab header, which the header bar moves into.
+		viewHeader?: HTMLElement;
 	}
-	let { index }: Props = $props();
+	let { index, viewHeader }: Props = $props();
 
 	// ── Feed ──
 	let feed = $state<ProjectsDomains>({
@@ -697,7 +700,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="gantt-wrap" onclick={handleClickOutside}>
 	<!-- Header: shared left navigator (mirrors Grid / Week) + interval selector. -->
-	<div class="gantt-header-bar">
+	<div class="gantt-header-bar" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
 				class="icon-btn nav-btn"

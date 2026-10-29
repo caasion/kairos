@@ -58,6 +58,7 @@
 		windowDates,
 		windowWidth,
 	} from "./weekWindow";
+	import { intoViewHeader } from "../actions/viewHeader";
 
 	interface Props {
 		app: App;
@@ -71,9 +72,11 @@
 		links: ViewLinks;
 		// Each day's missing routines, behind a pill on its column header.
 		routineActions: RoutineActions;
+		// The leaf's tab header, which the header bar moves into.
+		viewHeader?: HTMLElement;
 	}
 
-	let { app, index, settings$, updateSettings, links, routineActions }: Props = $props();
+	let { app, index, settings$, updateSettings, links, routineActions, viewHeader }: Props = $props();
 
 	// The hovered item, for the unscheduled strip this view renders itself
 	// (subscribed on mount, like the resolver).
@@ -663,7 +666,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="week-view" tabindex="-1" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown}>
-	<div class="week-header">
+	<div class="week-header" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
 				class="icon-btn nav-btn"
