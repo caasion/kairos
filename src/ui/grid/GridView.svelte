@@ -115,6 +115,7 @@
 	import Datepicker from "../components/Datepicker.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
+	import { intoViewHeader } from "../actions/viewHeader";
 
 	interface Props {
 		app: App;
@@ -132,6 +133,8 @@
 		routineActions: RoutineActions;
 		// PROTOTYPE: yesterday's open tasks, for today's Inbox badge.
 		leftoverActions: LeftoverActions;
+		// The leaf's tab header, which the header bar moves into.
+		viewHeader?: HTMLElement;
 	}
 
 	let {
@@ -144,6 +147,7 @@
 		showDay,
 		routineActions,
 		leftoverActions,
+		viewHeader,
 	}: Props = $props();
 
 	// ── Bridge to the timelines (viewLinks.ts) ──
@@ -1219,7 +1223,7 @@
 
 	// The grid's fixed template: a label column + one column per day.
 	const gridTemplate = $derived(
-		`180px repeat(${windowSize}, minmax(0, 1fr))`,
+		`var(--kairos-row-label-width) repeat(${windowSize}, minmax(0, 1fr))`,
 	);
 
 	function onKeyDown(event: KeyboardEvent) {
@@ -1372,7 +1376,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
-	<div class="grid-header">
+	<div class="grid-header" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
 				class="icon-btn nav-btn"
@@ -1911,10 +1915,17 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
 		padding: 8px 8px 12px 12px;
+		/* Square, not Obsidian's button radius: the cards sit edge to edge on
+		   their columns, and only the strip's outer top corners round (the
+		   corner cell's, and the last card's below), like the Week view. */
+		border-radius: 0;
 		cursor: pointer;
 		box-shadow: none;
 		transition: filter 150ms ease;
 		height: 100%;
+	}
+	.grid-colhead-wrap:last-child > .grid-colhead.date-card {
+		border-top-right-radius: 8px;
 	}
 	.grid-colhead.date-card:hover {
 		filter: brightness(1.15);
@@ -2012,11 +2023,11 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 8px;
-		padding: 8px 10px 8px 8px;
+		padding: 8px var(--kairos-row-label-pad-right) 8px var(--kairos-row-label-pad-left);
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
-		border-left: 3px solid var(--row-accent, var(--text-faint));
+		border-left: var(--kairos-row-label-accent-width) solid var(--row-accent, var(--text-faint));
 		min-width: 0;
 		position: sticky;
 		left: 0;
@@ -2030,7 +2041,7 @@
 	   the divider between a domain and its children is dropped — the group reads as
 	   one block. */
 	.grid-rowlabel.child {
-		padding-left: 16px;
+		padding-left: calc(var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent));
 	}
 	.grid-rowlabel.child:not(.group-end),
 	.grid-rowlabel.domain {

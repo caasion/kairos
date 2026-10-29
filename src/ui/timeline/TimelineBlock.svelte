@@ -19,7 +19,7 @@
   import { peek } from "../actions/peek";
   import { Menu, Notice } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
-  import { requestRepeat } from "../../routines/repeat";
+  import { requestRepeat, requestRepeatBlock } from "../../routines/repeat";
   import { addBlockMenuItems } from "../blockMenu";
   import { actionZone } from "../actions/actionZone";
   import { tooltip } from "../actions/tooltip";
@@ -518,14 +518,16 @@
   }
 </script>
 
-<!-- The "N more" control: a row in the task list, or a pill beside a compact
-     block's title (or on the time line of a block with no room for a row). -->
-{#snippet moreButton(pill: boolean)}
+<!-- The "N more" control: a row in the task list ("row"), a pill beside a
+     compact block's title ("pill"), or one more item on the time line of a
+     block with no room for a row ("meta"). -->
+{#snippet moreButton(variant: "row" | "pill" | "meta")}
   <button
     type="button"
     class="tl-more"
-    class:pill
-    style={pill ? undefined : `height: ${rowHeight}px;`}
+    class:pill={variant === "pill"}
+    class:meta={variant === "meta"}
+    style={variant === "row" ? `height: ${rowHeight}px;` : undefined}
     bind:this={moreEl}
     aria-label={`Show all ${rowCount} rows`}
     aria-expanded={expanded}
@@ -554,6 +556,7 @@
     onNavigate={() => task.owner && onNavigate(task.owner)}
     onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
     onNest={(rect) => onNestTask(block, task, rect)}
+    nestLabel="Move to another block"
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
     onRepeat={() => requestRepeat(task, block)}
     onGrab={(e) => {
@@ -600,10 +603,11 @@
     }}
   ></div>
 
-	<!-- Action bar: add-task + add-note + delete, top-right corner. Woken from
-	     the top-right corner zone (see actions/actionZone.ts), not on any hover.
-	     On a mouse wake it's a vertical stack: delete stays in the corner and
-	     the rest rise above it (above the block). Touch keeps the bar. -->
+	<!-- Action bar: add task, add note, association, repeat and delete, the
+	     same as a Grid block header's. Woken from the top-right corner zone
+	     (see actions/actionZone.ts), not on any hover. On a mouse wake it's a
+	     vertical stack: delete stays in the corner and the rest rise above it
+	     (above the block). Touch keeps the bar. -->
 	<div class="tl-actions kairos-action-bar">
 		<button
 			type="button"
@@ -630,6 +634,32 @@
 			}}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg>
+		</button>
+		<button
+			type="button"
+			class="tl-action-btn"
+			aria-label={block.assoc ? "Edit association" : "Add association"}
+			use:tooltip={block.assoc ? "Edit association" : "Add association"}
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={(e) => {
+				e.stopPropagation();
+				requestEditAssoc();
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+		</button>
+		<button
+			type="button"
+			class="tl-action-btn"
+			aria-label="Repeat…"
+			use:tooltip={"Repeat…"}
+			onpointerdown={(e) => e.stopPropagation()}
+			onclick={(e) => {
+				e.stopPropagation();
+				requestRepeatBlock(block);
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
 		</button>
 		<button
 			type="button"
@@ -677,7 +707,7 @@
         >{block.title}</span>
       {/if}
       {#if compactLayout && hiddenCount > 0}
-        {@render moreButton(true)}
+        {@render moreButton("pill")}
       {/if}
     </div>
 
@@ -745,7 +775,14 @@
           </span>
         {/if}
         {#if metaPill}
-          {@render moreButton(true)}
+          <svg
+            class="kairos-meta-dot"
+            width="3"
+            height="3"
+            viewBox="0 0 3 3"
+            aria-hidden="true"
+          ><circle cx="1.5" cy="1.5" r="1.5" fill="currentColor" /></svg>
+          {@render moreButton("meta")}
         {/if}
       </div>
       {#if rowCount > 0 || dragActive}
@@ -821,7 +858,7 @@
           <!-- Trailing drop zone: carries the append indicator inside a padded,
                non-clipped element so a line at the list's bottom edge isn't cut. -->
           {#if overflowing && !expanded && !metaPill}
-            {@render moreButton(false)}
+            {@render moreButton("row")}
           {/if}
           {#if dragActive}
             <div class="tl-drop-tail">
@@ -963,7 +1000,8 @@
     bottom: 2px;
   }
 
-	/* Hover action bar (add-task + add-note + delete), top-right corner. */
+	/* Hover action bar (add task, add note, association, repeat, delete),
+	   top-right corner. */
 	.tl-actions {
 		position: absolute;
 		top: 4px;
@@ -997,8 +1035,9 @@
 		background: var(--background-modifier-hover);
 	}
 
-	/* Stack layout (styles.css): delete takes the corner cell. */
-	.tl-action-danger {
+	/* Stack layout (styles.css): delete takes the corner cell. The touch bar
+	   keeps DOM order, delete last, as a task row's does. */
+	.tl-actions:global(.kairos-action-stack) .tl-action-danger {
 		order: -1;
 	}
 
@@ -1118,8 +1157,9 @@
     color: var(--text-normal);
     background: var(--background-modifier-hover);
   }
-  /* Beside a compact block's title (or on a block's time line): a small pill
-     right after the text, like the rest of the line. */
+  /* Beside a compact block's title: a small pill right after the text. Its
+     fill is translucent, so it takes the block's tint (hover, selection,
+     linked) instead of sitting on it as an opaque patch. */
   .tl-more.pill {
     flex-shrink: 0;
     width: auto;
@@ -1127,7 +1167,20 @@
     padding: 0 6px;
     border-radius: 8px;
     font-size: 10px;
-    background: var(--background-secondary-alt);
+    background: var(--background-modifier-hover);
+  }
+  .tl-more.pill:hover {
+    background: var(--background-modifier-active-hover);
+  }
+  /* On the time line: one more item after the association, styled like it
+     (same size, muted, no fill) and separated by the same dot. */
+  .tl-more.meta {
+    flex-shrink: 0;
+    width: auto;
+    height: auto;
+    padding: 1px 3px;
+    margin-left: -3px;
+    font-size: var(--kairos-meta-font-size);
   }
   .tl-more svg {
     width: 10px;
