@@ -406,8 +406,8 @@
 		if (req.date !== date) goToDate(req.date);
 		const line = req.blockLine;
 		// Two rAFs: one for the date-change render, one for layout to settle.
-		requestAnimationFrame(() =>
-			requestAnimationFrame(() => scrollToBlock(line)),
+		window.requestAnimationFrame(() =>
+			window.requestAnimationFrame(() => scrollToBlock(line)),
 		);
 	}
 
@@ -1002,7 +1002,7 @@
 	// rendered — hence the frame wait. Silently skipped if the element isn't there
 	// (the day was navigated away from mid-create).
 	function askAssocFor(block: Block) {
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			const el = scrollEl?.querySelector<HTMLElement>(
 				`[data-block-line="${block.source.line}"]`,
 			);

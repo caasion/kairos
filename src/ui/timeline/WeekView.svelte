@@ -619,7 +619,7 @@
 	// underneath always line up with the reserve above.
 	let viewEl = $state<HTMLDivElement>();
 	function measureScrollbar(el: HTMLElement) {
-		const probe = document.createElement("div");
+		const probe = createDiv();
 		probe.style.cssText =
 			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
 		el.appendChild(probe);

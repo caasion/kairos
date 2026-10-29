@@ -724,7 +724,7 @@
 	// Open the (parent-owned) association picker on a block that was just created,
 	// anchored to its element — which only exists once the create has rendered.
 	function askAssocFor(block: Block) {
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			const el = canvasEl?.querySelector<HTMLElement>(
 				`[data-block-line="${block.source.line}"]`,
 			);

@@ -298,7 +298,7 @@
 			title="Put it in a block, so it has a time"
 			onclick={(e) => {
 				e.stopPropagation();
-				const row = (e.currentTarget as HTMLElement).closest(".k-task") ?? (e.currentTarget as HTMLElement);
+				const row = (e.currentTarget as HTMLElement).closest(".k-task") ?? (e.currentTarget);
 				openSchedule(t, groupRoutines, row.getBoundingClientRect());
 			}}
 		>

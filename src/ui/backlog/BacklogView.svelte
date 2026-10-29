@@ -100,7 +100,7 @@
 		const assoc =
 			group.kind === "none"
 				? undefined
-				: ({ kind: group.kind, id: group.name } as Association);
+				: ({ kind: group.kind, id: group.name });
 		const draft: BacklogEntry = {
 			// A unique negative line per freshly-created entry, from the plugin-wide
 			// allocator: a local counter restarts at its seed on every mount, and a

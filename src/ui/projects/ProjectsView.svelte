@@ -78,7 +78,7 @@
 	}
 
 	function passesFilter(e: Project | Domain): boolean {
-		return filter.has(statusOf(e) as Filter);
+		return filter.has(statusOf(e));
 	}
 
 	// Active entities always sort above non-active ones (inactive/archived sink to
@@ -139,7 +139,7 @@
 			return;
 		}
 		if (isDomain) void renameDomain(index, e as Domain, next);
-		else void renameProject(index, e as Project, next);
+		else void renameProject(index, e, next);
 	}
 
 	// ── Status ──
@@ -159,7 +159,7 @@
 		const next: LifecycleState =
 			statusOf(e) === "active" ? (isDomain ? "inactive" : lastNonActive(e)) : "active";
 		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
-		else setProjectStatus(index, e as Project, todayISO(), next);
+		else setProjectStatus(index, e, todayISO(), next);
 		askWhy(e, isDomain, next);
 	}
 
@@ -202,7 +202,7 @@
 		if (!live || !rec) return;
 		const next = { date, status: rec.status, note: rec.note ?? "", why };
 		if (isDomain) editDomainStatusRecord(index, live as Domain, date, next);
-		else editProjectStatusRecord(index, live as Project, date, next);
+		else editProjectStatusRecord(index, live, date, next);
 	}
 
 	// ── Status history (native modal) ──
@@ -414,7 +414,7 @@
 			allowEmpty: true,
 			onSubmit: (desc) => {
 				if (isDomain) setDomainDescription(index, e as Domain, desc);
-				else setProjectDescription(index, e as Project, desc);
+				else setProjectDescription(index, e, desc);
 			},
 		}).open();
 	}

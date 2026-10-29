@@ -746,7 +746,7 @@
 		// Resolve the target row's association from the drop's row key.
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
-		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
+		if (targetRow && isCellInactive(targetRow, drop.date)) return;
 		// A different row re-files the task to that row's association (null =
 		// unassigned, clear it). The row it already renders on keeps its own
 		// association — on a rolled-up domain row that's the task's project, not
@@ -761,8 +761,8 @@
 		// the source task untouched. Same-day and cross-day collapse to one path —
 		// the source day is never modified, so we only write the target day.
 		if (drag.duplicate) {
-			const targetDay = dayOf(drop.date as ISODate);
-			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetDay = dayOf(drop.date);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 			const targetBlocks = targetDay?.blocks ?? [];
 			const next = copyTaskIntoDay(
 				targetBlocks,
@@ -771,7 +771,7 @@
 				nextDraftLine(),
 				newAssoc,
 			);
-			commit(drop.date as ISODate, targetPath, next);
+			commit(drop.date, targetPath, next);
 			return;
 		}
 
@@ -819,8 +819,8 @@
 
 		// Cross-day move: remove from source, append to target day's Unscheduled
 		// with the target row's association applied.
-		const targetDay = dayOf(drop.date as ISODate);
-		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+		const targetDay = dayOf(drop.date);
+		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 		const targetBlocks = targetDay?.blocks ?? [];
 		const { from, to } = moveTaskAcrossDays(
 			sourceDay.blocks,
@@ -835,7 +835,7 @@
 			drag.task.date,
 			sourceDay.path,
 			from,
-			drop.date as ISODate,
+			drop.date,
 			targetPath,
 			to,
 		);
@@ -942,7 +942,7 @@
 		stopDragScroll();
 		if (!drop) return;
 
-		const sourceDate = drag.sourceDate as ISODate;
+		const sourceDate = drag.sourceDate;
 		const sourceDay = dayOf(sourceDate);
 		if (!sourceDay || sourceDay.path === null) return;
 
@@ -951,7 +951,7 @@
 		// does the row it was lifted from, which may only be a label row).
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
-		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
+		if (targetRow && isCellInactive(targetRow, drop.date)) return;
 		const target = snapshot
 			? blockDropAssociation(targetRow, drag.sourceRowKey, drag.block.assoc, snapshot)
 			: undefined;
@@ -962,8 +962,8 @@
 		// onto the target day, leaving the source block in place. Same-day and
 		// cross-day both just append a copy to the target — never touch the source.
 		if (drag.duplicate) {
-			const targetDay = dayOf(drop.date as ISODate);
-			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetDay = dayOf(drop.date);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 			const targetBlocks = targetDay?.blocks ?? [];
 			const next = copyBlockIntoDay(
 				targetBlocks,
@@ -972,7 +972,7 @@
 				undefined, // keep existing time
 				newAssoc,
 			);
-			commit(drop.date as ISODate, targetPath, next);
+			commit(drop.date, targetPath, next);
 			return;
 		}
 
@@ -985,8 +985,8 @@
 		}
 
 		// Cross-day: move the whole block (time, title, children) to the target day.
-		const targetDay = dayOf(drop.date as ISODate);
-		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+		const targetDay = dayOf(drop.date);
+		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 		const targetBlocks = targetDay?.blocks ?? [];
 		const { from, to } = moveBlockAcrossDays(
 			sourceDay.blocks,
@@ -1000,7 +1000,7 @@
 			sourceDate,
 			sourceDay.path,
 			from,
-			drop.date as ISODate,
+			drop.date,
 			targetPath,
 			to,
 		);
@@ -1187,7 +1187,7 @@
 	// the root — to stay column-aligned with the body below.
 	let viewEl = $state<HTMLDivElement>();
 	function measureScrollbar(el: HTMLElement) {
-		const probe = document.createElement("div");
+		const probe = createDiv();
 		probe.style.cssText =
 			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
 		el.appendChild(probe);

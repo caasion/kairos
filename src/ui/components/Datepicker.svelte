@@ -480,7 +480,7 @@
     }
 
     // Use finalTranslationLocale for aria-label
-    setTimeout(() => {
+    window.setTimeout(() => {
       const focusedButton = calendarRef?.querySelector(
         `button[aria-label="${focusedDate!.toLocaleDateString(finalTranslationLocale, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}"]`
       ) as HTMLButtonElement | null;

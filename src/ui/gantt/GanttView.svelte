@@ -518,7 +518,7 @@
 			intensity: value,
 		};
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
-		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+		else editProjectStatusRecord(index, live.entity, span.start, next);
 	}
 	// A pip click sets that level; clicking the level already set clears it.
 	function clickPip(e: MouseEvent, row: GanttRow, span: Span, level: number) {
@@ -550,7 +550,7 @@
 		if (!live) return;
 		const next = { date: span.start, status: "active" as LifecycleState, note: editingText.trim() };
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
-		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+		else editProjectStatusRecord(index, live.entity, span.start, next);
 	}
 	function cancelEditDesc() {
 		editingKey = null;
@@ -566,7 +566,7 @@
 		if (selectedKey === spanKey(row.key, span.start)) selectedKey = null;
 		const remove = (date: ISODate) => {
 			if (live.isDomain) removeDomainStatusRecord(index, live.entity as Domain, date);
-			else removeProjectStatusRecord(index, live.entity as Project, date);
+			else removeProjectStatusRecord(index, live.entity, date);
 		};
 		// Remove the closer first: `remove` re-reads the live entity each call, and
 		// dropping the opener first would renormalize the history and could shift what
@@ -592,7 +592,7 @@
 		const closer = openerIdx >= 0 ? hist[openerIdx + 1] : undefined;
 		if (!closer) return;
 		if (live.isDomain) removeDomainStatusRecord(index, live.entity as Domain, closer.date);
-		else removeProjectStatusRecord(index, live.entity as Project, closer.date);
+		else removeProjectStatusRecord(index, live.entity, closer.date);
 	}
 
 	// ── Right-click context menu (precise control) ──
@@ -679,7 +679,7 @@
 			// Move the opening `active` record; keep its status/note.
 			const next = { date: pickISO, status: "active" as LifecycleState, note: d.span.note ?? "" };
 			if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, d.span.start, next);
-			else editProjectStatusRecord(index, live.entity as Project, d.span.start, next);
+			else editProjectStatusRecord(index, live.entity, d.span.start, next);
 			return;
 		}
 		// End date: move the existing closer, or insert one (open → definite).
@@ -687,10 +687,10 @@
 		if (closer) {
 			const next = { date: pickISO, status: "inactive" as LifecycleState };
 			if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, closer, next);
-			else editProjectStatusRecord(index, live.entity as Project, closer, next);
+			else editProjectStatusRecord(index, live.entity, closer, next);
 		} else {
 			if (live.isDomain) setDomainStatus(index, live.entity as Domain, pickISO, "inactive");
-			else setProjectStatus(index, live.entity as Project, pickISO, "inactive");
+			else setProjectStatus(index, live.entity, pickISO, "inactive");
 		}
 	}
 

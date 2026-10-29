@@ -99,7 +99,7 @@
 		addWhy = "";
 		addIntensity = "";
 		if (isDomain) setDomainStatus(index, e as Domain, date, status, note, why, intensity);
-		else setProjectStatus(index, e as Project, date, status, note, why, intensity);
+		else setProjectStatus(index, e, date, status, note, why, intensity);
 	}
 
 	// ── Inline edit of a prior record ──
@@ -137,14 +137,14 @@
 		const original = editingDate;
 		editingDate = null;
 		if (isDomain) editDomainStatusRecord(index, e as Domain, original, next);
-		else editProjectStatusRecord(index, e as Project, original, next);
+		else editProjectStatusRecord(index, e, original, next);
 	}
 	function deleteRecord(date: ISODate) {
 		const e = row;
 		if (!e) return;
 		if (editingDate === date) editingDate = null;
 		if (isDomain) removeDomainStatusRecord(index, e as Domain, date);
-		else removeProjectStatusRecord(index, e as Project, date);
+		else removeProjectStatusRecord(index, e, date);
 	}
 
 	function formatDate(date: ISODate): string {
