@@ -3,7 +3,8 @@
 	// Kairos's own look: a bar in the domain color down the group's left edge,
 	// like a block on the timeline, the name in serif, and on the right the
 	// project (folder) or domain icon beside the count. Ctrl/Cmd+click on the
-	// name opens the project or domain.
+	// name opens the project or domain. The Backlog's groups use it too, with
+	// a "+" after the count.
 
 	import type { Snippet } from "svelte";
 	import type { Association } from "../../types";
@@ -15,12 +16,26 @@
 		resolved?: ResolvedAssociation;
 		count: number;
 		onNavigate?: (assoc: Association) => void;
+		/** The "No project" group's name, where a list calls it something else. */
+		noneLabel?: string;
+		/** Shows a "+" after the count, to add a row to this group. */
+		onAdd?: (anchor: DOMRect) => void;
+		addLabel?: string;
 		children: Snippet;
 	}
 
-	let { assoc, resolved, count, onNavigate, children }: Props = $props();
+	let {
+		assoc,
+		resolved,
+		count,
+		onNavigate,
+		noneLabel = "No project",
+		onAdd,
+		addLabel = "Add",
+		children,
+	}: Props = $props();
 
-	const label = $derived(assoc ? (resolved?.displayName || assoc.id) : "No project");
+	const label = $derived(assoc ? (resolved?.displayName || assoc.id) : noneLabel);
 	const canNavigate = $derived(!!(assoc && resolved?.resolved && onNavigate));
 
 	function click(event: MouseEvent) {
@@ -49,6 +64,18 @@
 			<svg class="ag-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Project"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
 		{/if}
 		<span class="ag-count">{count}</span>
+		{#if onAdd}
+			<button
+				class="ag-add"
+				aria-label={addLabel}
+				onclick={(e) => {
+					e.stopPropagation();
+					onAdd(e.currentTarget.getBoundingClientRect());
+				}}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+			</button>
+		{/if}
 	</div>
 	{@render children()}
 </div>
@@ -106,6 +133,28 @@
 		font-size: var(--font-ui-smaller);
 		color: var(--text-faint);
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* Frameless like Obsidian's own icon buttons. */
+	.ag-add {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		height: auto;
+		margin: -2px 0;
+		padding: var(--size-2-1);
+		border: none;
+		border-radius: var(--clickable-icon-radius);
+		background: transparent;
+		box-shadow: none;
+		color: var(--icon-color);
+		cursor: pointer;
+	}
+
+	.ag-add:hover {
+		background: var(--background-modifier-hover);
+		color: var(--icon-color-hover);
 	}
 
 	.ag-head.is-linked {

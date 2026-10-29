@@ -32,6 +32,7 @@
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
 	import { nextDraftLine } from "../../draftLine";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
+	import AssocGroup from "../timeline/AssocGroup.svelte";
 	import { createAssociation } from "../association/createAssociation";
 	import Datepicker from "../components/Datepicker.svelte";
 	import { autogrow, singleLine } from "../actions/autogrow";
@@ -331,45 +332,18 @@
 
 	<div class="backlog-scroll">
 		{#each groups as group (group.key)}
-			<section class="backlog-group">
-				<header class="group-header">
-					{#if group.kind !== "none"}
-						<span
-							class="group-accent"
-							style={`background-color: ${group.color || "var(--text-faint)"};`}
-						></span>
-						<!-- Icon distinguishes a domain from a project, matching the
-						     association-tag icons used in the grid & timeline views. -->
-						<span class="group-kind-icon" title={group.kind === "domain" ? "Domain" : "Project"}>
-							{#if group.kind === "domain"}
-								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-							{:else}
-								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-							{/if}
-						</span>
-					{/if}
-					<span
-						class="group-name"
-						class:domain={group.kind === "domain"}
-						class:unassociated={group.kind === "none"}
-						>{group.name}</span
-					>
-					<span class="group-count">{group.entries.length}</span>
-					<button
-						class="add-btn"
-						title="Add a backlog item here"
-						onclick={(e) => {
-							e.stopPropagation();
-							onCreate(
-								group,
-								e.currentTarget.getBoundingClientRect(),
-							);
-						}}
-						aria-label="Add item"
-					>
-						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-					</button>
-				</header>
+			{@const assoc = group.kind === "none"
+				? undefined
+				: ({ kind: group.kind, id: group.name } as Association)}
+			<AssocGroup
+				{assoc}
+				resolved={assoc ? resolve(assoc) : undefined}
+				count={group.entries.length}
+				{onNavigate}
+				noneLabel="Unassociated"
+				onAdd={(anchor) => onCreate(group, anchor)}
+				addLabel="Add a backlog item here"
+			>
 
 				{#if group.entries.length === 0}
 					<div class="group-empty">Nothing here yet.</div>
@@ -511,7 +485,7 @@
 						{/each}
 					</ul>
 				{/if}
-			</section>
+			</AssocGroup>
 		{/each}
 	</div>
 </div>
@@ -599,73 +573,21 @@
 	}
 
 	/* ── Group ── */
-	.backlog-group {
-		margin-bottom: 14px;
+	/* Groups are AssocGroup's, like the Day, Week and Grid lists: a bar in the
+	   domain color down the group, the name in serif, the count and "+" on the
+	   right. Here the heading stays in view while its entries scroll. */
+	.backlog-scroll :global(.ag) {
+		margin-top: 14px;
 	}
-	.group-header {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		padding: 6px 4px;
+	.backlog-scroll :global(.ag:first-child) {
+		margin-top: 4px;
+	}
+	.backlog-scroll :global(.ag-head) {
 		position: sticky;
 		top: 0;
-		background: var(--background-primary);
 		z-index: 1;
-	}
-	.group-accent {
-		width: 3px;
-		height: 15px;
-		border-radius: 2px;
-		flex-shrink: 0;
-	}
-	.group-kind-icon {
-		display: flex;
-		align-items: center;
-		color: var(--text-muted);
-		flex-shrink: 0;
-	}
-	/* Named like the Grid and Timeline row labels: serif, as written, with
-	   domains a size up from projects. */
-	.group-name {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-family: Georgia, "Times New Roman", serif;
-		font-size: 13px;
-		font-weight: 400;
-		color: var(--text-normal);
-	}
-	.group-name.domain {
-		font-size: 15px;
-	}
-	.group-name.unassociated {
-		color: var(--text-faint);
-		font-style: italic;
-	}
-	.group-count {
-		font-size: 11px;
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
-	}
-	.add-btn {
-		margin-left: auto;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: auto;
-		padding: var(--size-2-2) var(--size-2-3);
-		border: none;
-		border-radius: var(--clickable-icon-radius);
-		background: transparent;
-		box-shadow: none;
-		color: var(--icon-color);
-		cursor: pointer;
-	}
-	/* Frameless like Obsidian's own icon buttons. */
-	.add-btn:hover {
-		background: var(--background-modifier-hover);
-		color: var(--icon-color-hover);
+		padding-top: 2px;
+		background: var(--background-primary);
 	}
 	.group-empty {
 		font-size: 12px;
