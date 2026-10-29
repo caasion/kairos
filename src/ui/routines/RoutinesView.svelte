@@ -321,7 +321,7 @@
 			onNavigate={() => assoc && navigateToAssociation(app, resolve(assoc))}
 			onEditAssoc={(rect) => openAssoc(t, rect)}
 			onNest={(rect) => openSchedule(t, groupRoutines, rect)}
-			nestLabel={t.home === undefined ? "Schedule in a block" : "Move to another block"}
+			nestLabel={t.home === undefined ? "Nest under block" : "Move to another block"}
 			meta={t.home === undefined ? scheduleLink : undefined}
 			onRepeat={() => changeRule(t)}
 			repeatLabel="Change when it repeats"

@@ -3,6 +3,7 @@ import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import GridView from "./ui/grid/GridView.svelte";
 import type Kairos from "./main";
+import { findViewHeader } from "./ui/actions/viewHeader";
 import type { KairosSettings } from "./settings";
 
 export const KAIROS_GRID_VIEW_TYPE = "kairos-grid-view";
@@ -41,6 +42,7 @@ export class KairosGridView extends ItemView {
 			props: {
 				app: this.app,
 				index: this.plugin.indexAdapter.index,
+				viewHeader: findViewHeader(this.containerEl),
 				settings$: this.plugin.settings$,
 				updateSettings: (mutate: (s: KairosSettings) => void) =>
 					void this.plugin.updateSettings(mutate),

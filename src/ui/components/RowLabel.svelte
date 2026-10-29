@@ -102,7 +102,7 @@
 			<!-- Projects shown on this domain's row (#11): they have no row of
 			     their own, so the label keeps them visible. Truncates; the hover
 			     card lists them in full. -->
-			<span class="row-label-note row-label-rollup">+ {rolledUpText}</span>
+			<span class="row-label-note row-label-rollup" title={rolledUpText}>+ {rolledUpText}</span>
 		{/if}
 	</div>
 	{#if info.isDomain}
@@ -220,6 +220,10 @@
 		flex-shrink: 0;
 		/* currentColor is the row's accent, set inline; faint without one. */
 		color: var(--text-faint);
+		/* About the height of the name beside it. */
+		--intensity-bar-width: 12px;
+		--intensity-bar-height: 3px;
+		--intensity-bar-row: 5px;
 	}
 
 	.row-label-name {
@@ -227,6 +231,7 @@
 		font-family: Georgia, "Times New Roman", serif;
 		font-size: 13px;
 		font-weight: 400;
+		line-height: 1.3;
 		color: var(--text-normal);
 		text-align: left;
 		white-space: nowrap;
@@ -238,14 +243,19 @@
 		font-size: 15px;
 	}
 
+	/* Wraps to a second line before it's cut; the full text is on hover. */
 	.row-label-note {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
 		max-width: 100%;
 		font-size: 10px;
+		line-height: 1.3;
 		color: var(--text-muted);
 		text-align: left;
-		white-space: nowrap;
 		overflow: hidden;
-		text-overflow: ellipsis;
+		overflow-wrap: anywhere;
 	}
 
 	.row-label-rollup {
