@@ -27,12 +27,17 @@
 // - Hidden bars are `pointer-events: none`, so a click on the end of the row's
 //   text reaches the text, not an invisible button. They stay focusable, and
 //   `:focus-within` shows the bar for keyboard users.
+// - The dog-ear: pointing at a row that has a bar shows a small fold in the
+//   accent colour where the zone is (the top-right corner, or the right edge's
+//   middle for "right"), growing as the pointer nears it, so a new user can
+//   see where the actions are. It is the row's last child, `kairos-action-ear`
+//   (ACTION_EAR_CLASS), and hides while the bar is awake.
 // - Mouse only. Touch has no pointer position to track; there the styles keep
 //   showing the bar on the row's (sticky) `:hover` after a tap
-//   (`@media (hover: none)`).
+//   (`@media (hover: none)`), and never show the dog-ear.
 
 import { ActionStack } from "./actionStack";
-import { inActionZone, type ActionZoneAnchor } from "./actionZoneGeometry";
+import { cornerNearness, inActionZone, type ActionZoneAnchor } from "./actionZoneGeometry";
 
 /** Class on the row while its action bar is awake (mouse in the zone). */
 export const ACTIONS_AWAKE_CLASS = "kairos-actions-awake";
@@ -44,6 +49,15 @@ export const ACTION_BAR_CLASS = "kairos-action-bar";
  * reach it.
  */
 export const ACTION_BAR_AWAKE_CLASS = "kairos-action-bar-awake";
+
+/** Class of the dog-ear hint the action adds to the row. */
+export const ACTION_EAR_CLASS = "kairos-action-ear";
+/** On the dog-ear while the pointer is on the row and the bar is asleep. */
+const EAR_SHOWN_CLASS = "is-shown";
+/** On the dog-ear of a "right"-anchored row: a notch on the right edge. */
+const EAR_RIGHT_CLASS = "kairos-action-ear-right";
+/** How close the pointer is to the corner (0–1), for the dog-ear's size. */
+const EAR_NEAR_VAR = "--kairos-action-ear-near";
 
 /** Marks a row that has this action, so an outer row can tell it's nested. */
 const ZONE_ATTR = "data-kairos-action-zone";
@@ -82,6 +96,20 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 	const win: Window = host.ownerDocument.defaultView ?? activeWindow;
 
 	const isStack = () => opts.layout === "stack";
+
+	const ear = host.ownerDocument.createElement("span");
+	ear.className = ACTION_EAR_CLASS;
+	ear.setAttribute("aria-hidden", "true");
+	host.appendChild(ear);
+	const syncEarShape = () => ear.classList.toggle(EAR_RIGHT_CLASS, opts.anchor === "right");
+	syncEarShape();
+
+	function showEar(event: PointerEvent) {
+		const near = cornerNearness(event.clientX, event.clientY, host.getBoundingClientRect(), opts.anchor);
+		ear.style.setProperty(EAR_NEAR_VAR, near.toFixed(3));
+		ear.classList.add(EAR_SHOWN_CLASS);
+	}
+	const hideEar = () => ear.classList.remove(EAR_SHOWN_CLASS);
 
 	function findBar(): HTMLElement | null {
 		// A portaled stack isn't the row's child any more.
@@ -146,8 +174,12 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		// down its right edge across its tasks' corners.
 		if (nestedZoneAt(event.target)) {
 			setAwake(false);
+			hideEar();
 			return;
 		}
+		// No bar (it renders conditionally), so nothing for the ear to point at.
+		if (bar) showEar(event);
+		else hideEar();
 		const barWidth = !bar ? 0 : isStack() ? Math.min(bar.offsetWidth, bar.offsetHeight) : bar.offsetWidth;
 		setAwake(
 			inActionZone(
@@ -162,6 +194,7 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 	}
 
 	function onLeave(event: PointerEvent) {
+		hideEar();
 		if (!isStack()) {
 			setAwake(false);
 			return;
@@ -246,6 +279,7 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		update(next: ActionZoneOptions = {}) {
 			const wasStack = isStack();
 			opts = next;
+			syncEarShape();
 			if (wasStack && !isStack()) {
 				stack?.destroy();
 				stack = null;
@@ -266,6 +300,7 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 			}
 			host.classList.remove(ACTIONS_AWAKE_CLASS);
 			host.removeAttribute(ZONE_ATTR);
+			ear.remove();
 			stack?.bar.classList.remove(ACTION_BAR_AWAKE_CLASS);
 			stack?.destroy();
 			stack = null;

@@ -2,6 +2,8 @@
 
 How to do things in Kairos, grouped by what you're trying to do. If you haven't used Kairos before, start with [Getting started](getting-started.md).
 
+Tasks and blocks keep their actions in their top-right corner. Point at a task or block, and a small colored fold appears in that corner, growing as you get closer. Move to the fold to see the actions. You can also right-click any task or block.
+
 ## Plan a day (Day and Week views)
 
 The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in its header (**Days before today**, **Days after today**).
