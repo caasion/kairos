@@ -49,6 +49,7 @@ export class KairosGridView extends ItemView {
 				reveal: (date: string, blockLine: number) =>
 					void this.plugin.revealInDayView(date, blockLine),
 				routineActions: this.plugin.routinesFeed.actions(),
+				leftoverActions: this.plugin.routinesFeed.leftoverActions(),
 				links: this.plugin.links,
 				showDay: (date: string) => void this.plugin.showInDayView(date),
 			},

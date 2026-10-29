@@ -425,6 +425,7 @@
 
 {#if schedule}
 	<BlockPicker
+		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={scheduleChoices.options}
 		anchor={schedule.anchor}
 		placeholder="Schedule in a block…"
