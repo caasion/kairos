@@ -24,6 +24,7 @@
 		notesWithAdded,
 		notesWithText,
 		setTaskStatus,
+		addTaskToUnscheduled,
 	} from "../../writer";
 	import { leftovers, type Leftover } from "../../carry";
 	import LeftoverBanner from "./LeftoverBanner.svelte";
@@ -625,6 +626,16 @@
 		};
 		real.tasks = [...real.tasks, task];
 		void writeToDisk();
+	}
+
+	// A popup group's "+": a typed task in Unscheduled, filed under the group.
+	async function addUnscheduled(text: string, assoc: Association | undefined) {
+		const forDate = date;
+		const path = notePath ?? (await ensureNoteForDate(forDate));
+		if (date !== forDate) return;
+		notePath = path;
+		blocks = addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine());
+		writeToDisk();
 	}
 
 	function handleAddNote(block: Block, text: string) {
@@ -1406,6 +1417,8 @@
 				resolved={group.resolved}
 				count={group.items.length}
 				{onNavigate}
+				onAddText={(text: string) => addUnscheduled(text, group.assoc)}
+				addLabel="Add a task here"
 			>
 			{#each group.items as { block, task } (task.source.line)}
 				{@const r = task.owner ? resolve(task.owner) : undefined}
