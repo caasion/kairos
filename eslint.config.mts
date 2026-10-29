@@ -103,7 +103,10 @@ export default defineConfig(
 			'obsidianmd/no-static-styles-assignment': 'warn',
 			'svelte/require-each-key': 'warn',
 			'svelte/no-unused-svelte-ignore': 'warn',
-			'svelte/prefer-svelte-reactivity': 'warn',
+			// Off: the flagged Map/Set are local scratch values built inside
+			// derived computations, never mutated reactively, so SvelteMap/SvelteSet
+			// would only add overhead.
+			'svelte/prefer-svelte-reactivity': 'off',
 			'svelte/prefer-writable-derived': 'warn',
 			'svelte/no-dom-manipulating': 'warn',
 			'svelte/no-unused-props': 'warn',
