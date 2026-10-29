@@ -15,7 +15,7 @@
 	//
 	// A block's header carries the block's own actions too, as on the timeline:
 	// its context menu (shared via blockMenu.ts), an action stack in its corner
-	// (add task, association, delete), a click on the title to rename it, and a long-press to
+	// (delete, add task, association, repeat), a click on the title to rename it, and a long-press to
 	// drag it to another row or day.
 
 	import { Menu } from "obsidian";
@@ -25,7 +25,7 @@
 	import { formatClock } from "../../parser";
 	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
-	import { requestRepeat } from "../../routines/repeat";
+	import { requestRepeat, requestRepeatBlock } from "../../routines/repeat";
 	import { addBlockMenuItems } from "../blockMenu";
 	import { actionZone } from "../actions/actionZone";
 	import { grabOnHold } from "../actions/grabOnHold";
@@ -283,7 +283,7 @@
 				onSetText={textOf}
 				onDelete={deleteOf}
 				onNest={(rect) => onNest(task, rect)}
-				nestLabel="Change parent block"
+				nestLabel={isUnscheduledBlock(task.block) ? "Nest under block" : "Move to another block"}
 				onMoveToBacklog={() => onMoveToBacklog(task)}
 				onRepeat={() => requestRepeat(task, task.block)}
 				trailing={chipFor?.(task)}
@@ -340,8 +340,9 @@
 					use:actionZone={{ layout: "stack" }}
 					use:grabOnHold={onBlockGrab ? (e) => onBlockGrab(block, e) : undefined}
 				>
-					<!-- Action stack, woken from the header's top-right corner: the
-					     block's "+" in the corner, then delete and association. A press
+					<!-- Action stack, woken from the header's top-right corner, the
+					     same as a timeline block's: delete in the corner, then add
+					     task, association and repeat. A press
 					     here never arms the header's drag: grabOnHold skips presses
 					     on the bar and the rename input (a stopPropagation here
 					     can't, as Svelte delegates pointerdown to the root). -->
@@ -351,12 +352,12 @@
 					>
 						{#if canCreate && onCreateInBlock}
 							<button
-								class="grid-cell-block-action grid-cell-block-action-add"
-								aria-label={`Add task to ${block.title}`}
-								use:tooltip={`Add task to ${block.title}`}
+								class="grid-cell-block-action"
+								aria-label="Add task"
+								use:tooltip={"Add task"}
 								onclick={() => onCreateInBlock(block)}
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
 							</button>
 						{/if}
 						<button
@@ -367,6 +368,16 @@
 						>
 							<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
 						</button>
+						{#if block.time}
+							<button
+								class="grid-cell-block-action"
+								aria-label="Repeat…"
+								use:tooltip={"Repeat…"}
+								onclick={() => requestRepeatBlock(block)}
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+							</button>
+						{/if}
 						<button
 							class="grid-cell-block-action grid-cell-block-action-danger"
 							aria-label="Delete block"
@@ -378,7 +389,7 @@
 					</div>
 					{#if renaming === group.key}
 						<div class="grid-cell-block-edit">
-							{#if block.time}<span>{formatClock(block.time.start)}</span>{/if}
+							{#if block.time}<span class="grid-cell-block-time">{formatClock(block.time.start)}</span>{/if}
 							<input
 								class="grid-cell-block-input kairos-inline-input"
 								type="text"
@@ -409,8 +420,8 @@
 				     block's own "+" is in its header's action stack). -->
 				<button
 					class="grid-cell-group-add"
-					title={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
-					aria-label={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
+					aria-label="Add task to Unscheduled"
+					use:tooltip={"Add task to Unscheduled"}
 					onclick={() => onCreateInBlock(group.block)}
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -439,8 +450,8 @@
 		<button
 			class="grid-cell-add"
 			class:floating={blockGroups.length > 0}
-			title="Add task to Unscheduled"
 			aria-label="Add task to Unscheduled"
+			use:tooltip={"Add task to Unscheduled"}
 			onclick={onCreate}
 		>
 			<span class="grid-cell-add-label">Unscheduled</span>
@@ -516,9 +527,9 @@
 	/* A block header starts a group; a little air above every one but the first.
 	   Tabular digits keep the times lined up down a column. */
 	.grid-cell-block-header {
-		/* Start the header where task text starts (the row's 4px padding plus the
-		   checkbox and its gap), so its time lines up with the task text under it. */
-		padding-left: calc(4px + var(--kairos-meta-indent));
+		/* Flush left: the header starts where a task row starts (its 4px
+		   padding, the checkbox's left edge), not indented to the task text. */
+		padding-left: 4px;
 		/* Room at the right end for the group's "+", so it never covers the title. */
 		padding-right: 24px;
 		/* The same type as the task text. */
@@ -549,7 +560,13 @@
 		overflow-wrap: anywhere;
 		touch-action: none;
 	}
+	/* The start time, smaller and lighter than the title so the title leads.
+	   The rename state wears it too, so the header doesn't jump. */
 	.grid-cell-block-time {
+		font-size: var(--font-ui-smaller);
+		color: var(--text-faint);
+	}
+	.grid-cell-block-label .grid-cell-block-time {
 		margin-right: 0.3em;
 	}
 	/* A click on the title renames the block, as on a task or the timeline. */
@@ -595,11 +612,8 @@
 		background: var(--background-primary);
 		z-index: 2;
 	}
-	/* Stack layout: the "+" takes the corner, then delete; association rises
-	   above them. */
-	.grid-cell-block-actions:global(.kairos-action-stack) .grid-cell-block-action-add {
-		order: -2;
-	}
+	/* Stack layout: delete takes the corner, as on every action stack; the rest
+	   rise above it in DOM order. */
 	.grid-cell-block-actions:global(.kairos-action-stack) .grid-cell-block-action-danger {
 		order: -1;
 	}
@@ -686,7 +700,7 @@
 		height: auto;
 		min-height: 18px;
 		/* Lined up with a real group header (see .grid-cell-block-header). */
-		padding: 0 4px 0 calc(4px + var(--kairos-meta-indent));
+		padding: 0 4px;
 		border: none;
 		border-radius: var(--radius-s);
 		color: var(--text-muted);

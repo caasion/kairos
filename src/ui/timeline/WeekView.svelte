@@ -35,6 +35,7 @@
 	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
 	import { commitNumber } from "./numberField";
+	import { tooltip } from "../actions/tooltip";
 	import { requestRepeat } from "../../routines/repeat";
 	import type { RoutineActions } from "../../routines/routinesFeed";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
@@ -811,7 +812,21 @@
 						class="week-us-head-cell"
 						class:drop-target={inboxDropDate() === date}
 						data-unscheduled-date={date}
-					></div>
+					>
+						<!-- Each day's "+", as on the Grid's Unscheduled header.
+						     Unscheduled has no other actions. -->
+						<button
+							class="week-us-add"
+							aria-label="Add task to Unscheduled"
+							use:tooltip={"Add task to Unscheduled"}
+							onclick={(e) => {
+								e.stopPropagation();
+								void columns[date]?.addUnscheduledTask();
+							}}
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+						</button>
+					</div>
 				{/each}
 			</div>
 			{#if unscheduledOpen}
@@ -1140,8 +1155,6 @@
 		display: flex;
 		flex-shrink: 0;
 		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
-		background: var(--background-secondary);
-		background-clip: content-box;
 	}
 
 	.week-gutter-spacer {
@@ -1154,6 +1167,10 @@
 		   flex edges. */
 		border-right: 1px solid var(--background-modifier-border);
 		border-bottom: 1px solid var(--background-modifier-border);
+		/* The strip's outer top corners round like the Grid's (its corner cell
+		   and last card); everything between is square. */
+		border-radius: 8px 0 0 0;
+		background: var(--background-secondary);
 	}
 
 	/* Holos-style date card: an uppercase day-of-week label over a large serif
@@ -1184,8 +1201,9 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 1px;
-		background: transparent;
+		background: var(--background-secondary);
 		border: none;
+		border-radius: 0;
 		/* The header's bottom rule; carried on each column cell so it spans exactly the
 		   body's column extents (no overhang past the timeline). */
 		border-bottom: 1px solid var(--background-modifier-border);
@@ -1196,6 +1214,9 @@
 		height: 100%;
 	}
 
+	.col-head-wrap:last-child > .col-head.date-card {
+		border-top-right-radius: 8px;
+	}
 	.col-head.date-card:hover {
 		filter: brightness(1.15);
 	}
@@ -1229,7 +1250,7 @@
 	}
 
 	.col-head.today {
-		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
+		background: color-mix(in srgb, var(--interactive-accent) 5%, var(--background-secondary));
 	}
 	/* ── Body ── */
 	.week-scroll {
@@ -1355,6 +1376,8 @@
 	}
 
 	.week-us-head-cell {
+		position: relative;
+		align-self: stretch;
 		flex: 1;
 		min-width: 0;
 		border-left: 1px solid var(--background-modifier-border);
@@ -1362,6 +1385,44 @@
 
 	.week-us-head-cell:first-of-type {
 		border-left: none;
+	}
+
+	/* A day's Unscheduled "+": the Grid's Unscheduled "+" (GridCell.svelte),
+	   shown while pointing at that day's cell. */
+	.week-us-add {
+		position: absolute;
+		top: 50%;
+		right: 4px;
+		transform: translateY(-50%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-radius: var(--radius-s);
+		box-shadow: none;
+		color: var(--text-muted);
+		background: transparent;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 0.1s;
+	}
+	.week-us-head-cell:hover .week-us-add,
+	.week-us-add:focus-visible {
+		opacity: 0.75;
+	}
+	.week-us-add:hover {
+		opacity: 1;
+		color: var(--text-normal);
+		background: var(--background-modifier-hover);
+		box-shadow: none;
+	}
+	@media (hover: none) {
+		.week-us-add {
+			opacity: 0.45;
+		}
 	}
 
 	.us-chevron {
