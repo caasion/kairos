@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { TFile } from "obsidian";
 	import type { App } from "obsidian";
+	import type { Routine } from "../../routines/routinesFile";
 	import { onMount } from "svelte";
 	import type { Readable, Unsubscriber } from "svelte/store";
 	import { resolveBlocks } from "../../resolver";
@@ -14,7 +15,8 @@
 		Task,
 		TaskStatus,
 		TimeRange,
-	} from "../../types";
+		Association,
+} from "../../types";
 	import {
 		copyBlockIntoDay,
 		deleteBlock,
@@ -37,7 +39,6 @@
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
-	import type { Association } from "../../types";
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		dateFromISO,
@@ -1356,7 +1357,7 @@
 				variant="bar"
 				label={dayLabel(date)}
 				showAddAll={!settings.autoApplyRoutines}
-				onAdd={(rs) => routineActions.insert(date, rs)}
+				onAdd={(rs: Routine[]) => routineActions.insert(date, rs)}
 				onAddAll={() => routineActions.addAll(date)}
 			/>
 		</div>
@@ -1396,15 +1397,15 @@
 								inherited={task.assoc === undefined && task.owner !== undefined}
 								resolved={r}
 								onNavigate={() => task.owner && onNavigate(task.owner)}
-								onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
-								onNest={(rect) => openBlockPicker(block, task, rect)}
+								onEditAssoc={(rect: DOMRect) => openTaskAssocPicker(block, task, rect)}
+								onNest={(rect: DOMRect) => openBlockPicker(block, task, rect)}
 								onMoveToBacklog={() =>
 									void handleMoveTaskToBacklog(block, task)}
 								onRepeat={() => requestRepeat(task, block)}
-								onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
-								onSetText={(_t, text) => handleSetTaskText(block, task, text)}
+								onSetStatus={(_t: Task, status: TaskStatus) => handleSetTaskStatus(block, task, status)}
+								onSetText={(_t: Task, text: string) => handleSetTaskText(block, task, text)}
 								onDelete={(_t) => handleDeleteTask(block, task)}
-								onGrab={(e) => onTaskGrab(block, task, e)}
+								onGrab={(e: PointerEvent) => onTaskGrab(block, task, e)}
 								highlight={isLinked(task) ? "task" : null}
 								onHoverChange={(on: boolean) => taskHover(task, on)}
 							/>
@@ -1524,7 +1525,7 @@
 							onAddTask={handleAddTask}
 							onAddNote={handleAddNote}
 							onSetNoteText={handleSetNoteText}
-							onMoveTaskToBacklog={(owner, task) =>
+							onMoveTaskToBacklog={(owner: Block, task: Task) =>
 								void handleMoveTaskToBacklog(owner, task)}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
@@ -1565,7 +1566,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

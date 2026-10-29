@@ -14,6 +14,7 @@
 	// writer transform and commits via `applyDayEdit`, exactly like the timeline.
 
 	import type { App } from "obsidian";
+	import type { Routine } from "../../routines/routinesFile";
 	import { Menu } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Readable, Unsubscriber } from "svelte/store";
@@ -1363,7 +1364,7 @@
 							variant="pill"
 							label={dayLabel(date)}
 							showAddAll={!settings.autoApplyRoutines}
-							onAdd={(rs) => {
+							onAdd={(rs: Routine[]) => {
 								focusDay(date);
 								routineActions.insert(date, rs);
 							}}
@@ -1445,7 +1446,7 @@
 									<BacklogNudge
 										{entry}
 										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
-										onInsert={(e) => onNudgeInsert(e, date)}
+										onInsert={(e: BacklogEntry) => onNudgeInsert(e, date)}
 										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
 										onResurfaceAt={onNudgeResurfaceAt}
 										{onNavigate}
@@ -1507,7 +1508,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

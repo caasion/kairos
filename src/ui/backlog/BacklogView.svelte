@@ -516,7 +516,7 @@
 {#if pickerEntry && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerEntry.assoc}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

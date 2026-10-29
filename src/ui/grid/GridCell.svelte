@@ -278,16 +278,16 @@
 				inherited={task.assoc === undefined && task.owner !== undefined}
 				resolved={tr}
 				onNavigate={() => task.owner && onNavigate(task.owner)}
-				onEditAssoc={(rect) => onEditAssoc(task, rect)}
+				onEditAssoc={(rect: DOMRect) => onEditAssoc(task, rect)}
 				onSetStatus={statusOf}
 				onSetText={textOf}
 				onDelete={deleteOf}
-				onNest={(rect) => onNest(task, rect)}
+				onNest={(rect: DOMRect) => onNest(task, rect)}
 				nestLabel="Change parent block"
 				onMoveToBacklog={() => onMoveToBacklog(task)}
 				onRepeat={() => requestRepeat(task, task.block)}
 				trailing={chipFor?.(task)}
-				onGrab={onTaskGrab ? (e) => grabOf(task, e) : undefined}
+				onGrab={onTaskGrab ? (e: PointerEvent) => grabOf(task, e) : undefined}
 				highlight={highlightOf?.(task) ?? null}
 				onHoverChange={onHover ? (on: boolean) => onHover(task, on) : undefined}
 			/>
