@@ -110,11 +110,8 @@ export default defineConfig(
 		},
 	},
 	{
-		// The engine runs in plain Node under vitest and must not reference
-		// `window`. Its debounce timers live for the plugin's lifetime and are
-		// cleared in dispose(), so popout-window compatibility does not apply.
-		// Auto-fixing these breaks both the unit tests and tsc's timer typing.
-		files: ['src/index.ts'],
+		// Unit tests run in plain Node (no `window`), driven by vitest fake timers.
+		files: ['**/*.test.ts'],
 		rules: { 'obsidianmd/prefer-window-timers': 'off' },
 	},
 );
