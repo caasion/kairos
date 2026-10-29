@@ -11,7 +11,8 @@
 		Task,
 	} from "../../types";
 	import type { TimeRange } from "../../types";
-	import { moveBlockAcrossDays, setTaskStatus } from "../../writer";
+	import { addTaskToUnscheduled, moveBlockAcrossDays, setTaskStatus } from "../../writer";
+	import { nextDraftLine } from "../../draftLine";
 	import { blockOptions, type BlockOption } from "../../blockOptions";
 	import { navigateToAssociation } from "../../navigate";
 	import type { GridDay, KairosIndex, Resolver } from "../../index";
@@ -356,6 +357,22 @@
 	}
 	function leaveLeftovers() {
 		if ($left$) leftoverActions.leave($left$.today, $left$.from.date);
+	}
+	// A popup group's "+": a typed task in that day's Unscheduled, filed under
+	// the group.
+	async function addUnscheduled(
+		date: ISODate,
+		text: string,
+		assoc: Association | undefined,
+	) {
+		const col = columns[date];
+		if (!col) return;
+		const path = col.currentPath() ?? (await col.ensurePath());
+		index.applyDayEdit(
+			date,
+			path,
+			addTaskToUnscheduled(col.currentBlocks(), path, text, assoc, nextDraftLine()),
+		);
 	}
 	// PROTOTYPE: each column's Unscheduled tasks, grouped by association.
 	function unscheduledGroupsFor(date: ISODate) {
@@ -708,6 +725,8 @@
 				resolved={group.resolved}
 				count={group.items.length}
 				onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+				onAddText={(text: string) => addUnscheduled(date, text, group.assoc)}
+				addLabel="Add a task here"
 			>
 		{#each group.items as { block, task } (task.source.line)}
 			{@const r = task.owner ? columns[date]?.resolveAssoc(task.owner) : undefined}

@@ -1,12 +1,12 @@
 <script lang="ts">
 	// PROTOTYPE: one association's rows in a grouped list (groupByAssoc.ts), in
 	// Kairos's own look: a bar in the domain color down the group's left edge,
-	// like a block on the timeline, the name in serif, and on the right the
-	// project (folder) or domain icon beside the count. Ctrl/Cmd+click on the
-	// name opens the project or domain. The Backlog's groups use it too, with
-	// a "+" after the count.
+	// like a block on the timeline, then the project (folder) or domain icon,
+	// the name in serif and its count, and a "+" on the right. Ctrl/Cmd+click
+	// on the name opens the project or domain. The Backlog's groups use it too.
 
 	import type { Snippet } from "svelte";
+	import DraftTask from "../task/DraftTask.svelte";
 	import type { Association } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 
@@ -18,8 +18,10 @@
 		onNavigate?: (assoc: Association) => void;
 		/** The "No project" group's name, where a list calls it something else. */
 		noneLabel?: string;
-		/** Shows a "+" after the count, to add a row to this group. */
+		/** Shows a "+" on the right, to add a row to this group. */
 		onAdd?: (anchor: DOMRect) => void;
+		/** Or: the "+" opens a row to type a task into, at the group's end. */
+		onAddText?: (text: string) => void;
 		addLabel?: string;
 		children: Snippet;
 	}
@@ -31,12 +33,14 @@
 		onNavigate,
 		noneLabel = "No project",
 		onAdd,
+		onAddText,
 		addLabel = "Add",
 		children,
 	}: Props = $props();
 
 	const label = $derived(assoc ? (resolved?.displayName || assoc.id) : noneLabel);
 	const canNavigate = $derived(!!(assoc && resolved?.resolved && onNavigate));
+	let drafting = $state(false);
 
 	function click(event: MouseEvent) {
 		if (!assoc || !onNavigate) return;
@@ -56,21 +60,22 @@
 		title={canNavigate ? "Ctrl+click to open" : undefined}
 		onclick={click}
 	>
-		<span class="ag-name">{label}</span>
-		<span class="ag-spacer"></span>
 		{#if assoc?.kind === "domain"}
 			<svg class="ag-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Domain"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
 		{:else if assoc}
 			<svg class="ag-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Project"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
 		{/if}
+		<span class="ag-name">{label}</span>
 		<span class="ag-count">{count}</span>
-		{#if onAdd}
+		<span class="ag-spacer"></span>
+		{#if onAdd || onAddText}
 			<button
 				class="ag-add"
 				aria-label={addLabel}
 				onclick={(e) => {
 					e.stopPropagation();
-					onAdd(e.currentTarget.getBoundingClientRect());
+					if (onAddText) drafting = true;
+					else onAdd?.(e.currentTarget.getBoundingClientRect());
 				}}
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -78,6 +83,13 @@
 		{/if}
 	</div>
 	{@render children()}
+	{#if drafting && onAddText}
+		<DraftTask
+			color={resolved?.color}
+			onSubmit={onAddText}
+			onClose={() => (drafting = false)}
+		/>
+	{/if}
 </div>
 
 <style>

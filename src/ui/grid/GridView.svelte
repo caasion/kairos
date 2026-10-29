@@ -613,6 +613,20 @@
 		draft = { rowKey: row.key, date };
 	}
 
+	// A popup group's "+": a typed task in that day's Unscheduled, filed under
+	// the group.
+	async function addUnscheduled(
+		date: ISODate,
+		text: string,
+		assoc: Association | undefined,
+	) {
+		const day = dayOf(date);
+		const path = day?.path ?? (await ensureNoteForDate(date));
+		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
+		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
+		pulse(date);
+	}
+
 	async function addDraft(row: GridRow, date: ISODate, text: string) {
 		const assoc = rowAssociation(row);
 		const day = dayOf(date);
@@ -1295,13 +1309,15 @@
 {#snippet inboxIcon()}
 	<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
 {/snippet}
-{#snippet unscheduledList(tasks: ResolvedTask[])}
+{#snippet unscheduledList(tasks: ResolvedTask[], date: ISODate)}
 	{#each groupByAssoc(tasks, (t) => t.owner, resolve) as group (group.key)}
 		<AssocGroup
 			assoc={group.assoc}
 			resolved={group.resolved}
 			count={group.items.length}
 			{onNavigate}
+			onAddText={(text: string) => addUnscheduled(date, text, group.assoc)}
+			addLabel="Add a task here"
 		>
 		{#each group.items as task (task.source.line)}
 			{@const r = task.owner ? resolve(task.owner) : undefined}
@@ -1513,7 +1529,7 @@
 									bind:open={unscheduledOpen[date]}
 									dragging={taskDrag !== null}
 								>
-									{@render unscheduledList(usTasks)}
+									{@render unscheduledList(usTasks, date)}
 								</HeaderBadge>
 							</span>
 						{/if}
