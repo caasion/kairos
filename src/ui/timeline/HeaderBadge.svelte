@@ -1,5 +1,5 @@
 <script lang="ts">
-	// PROTOTYPE: a small badge on a day's column header (Week, Grid) that opens
+	// A small badge on a day's column header (Week, Grid) that opens
 	// a list — the day's Unscheduled tasks, or its Inbox. A sibling of the
 	// routines pill (RoutinesAlert, variant "pill"): same size, same feel. A
 	// mouse resting on it peeks at the list; a click or tap opens it at once.

@@ -138,7 +138,7 @@
 
 {#if hovering && hasCardBody}
 	<Portal>
-		<!-- PROTOTYPE: the card in Kairos's own type — a full-height bar in the
+		<!-- The card in Kairos's own type — a full-height bar in the
 		     entity's color, the name in serif, the status as a dot before the
 		     first line under it, the note and description in the UI font, and the dates as a small
 		     labelled list with intensity drawn as its stacked bars. -->
@@ -269,7 +269,7 @@
 		color: var(--text-faint);
 	}
 
-	/* ── Hover card (PROTOTYPE: Kairos style) ── */
+	/* ── Hover card (Kairos style) ── */
 	:global(.row-label-card) {
 		position: fixed;
 		z-index: var(--layer-popover);

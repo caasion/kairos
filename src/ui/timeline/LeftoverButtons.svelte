@@ -1,5 +1,5 @@
 <script lang="ts">
-	// PROTOTYPE: the two answers to a list of leftovers, as icons: leave the
+	// The two answers to a list of leftovers, as icons: leave the
 	// rest (a list struck through) and bring all (arrows stacked like the
 	// rows they move). The same pair heads the Day banner and the Week and
 	// Grid Inbox lists. Obsidian shows each aria-label as its tooltip.

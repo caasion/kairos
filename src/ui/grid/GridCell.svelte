@@ -48,7 +48,7 @@
 		onEditAssoc: (task: ResolvedTask, anchor: DOMRect) => void;
 		onNavigate: (assoc: Association) => void;
 		onCreate: () => void;
-		// PROTOTYPE (add flow): the "+" opened its new-task field in this cell.
+		// The "+" opened its new-task field in this cell.
 		draftOpen?: boolean;
 		onDraftSubmit?: (text: string) => void;
 		onDraftClose?: () => void;
@@ -143,7 +143,7 @@
 		onSetBlockTitle,
 	}: Props = $props();
 
-	// PROTOTYPE (add flow): the field and the tasks just typed in it.
+	// The field and the tasks just typed in it.
 	const hasUnscheduledGroup = $derived(blockGroups.some((g) => isUnscheduledBlock(g.block)));
 	const LANDED_MS = 1400;
 	let landed = $state<{ id: number; text: string }[]>([]);
@@ -333,7 +333,7 @@
 	{/snippet}
 
 	{#snippet draftTail()}
-		<!-- PROTOTYPE (add flow): tasks just typed, held a moment before they
+		<!-- Tasks just typed, held a moment before they
 		     go behind the header badge (the bar runs down the wait), then the
 		     field for the next one. -->
 		{#each landed as l (l.id)}
@@ -936,7 +936,7 @@
 		min-width: 0;
 	}
 
-	/* PROTOTYPE (add flow): a task just typed, held before it goes behind the
+	/* A task just typed, held before it goes behind the
 	   header badge. The bar runs down the wait, then the row lifts away. */
 	.grid-cell-landed {
 		position: relative;

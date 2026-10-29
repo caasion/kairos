@@ -875,7 +875,7 @@
 	const unscheduledCount = $derived(
 		unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).length, 0),
 	);
-	// PROTOTYPE: each tray list grouped by association (groupByAssoc.ts).
+	// Each tray list grouped by association (groupByAssoc.ts).
 	const unscheduledGroups = $derived(
 		groupByAssoc(
 			unscheduled.flatMap((block) =>
@@ -892,7 +892,7 @@
 	const showLeftovers = $derived(offeredLeftovers.length > 0 && leftDay !== undefined);
 	const inboxCount = $derived(surfaced.length);
 	const showInbox = $derived(inboxCount > 0);
-	// PROTOTYPE: the Inbox — resurfacing backlog entries waiting on a decision,
+	// The Inbox — resurfacing backlog entries waiting on a decision,
 	// apart from Unscheduled and grouped by association. Yesterday's open tasks
 	// get the banner at the top instead.
 	const inboxGroups = $derived(groupByAssoc(surfaced, (e) => e.assoc, resolve));
@@ -1408,7 +1408,7 @@
 
 	<!-- Each tray list, rendered in its pill's hover peek or, toggled on with a
 	     click, in the view under the strip. -->
-	<!-- PROTOTYPE: each list is grouped under one header per project or domain
+	<!-- Each list is grouped under one header per project or domain
 	     (groupByAssoc.ts), so its rows drop their own association line. -->
 	{#snippet unscheduledList()}
 		{#each unscheduledGroups as group (group.key)}
@@ -1428,7 +1428,6 @@
 					association={task.assoc ?? task.owner}
 					inherited={task.assoc === undefined && task.owner !== undefined}
 					showAssociation={false}
-				scheduleButton
 					resolved={r}
 					onNavigate={() => task.owner && onNavigate(task.owner)}
 					onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
@@ -1514,7 +1513,7 @@
 				</TrayPill>
 			{/if}
 
-			<!-- PROTOTYPE: the Inbox — yesterday's open tasks and resurfacing backlog
+			<!-- The Inbox — yesterday's open tasks and resurfacing backlog
 			     entries, both waiting on a decision, as one pill. -->
 			{#if showInbox}
 				<TrayPill

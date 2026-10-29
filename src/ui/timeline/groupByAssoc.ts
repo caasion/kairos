@@ -1,4 +1,4 @@
-// PROTOTYPE: groups a Day view list (Unscheduled, "Left from", Resurfacing)
+// Groups a Day view list (Unscheduled, "Left from", Resurfacing)
 // under one header per project or domain, the way the Grid groups its rows,
 // so a row no longer repeats its association on a line of its own.
 
