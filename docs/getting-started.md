@@ -42,7 +42,7 @@ The block's line now ends in `[Thesis]`, its tasks belong to Thesis too, and The
 - A **project** is something you focus on for a while, like a thesis or a hackathon. It isn't finished; it's active or not.
 - A **domain** is a broad area of your life, like School or Health. Create one the same way, with **Create domain**. In **Projects & domains** (from the hourglass menu), right-click a project and select **Change domain** to put it in one.
 
-You never have to file anything. A task with no project sits on the Grid's **Unassigned** row, and that's fine.
+You never have to file anything. A task with no project sits on the Grid's **Unassociated** row, and that's fine.
 
 ## When you want more
 
@@ -55,7 +55,7 @@ Each of these is optional. The [Guide](guide.md) covers them all.
 
 ## Things that are easy to miss
 
-- **Point at a row's top-right corner** to see its actions.
+- **Point at a row's top-right corner** to see its actions. A small colored fold marks the spot when you point at the row.
 - **Right-click** almost anything for more.
 - **Press and hold a task's text, then move,** to drag it. A quick click edits the text.
 - **Hold Ctrl/Cmd while dropping** to copy instead of move.

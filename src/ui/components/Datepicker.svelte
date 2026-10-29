@@ -471,7 +471,7 @@
     onclick={() => changeMonth(forward ? 1 : -1)}
     aria-label={forward ? "Next month" : "Previous month"}
   >
-    <svg class="h-3 w-3 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 10">
+    <svg class="holos-datepicker-nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="10" fill="none" viewBox="0 0 14 10">
       <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={forward ? "M1 5h12m0 0L9 1m4 4L9 9" : "M13 5H1m0 0 4 4M1 5l4-4"}></path>
     </svg>
   </button>
@@ -484,7 +484,7 @@
     onclick={() => changeYear(forward ? 1 : -1)}
     aria-label={forward ? "Next year" : "Previous year"}
   >
-    <svg class="h-3 w-3 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 10">
+    <svg class="holos-datepicker-nav-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="10" fill="none" viewBox="0 0 14 10">
       <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={forward ? "M1 5h12m0 0L9 1m4 4L9 9" : "M13 5H1m0 0 4 4M1 5l4-4"}></path>
     </svg>
   </button>
@@ -501,7 +501,7 @@
           {disabled}
           aria-label={isOpen ? "Close date picker" : "Open date picker"}
         >
-          <svg class="h-4 w-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+          <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 20 20">
             <path
               d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4ZM0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"
             ></path>
@@ -737,6 +737,14 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+
+  /* Sized here, not by the Tailwind classes it had in Holos (Kairos has
+     none), so no surrounding rule (Obsidian's tab header) can shrink it. */
+  .holos-datepicker-nav-icon {
+    width: 14px;
+    height: 10px;
+    flex-shrink: 0;
   }
 
   .holos-datepicker-current {
