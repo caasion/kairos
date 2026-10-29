@@ -32,6 +32,7 @@
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
 	import DayColumn from "./DayColumn.svelte";
+	import type { DayColumnApi } from "./dayColumnApi";
 	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
 	import { commitNumber } from "./numberField";
@@ -291,7 +292,7 @@
 
 	// ── Column registry (for pointer forwarding + cross-day commits) ──
 	// Svelte 5: `bind:this` on each DayColumn gives us its exported methods.
-	let columns = $state<Record<string, DayColumn>>({});
+	let columns = $state<Record<string, DayColumnApi>>({});
 	let columnEls = $state<Record<string, HTMLDivElement>>({});
 
 	// Per-date unscheduled items pushed up from each DayColumn via callback.

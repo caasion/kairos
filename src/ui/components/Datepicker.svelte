@@ -6,10 +6,61 @@
 -->
 
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, type Snippet } from "svelte";
+  import type { HTMLInputAttributes } from "svelte/elements";
   import { fade } from "svelte/transition";
   import { parse, isValid, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isWithinInterval } from "date-fns";
   import Portal from "./Portal.svelte";
+
+  type DateRange = { from?: Date; to?: Date };
+  type Classes = Partial<
+    Record<
+      "button" | "titleVariant" | "nav" | "polite" | "monthButton" | "grid" | "columnHeader" | "dayButton" | "actionButtons" | "actionSlot",
+      string
+    >
+  >;
+  interface ActionSlotArgs {
+    selectedDate: Date | DateRange | undefined;
+    handleClear: () => void;
+    handleApply: () => void;
+    close: () => void;
+  }
+  interface Props {
+    value?: Date;
+    defaultDate?: Date | null;
+    range?: boolean;
+    rangeFrom?: Date;
+    rangeTo?: Date;
+    availableFrom?: Date | null;
+    availableTo?: Date | null;
+    locale?: string;
+    translationLocale?: string;
+    firstDayOfWeek?: number;
+    dateFormat?: Intl.DateTimeFormatOptions;
+    placeholder?: string;
+    openEndedLabel?: string;
+    rangeSeparator?: string;
+    disabled?: boolean;
+    required?: boolean;
+    inputClass?: string;
+    inline?: boolean;
+    autohide?: boolean;
+    showActionButtons?: boolean;
+    title?: string;
+    onselect?: (value: Date) => void;
+    onrangeselect?: (value: DateRange) => void;
+    onclear?: () => void;
+    onapply?: (value: Date | DateRange) => void;
+    btnClass?: string;
+    showToggleButton?: boolean;
+    inputmode?: HTMLInputElement["inputMode"];
+    classes?: Classes;
+    class?: string;
+    elementRef?: HTMLInputElement;
+    actionSlot?: Snippet<[ActionSlotArgs]>;
+    inputProps?: HTMLInputAttributes;
+    anchorElement?: HTMLElement;
+  }
 
   let {
     value = $bindable(),
@@ -34,18 +85,19 @@
     showActionButtons = false,
     title = "",
     onselect = undefined,
+    onrangeselect = undefined,
     onclear = undefined,
     onapply = undefined,
     btnClass = "",
     showToggleButton = true,
-    inputmode = "none" as HTMLInputElement["inputMode"],
+    inputmode = "none",
     classes = {},
     class: className = "",
     elementRef = $bindable(),
     actionSlot = undefined,
     inputProps = {},
-    anchorElement = undefined as HTMLElement | undefined,
-  } = $props();
+    anchorElement = undefined,
+  }: Props = $props();
 
   const cx = (...values: Array<string | undefined | null | false>) => values.filter(Boolean).join(" ");
   const normalizeFirstDayOfWeek = (day: number): 0 | 1 | 2 | 3 | 4 | 5 | 6 => ((((day % 7) + 7) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6);
@@ -187,7 +239,7 @@
       } else {
         rangeTo = day;
       }
-      onselect?.({ from: rangeFrom, to: rangeTo });
+      onrangeselect?.({ from: rangeFrom, to: rangeTo });
     } else {
       value = day;
       onselect?.(value);
@@ -215,8 +267,8 @@
             ? inputValue.split(" -> ")
             : [];
       if (parts.length === 2) {
-        const parsedFrom = tryParseDate(parts[0].trim());
-        const parsedToInput = parts[1].trim();
+        const parsedFrom = tryParseDate((parts[0] ?? "").trim());
+        const parsedToInput = (parts[1] ?? "").trim();
         const isOpenEnded = parsedToInput.toLowerCase() === openEndedLabel.toLowerCase();
         const parsedTo = isOpenEnded ? undefined : tryParseDate(parsedToInput);
 
@@ -227,7 +279,7 @@
             rangeFrom = parsedFrom;
             rangeTo = undefined;
           }
-          onselect?.({ from: rangeFrom, to: rangeTo });
+          onrangeselect?.({ from: rangeFrom, to: rangeTo });
           return;
         } else {
           elementRef?.setCustomValidity(`Please enter date range in format: ${getDateFormatPattern()}${rangeSeparator}${getDateFormatPattern()} (or ${openEndedLabel})`);
