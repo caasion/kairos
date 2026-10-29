@@ -388,7 +388,7 @@
 	.ra-title {
 		flex: 1;
 		min-width: 0;
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 15px;
 		color: var(--text-normal);
 		overflow: hidden;

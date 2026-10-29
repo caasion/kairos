@@ -7,6 +7,7 @@
 
 	import type { Snippet } from "svelte";
 	import DraftTask from "../task/DraftTask.svelte";
+	import IconButton from "../components/IconButton.svelte";
 	import type { Association } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
 
@@ -69,17 +70,16 @@
 		<span class="ag-count">{count}</span>
 		<span class="ag-spacer"></span>
 		{#if onAdd || onAddText}
-			<button
-				class="ag-add"
-				aria-label={addLabel}
-				onclick={(e) => {
-					e.stopPropagation();
-					if (onAddText) drafting = true;
-					else onAdd?.(e.currentTarget.getBoundingClientRect());
-				}}
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-			</button>
+			<span class="ag-add">
+				<IconButton
+					label={addLabel}
+					icon="plus"
+					onclick={(e: MouseEvent) => {
+						if (onAddText) drafting = true;
+						else onAdd?.((e.currentTarget as HTMLElement).getBoundingClientRect());
+					}}
+				/>
+			</span>
 		{/if}
 	</div>
 	{@render children()}
@@ -120,7 +120,7 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 13px;
 		color: var(--text-normal);
 	}
@@ -147,26 +147,10 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	/* Frameless like Obsidian's own icon buttons. */
+	/* The button keeps the heading's height. */
 	.ag-add {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		height: auto;
+		display: flex;
 		margin: -2px 0;
-		padding: var(--size-2-1);
-		border: none;
-		border-radius: var(--clickable-icon-radius);
-		background: transparent;
-		box-shadow: none;
-		color: var(--icon-color);
-		cursor: pointer;
-	}
-
-	.ag-add:hover {
-		background: var(--background-modifier-hover);
-		color: var(--icon-color-hover);
 	}
 
 	.ag-head.is-linked {
