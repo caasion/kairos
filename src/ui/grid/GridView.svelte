@@ -85,7 +85,8 @@
 	import AssocGroup from "../timeline/AssocGroup.svelte";
 	import { groupByAssoc } from "../timeline/groupByAssoc";
 	import TaskRow from "../task/Task.svelte";
-	import { todayLeftovers } from "../timeline/todayLeftovers";
+	import { leftOpenLabel, todayLeftovers } from "../timeline/todayLeftovers";
+	import LeftoverButtons from "../timeline/LeftoverButtons.svelte";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
 	import { dayLabel } from "../../routines/plan";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
@@ -1313,10 +1314,12 @@
 	{@const lefts = leftoversOn(date)}
 	{#if lefts.length > 0}
 		<div class="inbox-left-head">
-			<span>Left open on {leftFrom.split(",")[0]}</span>
+			<span>{$left$ ? leftOpenLabel($left$.from.date, $left$.today) : ""}</span>
 			<span class="inbox-left-spacer"></span>
-			<button onclick={() => $left$ && leftoverActions.leave($left$.today, $left$.from.date)}>Leave the rest</button>
-			<button class="mod-cta" onclick={() => $left$ && leftoverActions.bring($left$.today, $left$.from.date)}>Bring all</button>
+			<LeftoverButtons
+				onLeave={() => $left$ && leftoverActions.leave($left$.today, $left$.from.date)}
+				onBringAll={() => $left$ && leftoverActions.bring($left$.today, $left$.from.date)}
+			/>
 		</div>
 		{#each lefts as l (l.task.source.line)}
 			{@const la = l.task.assoc ?? l.owner.assoc}
@@ -1938,12 +1941,6 @@
 		flex: 1;
 	}
 
-	.inbox-left-head button {
-		height: auto;
-		padding: 1px 8px;
-		font-size: var(--font-ui-smaller);
-		font-weight: var(--font-normal);
-	}
 	.grid-colhead .dow-label {
 		font-size: 11px;
 		font-weight: 600;

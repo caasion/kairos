@@ -43,7 +43,8 @@
 	import HeaderBadge from "./HeaderBadge.svelte";
 	import AssocGroup from "./AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
-	import { todayLeftovers } from "./todayLeftovers";
+	import { leftOpenLabel, todayLeftovers } from "./todayLeftovers";
+	import LeftoverButtons from "./LeftoverButtons.svelte";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
 	import { dayLabel } from "../../routines/plan";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
@@ -742,10 +743,9 @@
 	{@const lefts = leftoversOn(date)}
 	{#if lefts.length > 0}
 		<div class="inbox-left-head">
-			<span>Left open on {leftFrom.split(",")[0]}</span>
+			<span>{$left$ ? leftOpenLabel($left$.from.date, $left$.today) : ""}</span>
 			<span class="inbox-left-spacer"></span>
-			<button onclick={leaveLeftovers}>Leave the rest</button>
-			<button class="mod-cta" onclick={bringAllLeftovers}>Bring all</button>
+			<LeftoverButtons onLeave={leaveLeftovers} onBringAll={bringAllLeftovers} />
 		</div>
 		{#each lefts as l (l.task.source.line)}
 			{@const la = l.task.assoc ?? l.owner.assoc}
@@ -1297,13 +1297,6 @@
 
 	.inbox-left-spacer {
 		flex: 1;
-	}
-
-	.inbox-left-head button {
-		height: auto;
-		padding: 1px 8px;
-		font-size: var(--font-ui-smaller);
-		font-weight: var(--font-normal);
 	}
 
 	.col-head.date-card {

@@ -55,9 +55,20 @@
 		/>
 		<span class="leftover-text" title={task.text}>{task.text}</span>
 		{#if sourceTag}<span class="src-tag" title={`Left open on ${fromLabel}`}><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>{sourceTag}</span>{/if}
+		<!-- Dismiss: cancelled where it was left, as a long-press on the box. -->
+		<button
+			class="leftover-bring leftover-dismiss"
+			aria-label="Cancel it"
+			onclick={(e) => {
+				e.stopPropagation();
+				onCancel();
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+		</button>
+		<!-- No title: Obsidian already shows the aria-label as the tooltip. -->
 		<button
 			class="leftover-bring"
-			title="Bring to today"
 			aria-label="Bring to today"
 			onclick={(e) => {
 				e.stopPropagation();
@@ -148,5 +159,13 @@
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
 		box-shadow: none;
+	}
+	/* Dismissing is the quieter answer: faint, and no accent on hover. */
+	.leftover-dismiss {
+		color: var(--text-faint);
+	}
+	.leftover-dismiss:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
 	}
 </style>
