@@ -13,6 +13,7 @@
 import type { Domain, ISODate, LifecycleState, Project } from "./types";
 import type { KairosIndex } from "./index";
 import {
+	appendActivePeriod,
 	appendStatus,
 	editStatusRecord,
 	removeStatusRecord,
@@ -64,7 +65,8 @@ export function setDomainStatus(
 /**
  * Author a *bounded* active period on the Gantt in one write: an `active` record
  * at `start` (carrying the freeform `note`) and an `inactive` record at `end`
- * that closes it. Neither record carries a `why`: a drag release is a gesture
+ * that closes it, `end` being the first day after the period (see
+ * `appendActivePeriod`). Neither record carries a `why`: a drag release is a gesture
  * with no moment to ask for a reason, and prompting on one would be exactly the
  * toll #26 rules out. A reason can still be added afterwards in the history log.
  * Composed as nested pure edits so the two records land in a
@@ -79,8 +81,7 @@ export function setProjectActivePeriod(
 	end: ISODate,
 	note?: string,
 ): void {
-	const withActive = appendStatus(project, start, "active", note);
-	index.applyProjectEdit(appendStatus(withActive, end, "inactive"));
+	index.applyProjectEdit(appendActivePeriod(project, start, end, note));
 }
 
 export function setDomainActivePeriod(
@@ -90,8 +91,7 @@ export function setDomainActivePeriod(
 	end: ISODate,
 	note?: string,
 ): void {
-	const withActive = appendStatus(domain, start, "active", note);
-	index.applyDomainEdit(appendStatus(withActive, end, "inactive"));
+	index.applyDomainEdit(appendActivePeriod(domain, start, end, note));
 }
 
 export function editProjectStatusRecord(

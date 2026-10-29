@@ -223,10 +223,6 @@
 		else notImplemented("Association");
 	}
 
-	function requestMetadata() {
-		notImplemented("Metadata");
-	}
-
 	// Ask the parent to open the block picker anchored at this row, to nest the
 	// task under another block. Only wired for genuine nested tasks.
 	function requestNest() {
@@ -318,12 +314,6 @@
 				.setTitle(association ? "Edit association" : "Add association")
 				.setIcon("folder-symlink")
 				.onClick(() => requestAssociation()),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Add metadata")
-				.setIcon("tag")
-				.onClick(() => requestMetadata()),
 		);
 
 		if (onNest) {
