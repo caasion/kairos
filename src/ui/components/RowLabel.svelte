@@ -193,6 +193,10 @@
 		flex-shrink: 0;
 		/* currentColor is the row's accent, set inline; faint without one. */
 		color: var(--text-faint);
+		/* About the height of the name beside it. */
+		--intensity-bar-width: 12px;
+		--intensity-bar-height: 3px;
+		--intensity-bar-row: 5px;
 	}
 
 	.row-label-name {
