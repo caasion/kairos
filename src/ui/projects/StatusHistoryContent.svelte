@@ -175,7 +175,7 @@
 								<span>{formatDate(isoFromDate(editDate))}</span>
 							</button>
 							<select class="dropdown history-select" bind:value={editStatus}>
-								{#each historyStates as s}
+								{#each historyStates as s (s)}
 									<option value={s}>{STATUS_LABEL[s]}</option>
 								{/each}
 							</select>
@@ -216,7 +216,6 @@
 					</li>
 				{:else}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 					<li class="history-item" class:current={isCurrent} onclick={() => startEditRecord(rec)} title="Click to edit">
 						<div class="history-line">
@@ -265,7 +264,7 @@
 				{/each}
 			</select>
 			<span class="history-spacer"></span>
-			{#each historyStates as s}
+			{#each historyStates as s (s)}
 				<button onclick={() => addStatusRecord(s)}>{STATUS_LABEL[s]}</button>
 			{/each}
 		</div>

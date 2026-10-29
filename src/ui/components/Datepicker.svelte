@@ -110,23 +110,17 @@
   // If translationLocale is not explicitly provided, it will default to the value of locale. This ensures reactivity as both are directly exposed as props.
   const finalTranslationLocale = $derived(translationLocale ?? locale);
 
-  let isOpen: boolean = $state(false);
-  $effect(() => {
-    isOpen = inline;
-  });
+  let isOpen: boolean = $derived(inline);
 
   export function open() {
     if (!isOpen) {
       isOpen = true;
-      updatePortalPosition();
+      void updatePortalPosition();
     }
   }
   let showMonthSelector: boolean = $state(false);
   let datepickerContainerElement: HTMLDivElement;
-  let currentMonth: Date = $state(new Date());
-  $effect(() => {
-    currentMonth = value || defaultDate || new Date();
-  });
+  let currentMonth: Date = $derived(value || defaultDate || new Date());
   let focusedDate: Date | null = null;
   let calendarRef: HTMLDivElement | null = $state(null);
   let portalStyle: string = $state("");
@@ -311,7 +305,7 @@
       if (isValid(parsedDate)) {
         return parsedDate;
       }
-    } catch (error) {
+    } catch {
       // Continue to next strategy
     }
 
@@ -334,7 +328,7 @@
         if (isValid(parsedDate)) {
           return parsedDate;
         }
-      } catch (error) {
+      } catch {
         // Continue to next format
       }
     }
@@ -344,7 +338,7 @@
       if (isValid(nativeDate) && !isNaN(nativeDate.getTime())) {
         return nativeDate;
       }
-    } catch (error) {
+    } catch {
       // Continue
     }
 
@@ -549,7 +543,7 @@
         <button
           type="button"
           class={cx("holos-datepicker-toggle", btnClass, classes?.button)}
-          onclick={() => { isOpen = !isOpen; if (isOpen) updatePortalPosition(); }}
+          onclick={() => { isOpen = !isOpen; if (isOpen) void updatePortalPosition(); }}
           {disabled}
           aria-label={isOpen ? "Close date picker" : "Open date picker"}
         >
@@ -567,7 +561,7 @@
         class={cx("holos-datepicker-input", !showToggleButton && "holos-datepicker-input-no-toggle", inputClass)}
         {placeholder}
         value={range ? formatRangeValue(rangeFrom, rangeTo) : formatDate(value)}
-        onfocus={() => { isOpen = true; updatePortalPosition(); }}
+        onfocus={() => { isOpen = true; void updatePortalPosition(); }}
         onchange={handleInputChangeWithDateFns}
         onkeydown={handleInputKeydown}
         {disabled}

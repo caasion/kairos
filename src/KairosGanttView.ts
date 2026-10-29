@@ -40,7 +40,6 @@ export class KairosGanttView extends ItemView {
 		this.component = mount(GanttView as Component, {
 			target: container,
 			props: {
-				app: this.app,
 				index: this.plugin.indexAdapter.index,
 			},
 		});

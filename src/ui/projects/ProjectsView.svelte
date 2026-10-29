@@ -14,7 +14,7 @@
 	// active/inactive for them and the Archived filter shows projects only.
 
 	import type { App } from "obsidian";
-	import { Menu, TFile } from "obsidian";
+	import { Menu, Notice, TFile } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Unsubscriber } from "svelte/store";
 	import type {
@@ -132,8 +132,7 @@
 		const clash = index.nameCollision(next, e);
 		if (clash) {
 			// A collision would make the name-match model ambiguous (spec §4.4).
-			// eslint-disable-next-line no-alert
-			window.alert(
+			new Notice(
 				`"${next}" collides with "${clash}". Names and aliases must be unique.`,
 			);
 			return;
@@ -381,7 +380,7 @@
 			onSubmit: (name) => {
 				const clash = index.nameCollision(name);
 				if (clash) {
-					window.alert(`"${name}" collides with "${clash}".`);
+					new Notice(`"${name}" collides with "${clash}".`);
 					return;
 				}
 				void index.createDomain(name);
@@ -396,7 +395,7 @@
 			onSubmit: (name) => {
 				const clash = index.nameCollision(name);
 				if (clash) {
-					window.alert(`"${name}" collides with "${clash}".`);
+					new Notice(`"${name}" collides with "${clash}".`);
 					return;
 				}
 				void index.createProject(name, domainId);
@@ -477,7 +476,7 @@
 		<span class="pv-spacer"></span>
 
 		<div class="filter-group">
-			{#each ["active", "inactive", "archived"] as const as f}
+			{#each ["active", "inactive", "archived"] as const as f (f)}
 				<button
 					class="filter-btn"
 					class:on={filter.has(f)}
@@ -651,7 +650,6 @@
 </div>
 
 {#snippet projectRow(project: Project, disabled: boolean)}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- When the parent domain is inactive its projects are read-only history:
 	     the row dims and its rename / context-menu / action buttons go inert. -->
 	<li

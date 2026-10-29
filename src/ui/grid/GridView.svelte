@@ -551,11 +551,6 @@
 		navigateToAssociation(app, resolve(assoc));
 	}
 
-	// Jump to a nested task's block in the Day view (badge click).
-	function onReveal(task: ResolvedTask) {
-		reveal(task.date, task.block.source.line);
-	}
-
 	async function onCreate(row: GridRow, date: ISODate) {
 		focusDay(date);
 		const assoc = rowAssociation(row);
@@ -1188,8 +1183,13 @@
 	let viewEl = $state<HTMLDivElement>();
 	function measureScrollbar(el: HTMLElement) {
 		const probe = createDiv();
-		probe.style.cssText =
-			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+		probe.setCssProps({
+			position: "absolute",
+			top: "-9999px",
+			width: "100px",
+			height: "100px",
+			overflow: "scroll",
+		});
 		el.appendChild(probe);
 		const width = probe.offsetWidth - probe.clientWidth;
 		probe.remove();
@@ -1236,7 +1236,6 @@
 	});
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
 	<div class="grid-header">
@@ -1465,7 +1464,6 @@
 								onDelete={onDelete}
 								onEditAssoc={openTaskAssoc}
 								{onNavigate}
-								{onReveal}
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}

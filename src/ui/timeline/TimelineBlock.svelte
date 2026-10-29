@@ -643,7 +643,6 @@
   >
     <div class="tl-block-header">
       {#if editingTitle}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <input
           class="tl-title-input kairos-inline-input"
           type="text"
@@ -764,7 +763,6 @@
             {#if dropIndex === i}
               <div class="tl-drop-line"></div>
             {/if}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="tl-task-wrap"
               class:dragging-origin={dragTaskLine === task.source.line}

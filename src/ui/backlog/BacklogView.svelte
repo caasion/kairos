@@ -13,13 +13,11 @@
 	// `applyBacklogEdit`, scheduling via `scheduleEntry`. It never parses or writes
 	// markdown itself — that all lives behind the index, exactly like the Grid view.
 
-	import type { App } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Readable, Unsubscriber } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
 	import type { Association, BacklogEntry, ISODate } from "../../types";
 	import type { KairosIndex, Resolver } from "../../index";
-	import { navigateToAssociation } from "../../navigate";
 	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
 	import {
@@ -43,13 +41,12 @@
 	}
 
 	interface Props {
-		app: App;
 		index: KairosIndex;
 		settings$: Readable<KairosSettings>;
 		filter$: Readable<BacklogFilter | null>;
 	}
 
-	let { app, index, settings$, filter$ }: Props = $props();
+	let { index, settings$, filter$ }: Props = $props();
 	const settings = $derived($settings$);
 
 	// ── The backlog feed ──
@@ -160,9 +157,6 @@
 		);
 	}
 
-	function onNavigate(assoc: Association) {
-		navigateToAssociation(app, resolve(assoc));
-	}
 
 	// Scheduling an entry into a day is no longer done from here: an entry with a
 	// resurface date surfaces as a nudge in the Day/Grid view on its due day, and

@@ -18,7 +18,6 @@
 		Association,
 } from "../../types";
 	import {
-		copyBlockIntoDay,
 		deleteBlock,
 		deleteBlocks,
 		makeBlock,
@@ -972,7 +971,7 @@
 		}
 		// Selection is intentionally preserved — the dragged block stays selected,
 		// so it keeps focus and its handles.
-		await writeToDisk();
+		writeToDisk();
 	}
 
 	async function commitCreate(range: TimeRange) {
@@ -993,7 +992,7 @@
 		// later edit to this block land on that one instead.
 		const block = makeBlock(range, path, undefined, nextDraftLine());
 		blocks = [...blocks, block]; // growing the array doesn't reorder existing ones
-		await writeToDisk();
+		writeToDisk();
 		if (settings.askAssocOnBlockCreate) askAssocFor(block);
 	}
 
@@ -1108,7 +1107,7 @@
 		const doomed = [...selection];
 		selection = new Set();
 		blocks = deleteBlocks(blocks, doomed);
-		await writeToDisk();
+		writeToDisk();
 	}
 
 	function isEditableTarget(target: EventTarget | null): boolean {

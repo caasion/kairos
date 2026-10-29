@@ -620,8 +620,13 @@
 	let viewEl = $state<HTMLDivElement>();
 	function measureScrollbar(el: HTMLElement) {
 		const probe = createDiv();
-		probe.style.cssText =
-			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+		probe.setCssProps({
+			position: "absolute",
+			top: "-9999px",
+			width: "100px",
+			height: "100px",
+			overflow: "scroll",
+		});
 		el.appendChild(probe);
 		const width = probe.offsetWidth - probe.clientWidth;
 		probe.remove();
