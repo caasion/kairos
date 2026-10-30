@@ -163,6 +163,7 @@ status:
 | Point at or select "N more" | Grow the block to show all its tasks |
 | Drop a task on empty time | Make a 30-minute block around it |
 | Drop a task on Unscheduled | Take its time away |
+| Right-click a day's header (Week) | **Regenerate routines…**: bring the day in line with `Routines.md` (today and later) |
 
 ### Grid
 
@@ -199,6 +200,7 @@ status:
 - Open timeline view
 - Open routines view
 - Apply routines to this day
+- Regenerate routines for this day
 
 ## Settings
 
