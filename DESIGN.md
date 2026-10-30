@@ -35,6 +35,7 @@ It has three parts:
 | `--kairos-radius-m` | 6px | Buttons, pills, rows |
 | `--kairos-radius-l` | 8px | Popovers, cards, date cards |
 | `--kairos-accent-width` | 3px | The domain-colour bar down a group or row |
+| `--kairos-row-alt` | 3% of the text colour | The tint on every other row of the Grid and Timeline, laid over the row's background as a `background-image` |
 
 For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `--text-faint`, `--interactive-accent`, `--background-modifier-hover`, `--background-modifier-border`, and `--color-red`, `--color-orange`, `--color-green` for status. A domain's own colour reaches a component as a custom property set from data, like `--ag-color`.
 
