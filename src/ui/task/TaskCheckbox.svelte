@@ -22,11 +22,14 @@
 		// Overrides the tooltip, for a row whose click doesn't follow the cycle
 		// (a leftover's click marks it done outright).
 		label?: string;
-		onToggle: () => void;
-		onCancel: () => void;
+		// For the look only (a routine template, the typing row): faded, and
+		// out of reach of the pointer and the keyboard.
+		inert?: boolean;
+		onToggle?: () => void;
+		onCancel?: () => void;
 	}
 
-	let { status, color, label, onToggle, onCancel }: Props = $props();
+	let { status, color, label, inert = false, onToggle, onCancel }: Props = $props();
 
 	// Unique clip-path id per instance so multiple half-done checkboxes don't
 	// share (and clobber) one another's SVG clip.
@@ -37,7 +40,7 @@
 	$effect(() => {
 		const el = buttonEl;
 		if (!el) return;
-		const handler = () => onCancel();
+		const handler = () => onCancel?.();
 		el.addEventListener("longpress", handler);
 		return () => el.removeEventListener("longpress", handler);
 	});
@@ -62,6 +65,8 @@
 	class:partial={status === "/"}
 	class:checked={status === "x"}
 	class:cancelled={status === "-"}
+	class:is-inert={inert}
+	{inert}
 	style={color
 		? `--interactive-accent:${color};--checkbox-border-color:${color};`
 		: ""}
@@ -109,6 +114,11 @@
 		width: 18px;
 		height: 18px;
 		flex-shrink: 0;
+	}
+
+	.k-checkbox.is-inert {
+		pointer-events: none;
+		opacity: 0.55;
 	}
 
 	.k-checkbox:hover {
