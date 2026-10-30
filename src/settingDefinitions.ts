@@ -99,6 +99,15 @@ export interface KairosSettings {
 	 * pulses when a task typed in a cell lands in it. On by default.
 	 */
 	gridUnscheduledInCells: boolean;
+
+	/**
+	 * Draw a line under every Grid row, including between a domain and its
+	 * projects, which otherwise read as one block. Off by default.
+	 */
+	gridRowLines: boolean;
+
+	/** Tint every other Grid row, label and cells. Off by default. */
+	gridRowShading: boolean;
 }
 
 export const DEFAULT_SETTINGS: KairosSettings = {
@@ -120,6 +129,8 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	dropBlockTitle: '',
 	gridShowRollupProjects: false,
 	gridUnscheduledInCells: true,
+	gridRowLines: false,
+	gridRowShading: false,
 };
 
 /** Every control key is a settings property, so the default value resolver works. */
@@ -210,6 +221,26 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 					type: 'toggle',
 					key: 'gridUnscheduledInCells',
 					defaultValue: DEFAULT_SETTINGS.gridUnscheduledInCells,
+				},
+			},
+			{
+				name: 'Line under every row',
+				desc:
+					'Draw a line under every row, including between a domain and its ' +
+					'projects. Off: a domain and its projects read as one block.',
+				control: {
+					type: 'toggle',
+					key: 'gridRowLines',
+					defaultValue: DEFAULT_SETTINGS.gridRowLines,
+				},
+			},
+			{
+				name: 'Shade every other row',
+				desc: 'Tint every other row, so a row is easier to follow across the days.',
+				control: {
+					type: 'toggle',
+					key: 'gridRowShading',
+					defaultValue: DEFAULT_SETTINGS.gridRowShading,
 				},
 			},
 			{
