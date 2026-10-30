@@ -796,6 +796,21 @@ export function editStatusRecord<T extends Project | Domain>(
 	return withHistory(entity, history);
 }
 
+/**
+ * Replace the whole history with a rewritten one, as the Timeline's bar edits
+ * produce (gantt/stretchEdits): a move or resize touches several records at
+ * once and must land in one write. The result runs through `normalizeHistory`
+ * like every other edit, and the domain-archived guard holds: a history that
+ * would archive a domain is refused, unchanged.
+ */
+export function replaceHistory<T extends Project | Domain>(
+	entity: T,
+	records: StatusRecord[],
+): T {
+	if (!isProject(entity) && records.some((r) => r.status === "archived")) return entity;
+	return withHistory(entity, normalizeHistory(records));
+}
+
 /** Remove the record dated `date` (a no-op if none matches). */
 export function removeStatusRecord<T extends Project | Domain>(
 	entity: T,

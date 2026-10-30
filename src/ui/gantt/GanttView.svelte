@@ -22,11 +22,11 @@
 	import {
 		editDomainStatusRecord,
 		editProjectStatusRecord,
-		removeDomainStatusRecord,
-		removeProjectStatusRecord,
 		setDomainActivePeriod,
+		setDomainHistory,
 		setDomainStatus,
 		setProjectActivePeriod,
+		setProjectHistory,
 		setProjectStatus,
 	} from "../../projectActions";
 	import {
@@ -56,6 +56,18 @@
 		type Interval,
 	} from "../../gantt/ganttUtils";
 	import { historyToSpans, type Span } from "../../gantt/spans";
+	import {
+		applyStretchEdit,
+		canRemoveEnd,
+		canSplitAt,
+		clampStretchEdit,
+		deleteStretch,
+		mergeableNext,
+		mergeWithNext,
+		removeEnd,
+		splitStretch,
+		type StretchEditKind,
+	} from "../../gantt/stretchEdits";
 	import { addIntensityItem } from "./intensityMenu";
 	import { visibleEntities } from "../../gantt/rows";
 	import Datepicker from "../components/Datepicker.svelte";
@@ -257,33 +269,57 @@
 	// is a press-drag-release on the plot; the intent is fixed at press-time by what
 	// was under the pointer:
 	//
-	//  • "start"  — the left edge of an active bar. Drag moves the `active` record's
-	//               date (the span's start), clamped after the previous record.
-	//  • "end"    — the right edge of an active bar. For a *bounded* span it moves
-	//               the closing `inactive` record; for an *open-ended* span it
-	//               *creates* one at the release date (giving the indefinite bar an
-	//               end). Releasing at/after today leaves it open (no record).
+	//  • "move"   — a bar's body. Pressing selects it; dragging slides the whole
+	//               stretch, keeping its length, and stops when it touches a
+	//               neighbour. A press only counts as a drag once the pointer has
+	//               travelled MOVE_SLOP pixels, so a click just selects.
+	//  • "start" / "end" — a bar's edge. Resizes that bar alone: growing into a
+	//               neighbour trims it (never below a day), shrinking away from one
+	//               opens a gap. An open-ended bar's end drag gives it an end.
 	//  • "create" — empty space in a row. A click-in-place adds one open-ended
 	//               `active` record at that date; a click-drag adds a bounded active
 	//               period covering every day column it crossed: an `active` on the
 	//               first and an `inactive` on the day after the last (`dragPeriod`).
-	//               Either way the note editor opens on release.
 	//
-	// A date snaps to whole days (`xToDate`). We clamp against neighbouring records
-	// so chronological order and one-per-date can never break.
-	type DragKind = "start" | "end" | "create";
+	// The bar edits are pure history rewrites (gantt/stretchEdits), written in one
+	// entity replacement. While a drag is live the row draws the rewritten history,
+	// so a trimmed neighbour shrinks under the pointer before anything is written.
+	// A date snaps to whole days (`xToDate`).
+	type DragKind = StretchEditKind | "create";
 	interface Drag {
 		kind: DragKind;
 		row: GanttRow;
-		anchorDate: ISODate; // press date (create) / the record being moved (start,end)
-		lowerDate: ISODate | null; // exclusive lower clamp (record before)
-		upperDate: ISODate | null; // exclusive upper clamp (record after)
-		open: boolean; // end-drag on an open-ended span (create the inactive record)
+		history: StatusRecord[]; // the row's history at press time
+		spanStart: ISODate; // the stretch being edited (move/start/end)
+		anchorDate: ISODate; // press date (create) / the date being changed (move/start/end)
+		pressX: number; // pointer x at press, for the move slop and offset
+		pointerId: number;
+		lowerDate: ISODate | null; // create: exclusive lower clamp (record before)
+		upperDate: ISODate | null; // create: exclusive upper clamp (record after)
 		preview: ISODate; // current snapped date under the pointer
-		moved: boolean; // pointer left the origin day → a drag, not a click
+		moved: boolean; // a drag, not a click
 	}
+	const MOVE_SLOP = 4;
 	let drag = $state<Drag | null>(null);
 	let plotEl = $state<HTMLDivElement>();
+
+	// The rewritten history a live bar drag would write, for the dragged row only.
+	const dragHistory = $derived.by(() => {
+		if (!drag || drag.kind === "create" || !drag.moved) return null;
+		return {
+			key: drag.row.key,
+			history: applyStretchEdit(drag.history, drag.spanStart, drag.kind, drag.preview, today),
+		};
+	});
+	// The cursor a bar drag holds across the plot (unset otherwise).
+	const dragCursor = $derived(
+		drag?.kind === "move" && drag.moved ? "grabbing"
+			: drag?.kind === "start" || drag?.kind === "end" ? "ew-resize"
+			: undefined,
+	);
+	function historyFor(row: GanttRow): StatusRecord[] {
+		return dragHistory?.key === row.key ? dragHistory.history : row.entity.history;
+	}
 
 	// A note for a newly-created active record that is guaranteed *not* to collapse
 	// against the active record in effect immediately before `start`. When the click
@@ -302,17 +338,17 @@
 		return (prev.note ?? "").trim() === NEW_INTENTION ? undefined : NEW_INTENTION;
 	}
 
-	function pointerX(e: PointerEvent): number {
+	function pointerX(e: MouseEvent): number {
 		const rect = plotEl?.getBoundingClientRect();
 		return rect ? e.clientX - rect.left : e.clientX;
 	}
 	// Edge drags snap to the nearest day *boundary* (round); create/click resolves
 	// the day *column* under the cursor (floor) so the picked date is the one the
 	// pointer is visibly over, not whichever boundary happens to be closer.
-	function pointerDate(e: PointerEvent): ISODate {
+	function pointerDate(e: MouseEvent): ISODate {
 		return xToDate(pointerX(e), viewport.start, pxPerDay);
 	}
-	function pointerDay(e: PointerEvent): ISODate {
+	function pointerDay(e: MouseEvent): ISODate {
 		return xToDay(pointerX(e), viewport.start, pxPerDay);
 	}
 
@@ -323,49 +359,44 @@
 		return d;
 	}
 
-	/** Press on a bar edge: move (or, for an open span's end, create) a boundary. */
-	function beginEdgeDrag(
-		e: PointerEvent,
-		kind: "start" | "end",
-		row: GanttRow,
-		span: Span,
-		history: StatusRecord[],
-	) {
+	// The date a bar gesture changes, as it stands: the stretch's start for a
+	// move or start edge, its exclusive end for an end edge (an open bar draws
+	// through today, so its end edge sits on the day after).
+	function editedDate(span: Span, kind: StretchEditKind): ISODate {
+		if (kind !== "end") return span.start;
+		return span.open ? shiftDays(span.end, 1) : span.end;
+	}
+
+	/** Press on a bar's body (move) or edge (start/end). Selects the bar too. */
+	function beginBarDrag(e: PointerEvent, kind: StretchEditKind, row: GanttRow, span: Span) {
+		if (e.button !== 0 || editingKey) return;
 		e.stopPropagation();
 		e.preventDefault();
-		const startIdx = history.findIndex((r) => r.date === span.start);
-		if (startIdx < 0) return;
-		// The record whose date we edit: the span's opener (start) or its closer (end).
-		const closerIdx = startIdx + 1; // the `inactive` record that ends a bounded span
-		const open = kind === "end" && span.open;
-		const anchorDate = kind === "start" ? span.start : open ? span.end : history[closerIdx]!.date;
+		select(row, span);
+		const anchorDate = editedDate(span, kind);
 		drag = {
 			kind,
 			row,
+			history: row.entity.history,
+			spanStart: span.start,
 			anchorDate,
-			// start: clamp above the previous record; end: clamp above the span's own start.
-			lowerDate:
-				kind === "start"
-					? startIdx > 0 ? history[startIdx - 1]!.date : null
-					: span.start,
-			// start: below the closer (if any); end: below the record after the closer.
-			upperDate:
-				kind === "start"
-					? history[closerIdx]?.date ?? null
-					: open ? null : history[closerIdx + 1]?.date ?? null,
-			open,
+			pressX: pointerX(e),
+			pointerId: e.pointerId,
+			lowerDate: null,
+			upperDate: null,
 			preview: anchorDate,
 			moved: false,
 		};
 		// Capture on the plot (stable across re-renders), not the pressed child —
 		// child bars/zones re-render mid-drag, which would drop a child capture and
-		// silently end the gesture.
-		plotEl?.setPointerCapture?.(e.pointerId);
+		// silently end the gesture. A body press waits until it's a drag: captured,
+		// its click and double-click would land on the plot, not the bar.
+		if (kind !== "move") plotEl?.setPointerCapture?.(e.pointerId);
 	}
 
 	/** Press on empty row space: create a new active period. */
 	function beginCreateDrag(e: PointerEvent, row: GanttRow) {
-		if (pxPerDay <= 0) return;
+		if (pxPerDay <= 0 || e.button !== 0) return;
 		e.preventDefault();
 		// Pressing empty canvas clears any bar selection.
 		selectedKey = null;
@@ -376,10 +407,13 @@
 		drag = {
 			kind: "create",
 			row,
+			history,
+			spanStart: date,
 			anchorDate: date,
+			pressX: pointerX(e),
+			pointerId: e.pointerId,
 			lowerDate: lower,
 			upperDate: upper,
-			open: false,
 			preview: date,
 			moved: false,
 		};
@@ -388,11 +422,21 @@
 
 	function moveDrag(e: PointerEvent) {
 		if (!drag || pxPerDay <= 0) return;
-		// Create resolves the day-column under the cursor; edge drags snap to the
-		// nearest boundary.
-		const raw = drag.kind === "create" ? pointerDay(e) : pointerDate(e);
-		const next = clamp(raw, drag.lowerDate, drag.upperDate);
-		drag = { ...drag, preview: next, moved: drag.moved || next !== drag.anchorDate };
+		const d = drag;
+		if (d.kind === "create") {
+			const next = clamp(pointerDay(e), d.lowerDate, d.upperDate);
+			drag = { ...d, preview: next, moved: d.moved || next !== d.anchorDate };
+			return;
+		}
+		const dx = pointerX(e) - d.pressX;
+		if (!d.moved && Math.abs(dx) < MOVE_SLOP) return;
+		if (!d.moved) plotEl?.setPointerCapture?.(d.pointerId);
+		// A move keeps the grab offset; an edge follows the nearest day boundary.
+		const raw = d.kind === "move"
+			? shiftDays(d.spanStart, Math.round(dx / pxPerDay))
+			: pointerDate(e);
+		const next = clampStretchEdit(d.history, d.spanStart, d.kind, raw, today);
+		drag = { ...d, preview: next, moved: true };
 	}
 
 	function endDrag() {
@@ -407,12 +451,10 @@
 			const { start, end } = dragPeriod(d.anchorDate, d.preview);
 			// If the new active record would sit right after another active one with an
 			// identical note, `normalizeHistory` collapses it (a no-op transition) and
-			// nothing is written — so the popup would have no record to edit. That case
-			// is exactly "click inside an existing active span to start a new stretch", so
-			// seed a distinguishing note for the user to rename.
+			// nothing is written. Seed a distinguishing note for the user to rename.
 			const note = boundaryNote(d.row.entity.history, start);
 			if (!d.moved || d.preview === d.anchorDate) {
-				// Click → open-ended active (splits an existing open span at `start`).
+				// Click → open-ended active.
 				if (isDomain) setDomainStatus(index, domain, start, "active", note);
 				else setProjectStatus(index, project, start, "active", note);
 			} else if (isDomain) {
@@ -420,46 +462,35 @@
 			} else {
 				setProjectActivePeriod(index, project, start, end, note);
 			}
-			// A fresh period gets the seeded distinguishing note; the user double-clicks
-			// the bar to rename it (no auto-opened editor — the popup is gone).
 			return;
 		}
 
-		if (d.kind === "end" && d.open) {
-			// Give an indefinite bar an end: insert `inactive` at the release date
-			// (the close can be today, past, or future — a future close simply
-			// schedules the project to go inactive then). Released in place → leave
-			// it open. The clamp already keeps the date strictly after the start.
-			if (!d.moved || d.preview === d.anchorDate) return;
-			if (isDomain) setDomainStatus(index, domain, d.preview, "inactive");
-			else setProjectStatus(index, project, d.preview, "inactive");
-			return;
-		}
-
-		// A click-in-place (no drag) on a *bounded* span's right edge converts it to
-		// indefinite: drop the closing `inactive` record so the span runs open again.
-		// (The `end` + `open` case above already handled open spans; this is the
-		// bounded end-drag whose closer date is `d.anchorDate`.)
-		if (d.kind === "end" && (!d.moved || d.preview === d.anchorDate)) {
-			if (isDomain) removeDomainStatusRecord(index, domain, d.anchorDate);
-			else removeProjectStatusRecord(index, project, d.anchorDate);
-			return;
-		}
-
-		// Move an existing boundary (start record, or a bounded span's closer).
+		// A press without a drag only selected the bar.
 		if (!d.moved || d.preview === d.anchorDate) return;
-		const rec = d.row.entity.history.find((r) => r.date === d.anchorDate);
-		if (!rec) return;
-		const next = { date: d.preview, status: rec.status, note: rec.note ?? "" };
-		if (isDomain) editDomainStatusRecord(index, domain, d.anchorDate, next);
-		else editProjectStatusRecord(index, project, d.anchorDate, next);
+		editStretch(d.row, d.spanStart, d.kind, d.preview);
+	}
+
+	// Apply a bar edit to the live row and keep the bar selected under its new start.
+	function editStretch(row: GanttRow, start: ISODate, kind: StretchEditKind, to: ISODate) {
+		const live = currentRow(row.key);
+		if (!live) return;
+		const next = applyStretchEdit(live.entity.history, start, kind, to, today);
+		writeHistory(live, next);
+		if (kind !== "end" && selectedKey === spanKey(row.key, start)) {
+			selectedKey = spanKey(row.key, clampStretchEdit(live.entity.history, start, kind, to, today));
+		}
+	}
+	function writeHistory(live: GanttRow, history: StatusRecord[]) {
+		if (live.isDomain) setDomainHistory(index, live.entity as Domain, history);
+		else setProjectHistory(index, live.entity, history);
 	}
 
 	// ── Bar interaction model ───────────────────────────────────────────────────
 	// A bar is always active, so there's no status to pick. The fast-path gestures
-	// (drag edges to retime, click empty space to create, hover-x / Delete-key to
-	// remove, double-click to rename) cover the common edits; the right-click menu
-	// is the home for precise control (calendar date entry, definite↔indefinite).
+	// (drag to move or resize, click empty space to create, arrow keys to nudge,
+	// Delete to remove, double-click to rename) cover the common edits; the
+	// right-click menu is the home for precise control (calendar date entry,
+	// split, merge, removing an end).
 	//
 	// A span has no stored identity, so we key it by row + its opening date, which is
 	// unique within a row (one record per date). Resolving the *current* row by its
@@ -473,12 +504,19 @@
 		return rows.find((r) => r.key === key);
 	}
 
-	// ── Selection (single-click) ──
-	// The selected span, so Delete removes it and it draws an outline. Cleared on
-	// Escape or a click on empty plot space.
+	// ── Selection (press) ──
+	// The selected span, so the keys act on it, it draws an outline and its edge
+	// handles stand outside its ends. Cleared on Escape or a press on empty plot
+	// space.
 	let selectedKey = $state<string | null>(null);
-	function selectSpan(row: GanttRow, span: Span) {
-		if (drag) return; // a drag just ended — the pointerup fired a click too
+	// While a bar is dragged its start may move; the outline follows it.
+	const shownSelectedKey = $derived(
+		drag && drag.kind !== "create" && drag.kind !== "end" && drag.moved
+			&& selectedKey === spanKey(drag.row.key, drag.spanStart)
+			? spanKey(drag.row.key, drag.preview)
+			: selectedKey,
+	);
+	function select(row: GanttRow, span: Span) {
 		selectedKey = spanKey(row.key, span.start);
 		// Focus the plot so it receives the Delete / Escape keys for this selection.
 		plotEl?.focus({ preventScroll: true });
@@ -497,9 +535,9 @@
 		return null;
 	}
 
-	// Delete removes the selected period; 0–5 sets its intensity; Escape clears
-	// selection (and closes an in-place edit / menu first). Ignored while typing in
-	// the intention input.
+	// Delete removes the selected period; 0–5 sets its intensity; ←/→ move it a
+	// day, Shift moves its end and Alt its start; Escape clears selection (and
+	// closes an in-place edit first). Ignored while typing in the intention input.
 	function onPlotKeyDown(e: KeyboardEvent) {
 		const t = e.target;
 		if (t instanceof HTMLElement && (t.tagName === "INPUT" || t.isContentEditable)) return;
@@ -514,6 +552,15 @@
 			if (!target) return;
 			e.preventDefault();
 			setIntensity(target.row, target.span, Number(key));
+		} else if ((key === "ArrowLeft" || key === "ArrowRight") && !e.metaKey && !e.ctrlKey) {
+			const target = selectedTarget();
+			if (!target || (e.shiftKey && e.altKey)) return;
+			e.preventDefault();
+			const kind: StretchEditKind = e.shiftKey ? "end" : e.altKey ? "start" : "move";
+			// An open bar has no end to nudge later; Shift+← gives it one.
+			if (kind === "end" && target.span.open && key === "ArrowRight") return;
+			const from = editedDate(target.span, kind);
+			editStretch(target.row, target.span.start, kind, shiftDays(from, key === "ArrowLeft" ? -1 : 1));
 		} else if (key === "Escape") {
 			if (editingKey) { cancelEditDesc(); return; }
 			selectedKey = null;
@@ -567,53 +614,44 @@
 		editingKey = null;
 	}
 
-	// ── Delete a whole active period ──
-	// Removes the opening `active` record and, if the span is bounded, the closing
-	// `inactive` record too — so deleting a definite period leaves no orphaned
-	// closer behind. (An open span has only the opener.)
+	// ── Whole-stretch edits from the menu and keys ──
+	// Each rewrites the live row's history in one write (gantt/stretchEdits).
+	// Delete leaves the stretch's days inactive without touching its neighbours.
 	function deletePeriod(row: GanttRow, span: Span) {
 		const live = currentRow(row.key);
 		if (!live) return;
 		if (selectedKey === spanKey(row.key, span.start)) selectedKey = null;
-		const remove = (date: ISODate) => {
-			if (live.isDomain) removeDomainStatusRecord(index, live.entity as Domain, date);
-			else removeProjectStatusRecord(index, live.entity as Project, date);
-		};
-		// Remove the closer first: `remove` re-reads the live entity each call, and
-		// dropping the opener first would renormalize the history and could shift what
-		// the closer date resolves to. The closer is the record right after the opener.
-		if (!span.open) {
-			const hist = live.entity.history;
-			const openerIdx = hist.findIndex((r) => r.date === span.start);
-			const closer = openerIdx >= 0 ? hist[openerIdx + 1] : undefined;
-			if (closer) remove(closer.date);
-		}
-		remove(span.start);
+		writeHistory(live, deleteStretch(live.entity.history, span.start));
 	}
-
-	// ── Convert definite → indefinite ──
-	// Drop the closing `inactive` record so the span runs open-ended again. Invoked
-	// by a click-in-place on a bounded bar's right edge, or the context menu.
+	// Drop a gap closer so the stretch runs on (open-ended when it was the last).
 	function reopenSpan(row: GanttRow, span: Span) {
-		if (span.open) return;
+		const live = currentRow(row.key);
+		if (live) writeHistory(live, removeEnd(live.entity.history, span.start));
+	}
+	// The second half gets a placeholder intention distinct from the first's, so
+	// the two halves don't collapse back into one.
+	function splitAt(row: GanttRow, span: Span, at: ISODate) {
 		const live = currentRow(row.key);
 		if (!live) return;
-		const hist = live.entity.history;
-		const openerIdx = hist.findIndex((r) => r.date === span.start);
-		const closer = openerIdx >= 0 ? hist[openerIdx + 1] : undefined;
-		if (!closer) return;
-		if (live.isDomain) removeDomainStatusRecord(index, live.entity as Domain, closer.date);
-		else removeProjectStatusRecord(index, live.entity as Project, closer.date);
+		const note = (span.note ?? "").trim() === NEW_INTENTION ? `${NEW_INTENTION} 2` : NEW_INTENTION;
+		writeHistory(live, splitStretch(live.entity.history, span.start, at, note));
+	}
+	function mergeNext(row: GanttRow, span: Span) {
+		const live = currentRow(row.key);
+		if (live) writeHistory(live, mergeWithNext(live.entity.history, span.start));
 	}
 
 	// ── Right-click context menu (precise control) ──
 	// A native Obsidian Menu (matching TimelineBlock / ProjectsView) shown at the
-	// pointer. Items differ by span kind: a bounded span can be reopened; an open
-	// span's "Set end date" is what makes it definite.
+	// pointer. Items differ by span kind: an open span's "Set end date" is what
+	// makes it definite; a span ending in a gap can have its end removed. Split
+	// works on the day column under the pointer.
 	function openMenu(e: MouseEvent, row: GanttRow, span: Span) {
 		e.preventDefault();
 		e.stopPropagation();
 		selectedKey = spanKey(row.key, span.start);
+		const history = row.entity.history;
+		const at = pointerDay(e);
 		const menu = new Menu();
 		menu.addItem((item) =>
 			item.setTitle("Edit intention").setIcon("pencil").onClick(() => beginEditDesc(row, span)),
@@ -630,8 +668,21 @@
 			menu.addItem((item) =>
 				item.setTitle("Edit end date…").setIcon("calendar-clock").onClick(() => openDateEdit(row, span, "end")),
 			);
+		}
+		if (canRemoveEnd(history, span.start)) {
 			menu.addItem((item) =>
-				item.setTitle("Convert to indefinite").setIcon("infinity").onClick(() => reopenSpan(row, span)),
+				item.setTitle("Remove end date").setIcon("infinity").onClick(() => reopenSpan(row, span)),
+			);
+		}
+		menu.addSeparator();
+		if (canSplitAt(history, span.start, at)) {
+			menu.addItem((item) =>
+				item.setTitle(`Split on ${formatDate(at)}`).setIcon("scissors").onClick(() => splitAt(row, span, at)),
+			);
+		}
+		if (mergeableNext(history, span.start)) {
+			menu.addItem((item) =>
+				item.setTitle("Merge with next").setIcon("merge").onClick(() => mergeNext(row, span)),
 			);
 		}
 		menu.addSeparator();
@@ -652,16 +703,9 @@
 	let dateEdit = $state<DateEdit | null>(null);
 	let dateEditValue = $state<Date>(new Date());
 	function openDateEdit(row: GanttRow, span: Span, which: "start" | "end") {
-		const seed = which === "start" ? span.start : span.open ? span.end : closerDate(row, span) ?? span.end;
+		// A bounded span's `end` is its closer's date; an open one's is today.
 		dateEdit = { row, span, which };
-		dateEditValue = dateFromISO(seed);
-	}
-	function closerDate(row: GanttRow, span: Span): ISODate | undefined {
-		const live = currentRow(row.key);
-		if (!live) return undefined;
-		const hist = live.entity.history;
-		const openerIdx = hist.findIndex((r) => r.date === span.start);
-		return openerIdx >= 0 ? hist[openerIdx + 1]?.date : undefined;
+		dateEditValue = dateFromISO(which === "start" ? span.start : span.end);
 	}
 	function commitDateEdit(picked: Date) {
 		const d = dateEdit;
@@ -669,24 +713,8 @@
 		if (!d) return;
 		const live = currentRow(d.row.key);
 		if (!live) return;
-		const pickISO = isoFromDate(picked);
-		if (d.which === "start") {
-			// Move the opening `active` record; keep its status/note.
-			const next = { date: pickISO, status: "active" as LifecycleState, note: d.span.note ?? "" };
-			if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, d.span.start, next);
-			else editProjectStatusRecord(index, live.entity as Project, d.span.start, next);
-			return;
-		}
-		// End date: move the existing closer, or insert one (open → definite).
-		const closer = closerDate(d.row, d.span);
-		if (closer) {
-			const next = { date: pickISO, status: "inactive" as LifecycleState };
-			if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, closer, next);
-			else editProjectStatusRecord(index, live.entity as Project, closer, next);
-		} else {
-			if (live.isDomain) setDomainStatus(index, live.entity as Domain, pickISO, "inactive");
-			else setProjectStatus(index, live.entity as Project, pickISO, "inactive");
-		}
+		// The same rules as a drag: it trims a neighbour it grows into, clamped.
+		editStretch(live, d.span.start, d.which, isoFromDate(picked));
 	}
 
 	function formatDate(iso: ISODate): string {
@@ -799,6 +827,7 @@
 				bind:clientWidth={plotWidth}
 				tabindex="-1"
 				style:height={`${contentHeight}px`}
+				style:--drag-cursor={dragCursor}
 				onpointermove={moveDrag}
 				onpointerup={endDrag}
 				onpointerleave={endDrag}
@@ -861,21 +890,23 @@
 
 				<!-- Active bars only — inactivity is the absence of a bar. -->
 				{#each rows as row, i (row.key)}
-					{@const history = row.entity.history}
-					{@const spans = historyToSpans(history, today)}
+					{@const spans = historyToSpans(historyFor(row), today)}
 					{#each spans as span (span.start)}
 						{#if span.status === "active"}
 							{@const box = spanBox(span)}
 							{#if box}
 								{@const openEnded = span.open && !box.clampedEnd}
 								{@const key = spanKey(row.key, span.start)}
-								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								{@const selected = shownSelectedKey === key}
+								<!-- How far each edge's hit zone reaches into the body: a
+								     quarter of a thin bar, so the middle still moves it. -->
+								{@const handleIn = Math.min(6, Math.max(1, Math.floor(box.width / 4)))}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									class="gantt-bar"
 									class:open-ended={openEnded}
 									class:clamped-start={box.clampedStart}
-									class:selected={selectedKey === key}
+									class:selected
 									class:dormant={span.intensity === 0}
 									class:unrated={span.intensity === undefined}
 									style:--fill={`${fillPercent(span)}%`}
@@ -885,12 +916,13 @@
 									style:height={`${BAR_HEIGHT}px`}
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
+									style:--handle-in={`${handleIn}px`}
 									use:peek={{
 										text: span.note || "No intention",
 										detail: `${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`,
 										always: true,
 									}}
-									onclick={() => selectSpan(row, span)}
+									onpointerdown={(e) => beginBarDrag(e, "move", row, span)}
 									ondblclick={() => beginEditDesc(row, span)}
 									oncontextmenu={(e) => openMenu(e, row, span)}
 								>
@@ -899,16 +931,14 @@
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
 											class="gantt-handle left"
-											onpointerdown={(e) => beginEdgeDrag(e, "start", row, span, history)}
-											onclick={(e) => e.stopPropagation()}
-											title="Drag to move the start date"
+											onpointerdown={(e) => beginBarDrag(e, "start", row, span)}
 										></div>
 									{/if}
 									<!-- Intensity bars: three stacked, two levels a bar. Hidden on an
 									     unrated bar until hover, so they double as the way to rate it;
 									     dropped on a bar too narrow to hold them beside a label. -->
 									{#if box.width >= 40}
-										<span class="gantt-pips" title="Intensity: click a bar to set · 0–5 keys on a selected bar">
+										<span class="gantt-pips">
 											<IntensityBars level={span.intensity} onpick={(level) => setIntensity(row, span, level)} />
 										</span>
 									{/if}
@@ -934,15 +964,12 @@
 											{#if span.note}{span.note}{:else}No intention{/if}
 										</span>
 									{/if}
-									<!-- Right edge: drag to move the end date, or (open-ended) to set one.
-									     A click-in-place here (no drag) on a bounded span reopens it. -->
+									<!-- Right edge: drag to move the end date, or (open-ended) to set one. -->
 									{#if !box.clampedEnd}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
 											class="gantt-handle right"
-											onpointerdown={(e) => beginEdgeDrag(e, "end", row, span, history)}
-											onclick={(e) => e.stopPropagation()}
-											title={openEnded ? "Drag left to set an end date" : "Drag to move the end date · click to make indefinite"}
+											onpointerdown={(e) => beginBarDrag(e, "end", row, span)}
 										></div>
 									{/if}
 								</div>
@@ -1181,7 +1208,10 @@
 		background: var(--background-modifier-border);
 		pointer-events: none;
 	}
+	/* While a bar is dragged the cursor holds wherever the pointer wanders: the
+	   plot and everything in it take --drag-cursor while it's set. */
 	.gantt-plot {
+		cursor: var(--drag-cursor, auto);
 		position: relative;
 		flex: 1;
 		min-width: 400px;
@@ -1265,7 +1295,7 @@
 		left: 0;
 		right: 0;
 		z-index: 0;
-		cursor: crosshair;
+		cursor: var(--drag-cursor, crosshair);
 	}
 	.gantt-create-zone:hover {
 		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
@@ -1282,7 +1312,7 @@
 	.gantt-bar {
 		position: absolute;
 		border-radius: 5px;
-		cursor: pointer;
+		cursor: var(--drag-cursor, grab);
 		display: flex;
 		align-items: center;
 		/* visible so the open-ended arrow cap (::after) isn't clipped; the inner
@@ -1346,10 +1376,12 @@
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
 	}
-	/* Selected (single-click): accent outline so the keyboard target is obvious. */
+	/* Selected: accent outline so the keyboard target is obvious, and drawn over
+	   its neighbours so the outside handles below stay grabbable. */
 	.gantt-bar.selected {
 		outline: 2px solid var(--interactive-accent);
 		outline-offset: 1px;
+		z-index: 2;
 	}
 	.gantt-bar-label {
 		flex: 1;
@@ -1387,19 +1419,51 @@
 		color: var(--text-faint);
 		font-style: italic;
 	}
+	/* An edge's hit zone straddles it: --edge-out past the bar's outer edge (its
+	   3px border plus 4px of row) and --handle-in into the body, which the bar
+	   sets smaller on a thin bar so there's body left to move it by. It sits
+	   above the intensity lines, so the left edge always offers a resize. */
 	.gantt-handle {
+		--edge-out: 7px;
 		position: absolute;
 		top: 0;
-		width: 8px;
+		width: calc(var(--edge-out) + var(--handle-in, 6px));
 		height: 100%;
-		cursor: ew-resize;
-		z-index: 2;
+		cursor: var(--drag-cursor, ew-resize);
+		z-index: 4;
 	}
-	.gantt-handle.left { left: 0; }
-	.gantt-handle.right { right: 0; }
-	.gantt-handle:hover { background: color-mix(in srgb, var(--bar-color) 45%, transparent); }
+	.gantt-handle.left { left: calc(-1 * var(--edge-out)); }
+	.gantt-handle.right { right: calc(-1 * var(--edge-out)); }
+	/* Pointing at an edge lights it, so you see which one a press will grab. */
+	.gantt-handle::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 3px;
+	}
+	.gantt-handle.left::before { left: calc(var(--edge-out) - 3px); }
+	.gantt-handle.right::before { right: calc(var(--edge-out) - 3px); }
+	.gantt-handle:hover::before { background: var(--interactive-accent); }
 	/* The open-ended arrow cap doubles as the right handle's visual affordance. */
-	.gantt-bar.open-ended .gantt-handle.right { right: -9px; width: 17px; }
+	.gantt-bar.open-ended .gantt-handle.right { --edge-out: 13px; }
+	/* A selected bar's handles reach further out and show a grip there, so its
+	   edges can be grabbed however thin the bar is. */
+	.gantt-bar.selected .gantt-handle {
+		--edge-out: 15px;
+		height: calc(100% + 6px);
+		top: -3px;
+	}
+	.gantt-bar.selected.open-ended .gantt-handle.right { --edge-out: 24px; }
+	.gantt-bar.selected .gantt-handle::before {
+		width: 10px;
+		background: var(--interactive-accent);
+		border-radius: var(--kairos-radius-s);
+		opacity: 0.85;
+	}
+	.gantt-bar.selected .gantt-handle.left::before { left: 0; }
+	.gantt-bar.selected .gantt-handle.right::before { right: 0; }
+	.gantt-bar.selected .gantt-handle:hover::before { opacity: 1; }
 	.gantt-drag-marker {
 		position: absolute;
 		top: 0;
