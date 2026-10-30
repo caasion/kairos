@@ -88,27 +88,42 @@ function sameAssoc(a: Association | undefined, b: Association | undefined): bool
 
 /**
  * The block routines in `due` that the day's blocks don't account for, in
- * order. Matched by title, counting repeats; a block at a routine's own time
- * claims that routine first, then the rest pair up in order.
+ * order (see `claimBlocks`).
  */
 function missingBlocks(blocks: Block[], due: Routine[]): Set<BlockRoutine> {
+	const claimed = claimBlocks(blocks, due);
+	return new Set(
+		due.filter((r): r is BlockRoutine => r.kind === "block" && !claimed.has(r)),
+	);
+}
+
+/**
+ * Which day block accounts for each block routine in `due`. Matched by title,
+ * counting repeats; a block at a routine's own time claims that routine first,
+ * then the rest pair up in order. A routine left out has no block in the day.
+ */
+export function claimBlocks(blocks: Block[], due: Routine[]): Map<BlockRoutine, Block> {
 	const wanted = due.filter((r): r is BlockRoutine => r.kind === "block");
 	const unclaimed = new Set(blocks);
-	const missing = new Set<BlockRoutine>();
+	const claims = new Map<BlockRoutine, Block>();
 	const pending: BlockRoutine[] = [];
 	for (const r of wanted) {
 		const exact = [...unclaimed].find(
 			(b) => b.title === r.title && b.time?.start === r.time.start && b.time?.end === r.time.end,
 		);
-		if (exact) unclaimed.delete(exact);
-		else pending.push(r);
+		if (exact) {
+			unclaimed.delete(exact);
+			claims.set(r, exact);
+		} else pending.push(r);
 	}
 	for (const r of pending) {
 		const any = [...unclaimed].find((b) => b.title === r.title);
-		if (any) unclaimed.delete(any);
-		else missing.add(r);
+		if (any) {
+			unclaimed.delete(any);
+			claims.set(r, any);
+		}
 	}
-	return missing;
+	return claims;
 }
 
 /** The association a routine task means: its own, else its home line's. */
@@ -126,11 +141,13 @@ function compatibleAssoc(a: Association | undefined, b: Association | undefined)
 	return !a || !b || sameAssoc(a, b);
 }
 
+/** Is `task`, in the day's `block`, a copy of the task routine `r`? */
+export function isCopyOf(task: Task, block: Block, r: TaskRoutine): boolean {
+	return task.text === r.text && compatibleAssoc(task.assoc ?? block.assoc, effectiveAssoc(r));
+}
+
 function hasTask(blocks: Block[], r: TaskRoutine): boolean {
-	const assoc = effectiveAssoc(r);
-	return blocks.some((b) =>
-		b.tasks.some((t) => t.text === r.text && compatibleAssoc(t.assoc ?? b.assoc, assoc)),
-	);
+	return blocks.some((b) => b.tasks.some((t) => isCopyOf(t, b, r)));
 }
 
 // ─── building ──────────────────────────────────────────────────

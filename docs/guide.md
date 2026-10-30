@@ -99,6 +99,8 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 - Right-click a task or a block in any view and select **Repeat…**. Choose when it repeats. The one you right-clicked stays where it is as the first occurrence.
 - Or open the **Routines** view from the hourglass menu and select **New routine**.
+- To keep a day you planned well, open the Day view's **⋯** menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task, and choose when the rest repeat (that weekday at first). Blocks and tasks that are already routines are shown but can't be checked. Unscheduled tasks aren't listed; use **Repeat…** for those.
+- Or write `Routines.md` yourself, or have an AI assistant write it. [Routines.md](reference.md#routinesmd) in the reference describes the whole format, so you can point the assistant there.
 
 **Add routines to a day**
 
@@ -114,6 +116,16 @@ You can also run **Apply routines to this day** from the command palette. To add
 **Edit routines**
 
 The Routines view groups routines by when they repeat. Select a time or title to edit it, or point at a block's top-right corner to add a task, change its association or when it repeats, or delete it. Unscheduled has only a **+**, to add a task. Select **Open file** to edit `Routines.md` by hand.
+
+**See how your routines fit**
+
+Select **Week** at the top of the Routines view to see the days your routines make, Monday to Sunday. It doesn't change anything; it shows:
+
+- How much of each day your blocks take, under the day's name. Time where blocks overlap is counted once.
+- Blocks that overlap, side by side with an orange edge, and **Overlap** under the day's name.
+- Free time, as the empty space between blocks.
+
+Tasks with no block and monthly routines can't sit on a weekday, so the line above the week only counts them. Select a block to see it in the list, where you can edit it. Select **List** to go back.
 
 A routine that belongs to an inactive project or domain is paused, and shows as **Paused**. It comes back when the project is active again.
 
