@@ -507,22 +507,24 @@ export function intensityChange(
 }
 
 /**
- * The new intention a record dated exactly `date` sets, or null when no record
- * starts that day, it keeps the previous record's note, or it has none. The
- * Grid's label shows today's intention (prose doesn't fit a starting-point
- * glyph the way five pips do), so a change anywhere in the window is marked in
- * its cell instead. Like intensity, clearing the intention isn't marked.
+ * The new intention a record dated exactly `date` sets (`to`), and the one it
+ * replaces (`from`, null when there was none), or null when no record starts
+ * that day, it keeps the previous record's note, or it has none. The Grid's
+ * label shows today's intention (prose doesn't fit a starting-point glyph the
+ * way five pips do), so a change anywhere in the window is marked in its cell
+ * instead. Like intensity, clearing the intention isn't marked.
  */
 export function intentionChange(
 	row: GridRow,
 	date: ISODate,
 	snap: GridSnapshot,
-): string | null {
+): { from: string | null; to: string } | null {
 	const history = rowHistory(row, snap);
 	const rec = history?.find((r) => r.date === date);
 	if (!history || !rec?.note) return null;
 	const prev = history.filter((r) => r.date < date).at(-1);
-	return prev?.note === rec.note ? null : rec.note;
+	if (prev?.note === rec.note) return null;
+	return { from: prev?.note || null, to: rec.note };
 }
 
 /** The association a create-in-cell applies for this row. */

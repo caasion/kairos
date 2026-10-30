@@ -53,6 +53,7 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `ItemText` | An item's text: one line or `lines` lines with an ellipsis, peek when truncated, edit in place with `onCommit` (Enter or leaving commits, Escape cancels; `editing` can be bound), hold to drag with `onGrab`. | The text in every `ItemRow` |
 | `AssocMeta` | An item's project or domain on its meta line, Ctrl/Cmd-click to open. | `ItemRow`'s `meta` |
 | `RowLabel` | A project's or domain's name, note and intensity in the Grid and Timeline row-label column, with its hover card. | Grid and Timeline rows |
+| `HoverCard` | Kairos's own hover card, on `Popover`: a bar in the entity's colour, then the name in serif (`kairos-hover-card-name`) and whatever goes under it: `-note`, `-desc`, a `-facts` list, `-bars`, `-dim` (classes in `styles.css`). It never takes the pointer. Its owner decides when it opens; `hoverHold` (`src/ui/actions/hoverHold.ts`) opens it on a resting pointer or a touch hold. | Row labels, the Grid's intention and intensity marks |
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
 | `StepArrows` | The arrows around a header's date, « ‹ date › »: the outer pair takes the view's big step, the inner pair one smaller unit. Pass `big` and `small` as "a week", "7 days", and it writes the tooltips ("Back a week"). | Every view's date navigator |
 | `Datepicker` | The calendar behind a header's date. | View headers |
