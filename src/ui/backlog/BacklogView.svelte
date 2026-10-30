@@ -20,7 +20,6 @@
 	import type { Association, BacklogEntry, ISODate } from "../../types";
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
-	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
 	import {
 		filterBySchedule,
@@ -35,7 +34,8 @@
 	import AssocGroup from "../timeline/AssocGroup.svelte";
 	import { createAssociation } from "../association/createAssociation";
 	import Datepicker from "../components/Datepicker.svelte";
-	import { autogrow, singleLine } from "../actions/autogrow";
+	import ItemRow from "../components/ItemRow.svelte";
+	import ItemText from "../components/ItemText.svelte";
 
 	interface BacklogFilter {
 		names: string[];
@@ -178,10 +178,12 @@
 	function isEditing(entry: BacklogEntry): boolean {
 		return editingLine === entry.source.line;
 	}
+	function stopEdit(entry: BacklogEntry) {
+		if (isEditing(entry)) editingLine = null;
+	}
+	// `value` is already on one line (ItemText).
 	function finishEdit(entry: BacklogEntry, value: string) {
-		editingLine = null;
-		const next = singleLine(value);
-		if (next !== entry.text) onSetText(entry, next);
+		if (value !== entry.text) onSetText(entry, value);
 	}
 
 	// ── Association picker (parent-owned so it isn't clipped) ──
@@ -350,43 +352,11 @@
 				{:else}
 					<ul class="entry-list">
 						{#each group.entries as entry (entry.source.line)}
-							<li class="entry-row" use:actionZone={{ anchor: "right", layout: "stack" }}>
-								<div class="entry-main">
+							<li class="entry-item">
+								{#snippet bullet()}
 									<span class="entry-bullet"></span>
-
-									{#if isEditing(entry)}
-										<!-- svelte-ignore a11y_autofocus -->
-										<!-- Styled to be indistinguishable from the static text
-										     (no box, no border) so editing feels like typing in
-										     place — same discipline as the task row. A growing
-										     textarea, so it wraps exactly as the two-line label
-										     did; Enter still commits. -->
-										<textarea
-											class="entry-input kairos-inline-input"
-											rows="1"
-											value={entry.text}
-											autofocus
-											use:autogrow
-											onclick={(e) => e.stopPropagation()}
-											onblur={(e) => finishEdit(entry, e.currentTarget.value)}
-											onkeydown={(e) => {
-												if (e.key === "Enter") {
-													e.preventDefault();
-													e.currentTarget.blur();
-												}
-												if (e.key === "Escape") {
-													e.currentTarget.value = entry.text;
-													e.currentTarget.blur();
-												}
-											}}
-										></textarea>
-									{:else}
-										<button class="entry-text" onclick={(e) => { e.stopPropagation(); startEdit(entry); }}>
-											<span class="entry-text-clamp">{entry.text}</span>
-										</button>
-									{/if}
-
-								</div>
+								{/snippet}
+								{#snippet actionBar()}
 								<!-- Action bar — overlaid on top of the (full-width) text,
 								     centred on the row's right edge. Woken from a triangle
 								     against that edge (see actions/actionZone.ts), mirroring
@@ -453,14 +423,14 @@
 										<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 									</button>
 									</div>
-
-								<!-- Resurface date shown as a metadata line under the item, on
-								     the same shared `.kairos-meta` classes as the task row's
-								     association line. It is always clickable, so `is-linked` is
-								     unconditional. A due date stands out (orange); a future one
-								     reads muted. -->
-								{#if entry.resurface}
-									<div class="kairos-meta-row is-indented">
+								{/snippet}
+								{#snippet resurfaceLine()}
+									<!-- Resurface date shown as a metadata line under the item, on
+									     the same shared `.kairos-meta` classes as the task row's
+									     association line. It is always clickable, so `is-linked` is
+									     unconditional. A due date stands out (orange); a future one
+									     reads muted. -->
+									{#if entry.resurface}
 										<button
 											class="entry-meta kairos-meta is-linked"
 											class:is-due={isDue(entry.resurface)}
@@ -472,8 +442,28 @@
 												{isDue(entry.resurface) ? "Resurfacing" : "Resurfaces"} {formatResurface(entry.resurface)}
 											</span>
 										</button>
-									</div>
-								{/if}
+									{/if}
+								{/snippet}
+								<ItemRow
+									size="m"
+									wraps
+									zone={{ anchor: "right", layout: "stack" }}
+									lead={bullet}
+									actions={actionBar}
+									meta={entry.resurface ? resurfaceLine : undefined}
+								>
+									<!-- Editing is the view's, not the row's: a new entry
+									     opens straight into its editor. -->
+									<ItemText
+										text={entry.text}
+										lines={2}
+										onCommit={(text) => finishEdit(entry, text)}
+										bind:editing={
+											() => isEditing(entry),
+											(on) => (on ? startEdit(entry) : stopEdit(entry))
+										}
+									/>
+								</ItemRow>
 
 								<!-- Popups anchored to this row -->
 								{#if resurfaceEntry && sameEntry(resurfaceEntry, entry)}
@@ -614,89 +604,18 @@
 		margin: 0;
 		padding: 0;
 	}
-	.entry-row {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		padding: 5px 8px;
-		border-radius: 7px;
+	/* The row is ItemRow (size "m"); the item holds it and its popups. */
+	.entry-item {
 		position: relative;
-		/* This row's leading control is an 11px bullet, not an 18px checkbox, so
-		   the metadata line indents less than the family default to stay under
-		   this row's own text. Same constant, set where the width is known. */
-		--kairos-meta-indent: 16px;
 	}
-	.entry-row:hover {
-		background: var(--background-modifier-hover);
-	}
-	.entry-main {
-		display: flex;
-		/* Items wrap to two lines; keep the bullet beside the first. */
-		align-items: flex-start;
-		gap: 6px;
-		min-width: 0;
-	}
+	/* The lead: a dot in an 18px box, like a checkbox's. */
 	.entry-bullet {
 		width: 5px;
 		height: 5px;
+		margin: 6.5px;
 		border-radius: 50%;
 		background: var(--text-faint);
 		flex-shrink: 0;
-		/* Centred on the first line of text (13px × 1.4 line height). */
-		margin: 7px 3px 0;
-	}
-	/* The text button and the edit input are styled identically so clicking to
-	   edit feels like putting the cursor on the item name — no box, no border,
-	   no box-shadow (Obsidian's default button shadow is explicitly killed). */
-	.entry-text {
-		display: block;
-		flex: 1;
-		min-width: 0;
-		font-size: 13px;
-		line-height: 1.4;
-		height: min-content;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		box-shadow: none;
-		padding: 0;
-		margin: 0;
-		cursor: text;
-		text-align: left;
-		white-space: normal;
-		overflow: hidden;
-	}
-	/* Wrap to two lines, then clamp with an ellipsis. Clamped on an inner span
-	   rather than the button itself, since buttons don't reliably honour
-	   -webkit-box layout. */
-	.entry-text-clamp {
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		overflow: hidden;
-		overflow-wrap: anywhere;
-	}
-	.entry-input {
-		flex: 1;
-		min-width: 0;
-		font-size: 13px;
-		line-height: 1.4;
-		font-family: inherit;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		border-radius: 0;
-		box-shadow: none;
-		outline: none;
-		padding: 0;
-		margin: 0;
-	}
-	.entry-input:focus,
-	.entry-input:focus-visible {
-		border: none;
-		box-shadow: none;
-		outline: none;
 	}
 	/* ── Resurface metadata line (under the item text) ── */
 	/* Size, colour, hover and the orange due state come from the shared

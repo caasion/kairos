@@ -1,5 +1,6 @@
 <script lang="ts">
-	// A self-contained task row.
+	// A self-contained task row, built on the shared item row (ItemRow, with
+	// ItemText for the description).
 	//
 	// It owns everything intrinsic to a task: the checkbox and its status, the
 	// editable description, and the (skeleton) association line beneath. What it
@@ -14,15 +15,14 @@
 
 	import { Menu, Notice } from "obsidian";
 	import type { Snippet } from "svelte";
-	import { autogrow, singleLine } from "../actions/autogrow";
 	import type { Association, Task, TaskStatus } from "../../types";
 	import type { Highlight } from "../../viewLinks";
 	import type { ResolvedAssociation } from "../../association";
-	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
 	import TaskCheckbox from "./TaskCheckbox.svelte";
-	import { longpress } from "../actions/longpress";
-	import { movedPastSlop, peek, peekIfTruncated } from "../actions/peek";
+	import AssocMeta from "../components/AssocMeta.svelte";
+	import ItemRow from "../components/ItemRow.svelte";
+	import ItemText from "../components/ItemText.svelte";
 
 	interface Props {
 		task: Task;
@@ -175,39 +175,11 @@
 		onSetStatus(task, "-");
 	}
 
-	// ── Inline description editing (single click) ────────────────────
+	// ── Inline description editing (single click, in ItemText) ──
 
-	let editing = $state(false);
-	let draft = $state("");
-	let inputEl = $state<HTMLInputElement | HTMLTextAreaElement>();
-
-	function beginEdit() {
-		if (editing) return;
-		draft = task.text;
-		editing = true;
-		// Focus after the input renders.
-		queueMicrotask(() => inputEl?.focus());
-	}
-
-	function commitEdit() {
-		if (!editing) return;
-		editing = false;
-		const next = singleLine(draft).trim();
+	function commitText(text: string) {
+		const next = text.trim();
 		if (next.length > 0 && next !== task.text) onSetText(task, next);
-	}
-
-	function cancelEdit() {
-		editing = false;
-	}
-
-	function onInputKeydown(event: KeyboardEvent) {
-		if (event.key === "Enter") {
-			event.preventDefault();
-			commitEdit();
-		} else if (event.key === "Escape") {
-			event.preventDefault();
-			cancelEdit();
-		}
 	}
 
 	// ── Actions (hover bar + context menu) ───────────────────────────
@@ -237,75 +209,9 @@
 		onDelete(task);
 	}
 
-	// ── Drag-to-nest (long-press the body) ───────────────────────────
-	// The long-press action fires a bare CustomEvent, so we stash the pointerdown
-	// that started the press and hand it to the parent when the press matures.
-	// The press is armed only on the text body — never the checkbox — so a hold
-	// on the checkbox still cancels the status (see TaskCheckbox), and a plain
-	// click on the body still edits.
-	let pressEvent: PointerEvent | undefined;
-	let textEl = $state<HTMLSpanElement>();
-	// True between the press maturing and the pointer either moving (→ drag) or
-	// lifting (→ peek at the full text).
-	let held = $state(false);
-
-	function armGrab(event: PointerEvent) {
-		if (event.button !== 0) return; // primary button only
-		pressEvent = event;
-	}
-
-	// The longpress action dispatches a bare `longpress` CustomEvent; listen for
-	// it directly (as TaskCheckbox does) rather than via an `on<name>` attribute,
-	// which Svelte's typed DOM attributes don't cover for custom events.
-	//
-	// A matured hold doesn't lift the task straight away: it waits to see what
-	// the pointer does next. Moving past the slop hands the drag to the parent;
-	// lifting in place opens the full-text peek instead (the touch equivalent of
-	// hovering a truncated task). Releasing in place therefore never drops the
-	// task back onto its own block, which used to rewrite the note.
-	$effect(() => {
-		const el = textEl;
-		if (!el) return;
-		let cleanup: (() => void) | undefined;
-
-		const finish = () => {
-			held = false;
-			pressEvent = undefined;
-			cleanup?.();
-			cleanup = undefined;
-		};
-
-		const onLongpress = () => {
-			const start = pressEvent;
-			if (!start) return;
-			held = true;
-			const move = (e: PointerEvent) => {
-				if (e.pointerId !== start.pointerId || !movedPastSlop(start, e)) return;
-				finish();
-				onGrab?.(e);
-			};
-			const up = (e: PointerEvent) => {
-				if (e.pointerId !== start.pointerId) return;
-				finish();
-				peekIfTruncated(el, { text: task.text });
-			};
-			const cancel = () => finish();
-			window.addEventListener("pointermove", move);
-			window.addEventListener("pointerup", up);
-			window.addEventListener("pointercancel", cancel);
-			cleanup = () => {
-				window.removeEventListener("pointermove", move);
-				window.removeEventListener("pointerup", up);
-				window.removeEventListener("pointercancel", cancel);
-			};
-		};
-
-		el.addEventListener("longpress", onLongpress);
-		return () => {
-			el.removeEventListener("longpress", onLongpress);
-			finish();
-		};
-	});
+	// Drag-to-nest is a hold on the text (ItemText's `onGrab`), never the
+	// checkbox, so a hold on the checkbox still cancels the status and a plain
+	// click on the text still edits.
 
 	function openContextMenu(event: MouseEvent) {
 		event.preventDefault();
@@ -381,22 +287,32 @@
 	}
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	class="k-task"
-	class:template
-	class:done
-	class:half
-	class:cancelled
-	class:lit-block={highlight === "block"}
-	class:lit-task={highlight === "task"}
-	style:--kairos-link-color={color}
-	bind:this={rowEl}
-	oncontextmenu={openContextMenu}
-	onpointerenter={() => setHovering(true)}
-	onpointerleave={() => setHovering(false)}
-	use:actionZone={{ layout: "stack" }}
->
+{#snippet checkbox()}
+	<TaskCheckbox
+		status={task.status}
+		{color}
+		inert={template}
+		onToggle={cycleStatus}
+		onCancel={cancelStatus}
+	/>
+{/snippet}
+
+{#snippet metaLine()}
+	<!-- Association and any extra metadata (e.g. the grid's block-nesting badge)
+	     share one line: association first, then the metadata. -->
+	{#if showAssocLine && association}
+		<AssocMeta
+			{association}
+			label={assocLabel}
+			{inherited}
+			linked={resolved?.resolved}
+			{onNavigate}
+		/>
+	{/if}
+	{@render meta?.()}
+{/snippet}
+
+{#snippet actionBar()}
 	<!-- Action bar. Shown only while the pointer is in a triangle at the row's
 	     top-right corner (see actions/actionZone.ts), not on any hover. On a
 	     mouse wake it is a vertical stack one button wide (`layout: "stack"`):
@@ -443,137 +359,38 @@
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
 		</button>
 	</div>
+{/snippet}
 
-	<div class="k-task-row" class:wrapped={lines > 1}>
-		<TaskCheckbox
-			status={task.status}
-			{color}
-			onToggle={template ? () => {} : cycleStatus}
-			onCancel={template ? () => {} : cancelStatus}
-		/>
-
-		{#if editing && lines > 1}
-			<!-- Wrapped text edits in a growing textarea so it wraps exactly as the
-			     label did; Enter still commits (onInputKeydown), so it stays one line
-			     of markdown. -->
-			<textarea
-				class="k-task-input kairos-inline-input"
-				rows="1"
-				bind:value={draft}
-				bind:this={inputEl}
-				onkeydown={onInputKeydown}
-				onblur={commitEdit}
-				use:autogrow
-			></textarea>
-		{:else if editing}
-			<input
-				class="k-task-input kairos-inline-input"
-				type="text"
-				bind:value={draft}
-				bind:this={inputEl}
-				onkeydown={onInputKeydown}
-				onblur={commitEdit}
-			/>
-		{:else}
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- Hover (mouse) or hold-and-release (touch) shows the full text when it's
-			     truncated; hold-and-move grabs the task to drag it between blocks; a
-			     plain click still edits. The checkbox is a separate element, so its own
-			     press/long-press (status cycle / cancel) is untouched. -->
-			<span
-				class="k-task-text"
-				class:grabbable={onGrab !== undefined}
-				class:held
-				role="textbox"
-				tabindex="0"
-				bind:this={textEl}
-				class:wrapped={lines > 1}
-				style:--k-task-lines={lines > 1 ? lines : undefined}
-				onclick={beginEdit}
-				onpointerdown={armGrab}
-				use:longpress={400}
-				use:peek={{ text: task.text, touch: false }}
-			>
-				{task.text}
-			</span>
-			{#if trailing}<span class="k-task-trailing" title={trailing}>{trailing}</span>{/if}
-		{/if}
-	</div>
-
-	{#if showAssocLine || meta}
-		<!-- Association and any extra metadata (e.g. the grid's block-nesting badge)
-		     share one inline row: association first, then the metadata. Both align
-		     under the task text, past the checkbox. -->
-		<div class="kairos-meta-row is-indented">
-			{#if showAssocLine && association}
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
-					class="kairos-meta"
-					class:is-inherited={inherited}
-					class:is-linked={resolved?.resolved}
-					title={resolved?.resolved ? "Ctrl+click to open" : undefined}
-					onclick={(e) => {
-						if ((e.ctrlKey || e.metaKey) && onNavigate) {
-							e.stopPropagation();
-							onNavigate();
-						}
-					}}
-				>
-					{#if association.kind === "domain"}
-						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-					{:else}
-						<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-					{/if}
-					<span class="kairos-meta-label">{assocLabel}</span>
-				</div>
-			{/if}
-
-			<!-- Extra metadata (e.g. the grid's block-nesting badge). -->
-			{@render meta?.()}
-		</div>
-	{/if}
-</div>
+<!-- The checkbox is its own element, so its press and long-press (cycle /
+     cancel) never reach the text's click-to-edit and hold-to-drag. -->
+<ItemRow
+	class="k-task"
+	square
+	wraps={lines > 1}
+	lit={highlight}
+	{color}
+	{trailing}
+	zone={{ layout: "stack" }}
+	bind:el={rowEl}
+	oncontextmenu={openContextMenu}
+	onpointerenter={() => setHovering(true)}
+	onpointerleave={() => setHovering(false)}
+	lead={checkbox}
+	actions={actionBar}
+	meta={showAssocLine || meta ? metaLine : undefined}
+>
+	<ItemText
+		text={task.text}
+		{lines}
+		mark={done || cancelled ? "struck" : half ? "half" : undefined}
+		onCommit={commitText}
+		{onGrab}
+	/>
+</ItemRow>
 
 <style>
-	/* Rectangular by design — no rounded corners anywhere in this component. */
-	/* A routine template: the checkbox is there for the look, not to tick. */
-	.k-task.template :global(.k-checkbox) {
-		pointer-events: none;
-		opacity: 0.55;
-	}
-
-	.k-task {
-		position: relative;
-		padding: 2px 4px;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		min-width: 0;
-	}
-
-	.k-task:hover {
-		background: var(--background-modifier-hover);
-	}
-
-	/* Hover link, in the task's domain color (the theme accent without one).
-	   A tint when its block is lit; a stronger tint and a bar on the left edge
-	   when it's the task itself. The same in every view. */
-	.k-task.lit-block {
-		background: color-mix(
-			in srgb,
-			var(--kairos-link-color, var(--interactive-accent)) 12%,
-			transparent
-		);
-	}
-	.k-task.lit-task {
-		background: color-mix(
-			in srgb,
-			var(--kairos-link-color, var(--interactive-accent)) 22%,
-			transparent
-		);
-		box-shadow: inset 3px 0 0 var(--kairos-link-color, var(--interactive-accent));
-	}
+	/* The row, its text and its tints are ItemRow's and ItemText's. What's
+	   left is the corner action bar. */
 
 	/* ── Hover action bar ── */
 	.k-task-actions {
@@ -617,116 +434,4 @@
 	.k-task-action-danger:hover {
 		color: var(--text-error);
 	}
-
-	/* ── Row: checkbox + text ── */
-	.k-task-row {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-	}
-
-	.k-task-text {
-		flex: 1;
-		min-width: 0;
-		font-size: 12px;
-		line-height: 1.4;
-		color: var(--text-normal);
-		cursor: text;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		/* No text selection so a long-press-to-drag doesn't paint a selection. */
-		user-select: none;
-		touch-action: none;
-	}
-
-	/* Multi-line: wrap, then clamp at `lines` with a trailing ellipsis. */
-	.k-task-text.wrapped {
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: var(--k-task-lines);
-		line-clamp: var(--k-task-lines);
-		white-space: normal;
-		overflow-wrap: anywhere;
-	}
-
-	/* Keep the checkbox on the first line when the text wraps. */
-	.k-task-row.wrapped {
-		align-items: flex-start;
-	}
-
-	/* The muted label after the task text. Same size and line height as the
-	   task text, so a wrapped row's top-aligned items share one baseline. */
-	.k-task-trailing {
-		font-size: 12px;
-		line-height: 1.4;
-		color: var(--text-muted);
-		white-space: nowrap;
-	}
-	/* With a trailing label the text sizes to its content, and the label's huge
-	   shrink factor makes it give way (and truncate) before the text does. */
-	.k-task-text:has(+ .k-task-trailing) {
-		flex: 0 1 auto;
-	}
-	.k-task-trailing {
-		flex: 0 1000 auto;
-		min-width: 0;
-		margin-left: auto;
-		padding-left: 4px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.k-task-text.grabbable {
-		cursor: grab;
-	}
-
-	/* A matured hold: tint the text so the press reads as registered before the
-	   pointer decides between drag (move) and peek (lift). */
-	.k-task-text.held {
-		border-radius: var(--radius-s);
-		background: var(--background-modifier-hover);
-	}
-
-	.k-task.done .k-task-text,
-	.k-task.cancelled .k-task-text {
-		text-decoration: line-through;
-		opacity: 0.5;
-	}
-
-	.k-task.half .k-task-text {
-		opacity: 0.9;
-	}
-
-	/* The edit input is styled to be indistinguishable from the static text:
-	   same box, no border, no background, no extra padding. Editing should feel
-	   like typing in place, not opening a field. */
-	.k-task-input {
-		flex: 1;
-		min-width: 0;
-		font-size: 12px;
-		line-height: 1.4;
-		font-family: inherit;
-		color: var(--text-normal);
-		margin: 0;
-		padding: 0;
-		border: none;
-		border-radius: 0;
-		background: transparent;
-		box-shadow: none;
-		outline: none;
-	}
-
-	.k-task-input:focus,
-	.k-task-input:focus-visible {
-		border: none;
-		box-shadow: none;
-		outline: none;
-	}
-
-	/* The meta line under the task text (association + whatever the parent adds)
-	   is styled by the shared `.kairos-meta` family in styles.css, so the grid's
-	   badge, the timeline's time+association line and this one stay one system.
-	   Nothing about it is local to this component. */
 </style>
