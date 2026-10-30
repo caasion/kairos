@@ -32,6 +32,7 @@
 	import { RuleModal } from "./RuleModal";
 	import type { Readable, Writable } from "svelte/store";
 	import type { RoutinesMode } from "../../KairosRoutinesView";
+	import type { KairosSettings } from "../../settings";
 	import type { RoutinesStore } from "../../routines/routinesStore";
 	import type { OwnerActive } from "../../routines/owners";
 	import { routineAssoc } from "../../routines/apply";
@@ -62,9 +63,11 @@
 		active$: Readable<OwnerActive>;
 		/** List or Week; the view saves it with the workspace. */
 		mode$: Writable<RoutinesMode>;
+		/** For the Week tab's timeline geometry, shared with the Week view. */
+		settings$: Readable<KairosSettings>;
 	}
 
-	let { app, index, store, active$, mode$ }: Props = $props();
+	let { app, index, store, active$, mode$, settings$ }: Props = $props();
 
 	// A routine whose project or domain isn't active today is paused (decision
 	// 87): greyed here, and offered nowhere until its owner is active again.
@@ -377,7 +380,7 @@
 
 	{#if mode === "week"}
 	<div class="routines-scroll is-week">
-		<RoutinesWeek routines={parsed.routines} {resolve} {isPaused} onSelect={(r) => void showInList(r)} />
+		<RoutinesWeek routines={parsed.routines} {resolve} {settings$} {isPaused} path={store.filePath} onSelect={(r) => void showInList(r)} />
 	</div>
 	{:else}
 	<div class="routines-scroll" bind:this={listEl}>

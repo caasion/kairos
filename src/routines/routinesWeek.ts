@@ -21,23 +21,20 @@ export interface WeekDay {
 	overlaps: Set<BlockRoutine>;
 	/** Minutes the day's blocks cover, overlapping time counted once. */
 	minutes: number;
-	/** How many task routines sit in each block on this day. */
-	taskCount: Map<BlockRoutine, number>;
+	/** The task routines that sit in each block on this day, in file order. */
+	tasks: Map<BlockRoutine, TaskRoutine[]>;
 }
 
 export interface RoutinesWeek {
 	/** Monday first. */
 	days: WeekDay[];
-	/** The hours the week's blocks span, padded to whole hours. */
-	startHour: number;
-	endHour: number;
+	/** The hours the week's blocks span, padded to whole hours; absent with no blocks. */
+	span?: { startHour: number; endHour: number };
 	/** Weekly task routines that sit in no timed block on any of their days. */
 	untimed: number;
 	/** Monthly routines, which no weekday holds. */
 	monthly: number;
 }
-
-const DEFAULT_HOURS = { startHour: 8, endHour: 18 };
 
 function onWeekday(r: Routine, day: number): boolean {
 	return r.rule.kind === "weekly" && r.rule.days.includes(day);
@@ -51,20 +48,20 @@ export function routinesWeek(routines: Routine[]): RoutinesWeek {
 		const own = blocks
 			.filter((b) => onWeekday(b, day))
 			.sort((a, b) => a.time.start - b.time.start || a.time.end - b.time.end || a.line - b.line);
-		const taskCount = new Map<BlockRoutine, number>();
+		const inBlock = new Map<BlockRoutine, TaskRoutine[]>();
 		for (const t of tasks) {
 			if (!t.home || !onWeekday(t, day)) continue;
 			const home = own.find((b) => b.title === t.home);
-			if (home) taskCount.set(home, (taskCount.get(home) ?? 0) + 1);
+			if (home) inBlock.set(home, [...(inBlock.get(home) ?? []), t]);
 		}
-		return { day, blocks: own, overlaps: overlapping(own), minutes: coveredMinutes(own), taskCount };
+		return { day, blocks: own, overlaps: overlapping(own), minutes: coveredMinutes(own), tasks: inBlock };
 	});
 
-	let { startHour, endHour } = DEFAULT_HOURS;
+	let span: RoutinesWeek["span"];
 	if (blocks.length > 0) {
-		startHour = Math.floor(Math.min(...blocks.map((b) => b.time.start)) / 60);
-		endHour = Math.min(24, Math.ceil(Math.max(...blocks.map((b) => b.time.end)) / 60));
-		if (endHour <= startHour) endHour = Math.min(24, startHour + 1);
+		const startHour = Math.floor(Math.min(...blocks.map((b) => b.time.start)) / 60);
+		const endHour = Math.min(24, Math.ceil(Math.max(...blocks.map((b) => b.time.end)) / 60));
+		span = { startHour, endHour: Math.max(endHour, Math.min(24, startHour + 1)) };
 	}
 
 	const inABlock = (t: TaskRoutine) =>
@@ -74,8 +71,7 @@ export function routinesWeek(routines: Routine[]): RoutinesWeek {
 
 	return {
 		days: days.sort((a, b) => mondayFirst(a.day) - mondayFirst(b.day)),
-		startHour,
-		endHour,
+		...(span ? { span } : {}),
 		untimed: tasks.filter((t) => !inABlock(t)).length,
 		monthly: routines.filter((r) => r.rule.kind === "monthly").length,
 	};

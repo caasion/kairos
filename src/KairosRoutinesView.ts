@@ -61,6 +61,7 @@ export class KairosRoutinesView extends ItemView {
 				store: this.plugin.routines,
 				active$: this.plugin.routinesFeed.active$,
 				mode$: this.mode$,
+				settings$: this.plugin.settings$,
 			},
 		});
 	}

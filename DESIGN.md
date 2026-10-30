@@ -49,6 +49,10 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
 | `Datepicker` | The date navigator and its calendar. | View headers |
 | `Portal` | Renders its children at `<body>`, for popovers that mustn't be clipped. | Popovers, pickers |
+| `DateCard` | A day column's header card: an uppercase label over a large serif value, badges in its bottom-right corner, `today` tint and underline. A button with `onclick`, a plain card without. | Week view date headers, Routines week day headers |
+| `HourGutter` | The hour labels down the left of a multi-day timeline; `corner` is the matching empty cell in the header row. | Week view, Routines week |
+| `HourLines` | The faint hour lines drawn once behind a multi-day timeline's columns. | Week view, Routines week |
+| `TimelineBlock` (in `src/ui/timeline/`) | A block on a timeline, with its time, association and tasks. `readonly` draws the same block with nothing editable and `onSelect` on click; `muted` greys it. | Day and Week views; the Routines week, read-only |
 
 ## Next
 
@@ -58,3 +62,4 @@ These still exist as several copies and are the next components to make, in this
 2. **Pill and count**: tray pills, header badges, status tags and the counts beside names.
 3. **Group heading**: move the Projects view's domain headers and the Routines view's group headers onto `AssocGroup`.
 4. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.
+5. **Date card and hour gutter everywhere**: the Grid's date headers are still their own copy of `DateCard` (with a Day-view dot and a spring highlight to add as props), and the Day view still draws its own hour gutter and lines.

@@ -42,6 +42,9 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "./LeftoverTask.svelte";
 	import HeaderBadge from "./HeaderBadge.svelte";
+	import DateCard from "../components/DateCard.svelte";
+	import HourGutter from "../components/HourGutter.svelte";
+	import HourLines from "../components/HourLines.svelte";
 	import AssocGroup from "./AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import { leftOpenLabel, todayLeftovers } from "./todayLeftovers";
@@ -53,12 +56,7 @@
 	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
-	import {
-		geometryFromSettings,
-		gridHeight,
-		minutesToOffset,
-		visibleHours,
-	} from "./layout";
+	import { geometryFromSettings } from "./layout";
 	import {
 		anchorFor,
 		clampSpan,
@@ -118,8 +116,6 @@
 
 	// Shared vertical geometry — one time axis for the whole week.
 	const geo = $derived(geometryFromSettings(settings));
-	const hours = $derived(visibleHours(geo));
-	const bodyHeight = $derived(gridHeight(geo));
 
 	// ── The week window ──
 	// Default window is [today − before, today + after] from settings. It's still
@@ -892,32 +888,26 @@
 
 	<!-- Column titles row, aligned with the columns below (offset by the gutter). -->
 	<div class="week-colheads">
-		<div class="week-gutter-spacer"></div>
+		<HourGutter {geo} corner />
 		{#each dates as date (date)}
 			{@const offered = routinesByDate.get(date)}
 			{@const usCount = unscheduledByDate[date]?.length ?? 0}
 			{@const inCount = inboxCountFor(date)}
-			<div class="col-head-wrap">
-				<button
-					class="col-head date-card"
-					class:today={isToday(date)}
-					title="Ctrl+click to open the daily note"
-					onclick={(e) => {
-						e.stopPropagation();
-						if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
-					}}
-				>
-					<span class="dow-label">{dowLabel(date)}</span>
-					<span class="date-number">{dayNumber(date)}</span>
-					{#if isToday(date)}
-						<span class="today-indicator"></span>
-					{/if}
-				</button>
+			<DateCard
+				label={dowLabel(date)}
+				value={dayNumber(date)}
+				today={isToday(date)}
+				title="Ctrl+click to open the daily note"
+				onclick={(e) => {
+					e.stopPropagation();
+					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
+				}}
+			>
+				{#snippet badges()}
 				<!-- The day's lists as badges on its header — Unscheduled,
 				     Inbox (yesterday's open tasks on today, and resurfacing entries),
 				     routines — instead of strips that push every column down. -->
 				{#if usCount > 0 || inCount > 0 || (offered && offered.count > 0)}
-					<div class="col-badges">
 						{#if usCount > 0}
 							<HeaderBadge
 								title="Unscheduled"
@@ -951,9 +941,9 @@
 								onAddAll={() => routineActions.addAll(date)}
 							/>
 						{/if}
-					</div>
 				{/if}
-			</div>
+				{/snippet}
+			</DateCard>
 		{/each}
 	</div>
 
@@ -1018,21 +1008,11 @@
 	<div class="week-scroll" data-drag-scroll>
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
-			<div class="week-gutter" style={`height: ${bodyHeight}px;`}>
-				{#each hours as hour (hour)}
-					<div class="day-hour-label" style={`top: ${minutesToOffset(hour * 60, geo)}px;`}>
-						{String(hour).padStart(2, "0")}:00
-					</div>
-				{/each}
-			</div>
+			<HourGutter {geo} />
 
 			<div class="week-columns">
 				<!-- Grid lines drawn once across all columns, behind them. -->
-				<div class="week-lines" style={`height: ${bodyHeight}px;`}>
-					{#each hours as hour (hour)}
-						<div class="day-hour-line" style={`top: ${minutesToOffset(hour * 60, geo)}px;`}></div>
-					{/each}
-				</div>
+				<HourLines {geo} />
 
 				{#each dates as date (date)}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1263,45 +1243,6 @@
 		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
 	}
 
-	.week-gutter-spacer {
-		width: 46px;
-		min-width: 46px;
-		/* Carry the gutter's vertical divider up through the header so it reads as one
-		   continuous line into the body below, rather than a stray line that begins at
-		   the header's bottom edge. The bottom rule lives here (and on the col-heads)
-		   so it stops at the real content extents instead of bleeding into the padded
-		   flex edges. */
-		border-right: 1px solid var(--background-modifier-border);
-		border-bottom: 1px solid var(--background-modifier-border);
-		/* The strip's outer top corners round like the Grid's (its corner cell
-		   and last card); everything between is square. */
-		border-radius: 8px 0 0 0;
-		background: var(--background-secondary);
-	}
-
-	/* Holos-style date card: an uppercase day-of-week label over a large serif
-	   day number, left-aligned, one per column. Kept identical to the Grid view's
-	   .grid-colhead.date-card so the two headers read the same.
-
-	   The two text lines flow normally in the button; the today underline is
-	   absolutely positioned in the reserved bottom strip (padding-bottom) so it
-	   never overlaps the number. */
-	.col-head-wrap {
-		position: relative;
-		flex: 1;
-		min-width: 0;
-		display: flex;
-	}
-	/* Bottom-right of the date card, as in the Grid. */
-	.col-badges {
-		position: absolute;
-		right: 6px;
-		bottom: 6px;
-		display: flex;
-		align-items: center;
-		gap: 3px;
-	}
-
 	/* The "Left open on …" heading inside a day's Inbox list. */
 	.inbox-left-head {
 		display: flex;
@@ -1317,65 +1258,6 @@
 		flex: 1;
 	}
 
-	.col-head.date-card {
-		position: relative;
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 1px;
-		background: var(--background-secondary);
-		border: none;
-		border-radius: 0;
-		/* The header's bottom rule; carried on each column cell so it spans exactly the
-		   body's column extents (no overhang past the timeline). */
-		border-bottom: 1px solid var(--background-modifier-border);
-		padding: 8px 8px 12px 12px;
-		cursor: pointer;
-		box-shadow: none;
-		transition: filter 150ms ease;
-		height: 100%;
-	}
-
-	.col-head-wrap:last-child > .col-head.date-card {
-		border-top-right-radius: 8px;
-	}
-	.col-head.date-card:hover {
-		filter: brightness(1.15);
-	}
-
-	.col-head .dow-label {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 1px;
-		line-height: 1.4;
-	}
-
-	.col-head .date-number {
-		font-family: var(--kairos-font-serif);
-		font-size: 24px;
-		font-weight: 400;
-		color: var(--text-normal);
-		line-height: 1.1;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.col-head .today-indicator {
-		position: absolute;
-		left: 10%;
-		bottom: -2px;
-		width: 80%;
-		height: 2px;
-		background: var(--interactive-accent);
-		border-radius: 1px;
-	}
-
-	.col-head.today {
-		background: color-mix(in srgb, var(--interactive-accent) 5%, var(--background-secondary));
-	}
 	/* ── Body ── */
 	.week-scroll {
 		flex: 1;
@@ -1392,45 +1274,11 @@
 		min-width: 0;
 	}
 
-	.week-gutter {
-		width: 46px;
-		min-width: 46px;
-		position: relative;
-		border-right: 1px solid var(--background-modifier-border);
-		background: var(--background-secondary);
-	}
-
-	.day-hour-label {
-		position: absolute;
-		right: 6px;
-		transform: translateY(-0.5em);
-		font-size: 10px;
-		color: var(--text-muted);
-		font-variant-numeric: tabular-nums;
-	}
-
 	.week-columns {
 		position: relative;
 		flex: 1;
 		min-width: 0;
 		display: flex;
-	}
-
-	.week-lines {
-		position: absolute;
-		left: 0;
-		right: 0;
-		top: 0;
-		pointer-events: none;
-		z-index: 0;
-	}
-
-	.day-hour-line {
-		position: absolute;
-		left: 0;
-		right: 0;
-		border-top: 1px solid var(--background-modifier-border);
-		opacity: 0.5;
 	}
 
 	.week-col {

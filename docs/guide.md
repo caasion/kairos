@@ -119,10 +119,10 @@ The Routines view groups routines by when they repeat. Select a time or title to
 
 **See how your routines fit**
 
-Select **Week** at the top of the Routines view to see the days your routines make, Monday to Sunday. It doesn't change anything; it shows:
+Select **Week** at the top of the Routines view to see the days your routines make, Monday to Sunday, drawn like the Week view. It doesn't change anything; it shows:
 
-- How much of each day your blocks take, under the day's name. Time where blocks overlap is counted once.
-- Blocks that overlap, side by side with an orange edge, and **Overlap** under the day's name.
+- How much of each day your blocks take, in the day's header. Time where blocks overlap is counted once.
+- Blocks that overlap, side by side, and a warning badge in the day's header. Point at it to see which blocks overlap.
 - Free time, as the empty space between blocks.
 
 Tasks with no block and monthly routines can't sit on a weekday, so the line above the week only counts them. Select a block to see it in the list, where you can edit it. Select **List** to go back.

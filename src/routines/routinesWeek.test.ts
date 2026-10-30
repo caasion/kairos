@@ -48,17 +48,18 @@ describe("routinesWeek", () => {
 		expect(w.days[6]!.minutes).toBe(0);
 	});
 
-	it("counts the tasks in each block on that day", () => {
+	it("puts each block's tasks in it on that day", () => {
 		const tue = week().days[1]!;
 		const gym = tue.blocks.find((b) => b.title === "Gym")!;
 		const morning = tue.blocks.find((b) => b.title === "Morning Routine")!;
-		expect(tue.taskCount.get(gym)).toBe(1);
-		expect(tue.taskCount.get(morning)).toBe(1);
+		expect(tue.tasks.get(gym)!.map((t) => t.text)).toEqual(["Stretch"]);
+		expect(tue.tasks.get(morning)!.map((t) => t.text)).toEqual(["Take meds"]);
+		expect(week().days[0]!.tasks.has(gym)).toBe(false);
 	});
 
 	it("spans the hours the week's blocks use, leaving monthly ones out", () => {
 		const w = week();
-		expect([w.startHour, w.endHour]).toEqual([7, 14]);
+		expect(w.span).toEqual({ startHour: 7, endHour: 14 });
 	});
 
 	it("counts what no weekday column can draw", () => {
@@ -68,9 +69,9 @@ describe("routinesWeek", () => {
 		expect(w.monthly).toBe(1);
 	});
 
-	it("falls back to working hours with no blocks", () => {
+	it("has no span with no blocks", () => {
 		const w = routinesWeek([]);
-		expect([w.startHour, w.endHour]).toEqual([8, 18]);
+		expect(w.span).toBeUndefined();
 		expect(w.days.every((d) => d.blocks.length === 0)).toBe(true);
 	});
 });

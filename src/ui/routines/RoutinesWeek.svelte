@@ -1,52 +1,115 @@
 <script lang="ts">
 	// The Routines view's Week tab: the days your weekly routines produce,
-	// Monday to Sunday, read-only (decision 119). Each column header says how
-	// much of the day the blocks take and whether any collide; colliding blocks
-	// sit side by side, laid out by the timeline's own `layoutBlocks`, with an
-	// orange edge. Free time is the empty space. Selecting a block shows it in
-	// the list, where routines are edited.
+	// Monday to Sunday, read-only (decision 119). Drawn with the Week view's own
+	// pieces, so it reads like the Week view: the DateCard header (the weekday
+	// over the hours its blocks take), the hour gutter and lines, and
+	// TimelineBlock in its read-only mode, laid out by `layoutBlocks`, so
+	// overlapping blocks sit side by side. A day with overlaps gets a warning
+	// badge listing them. Free time is the empty space. Selecting a block shows
+	// it in the list, where routines are edited.
 
-	import type { Block } from "../../types";
+	import type { Readable } from "svelte/store";
+	import type { Block, ResolvedTask } from "../../types";
+	import type { KairosSettings } from "../../settings";
 	import type { Resolver } from "../../index";
-	import type { BlockRoutine, Routine } from "../../routines/routinesFile";
+	import type { BlockRoutine, Routine, TaskRoutine } from "../../routines/routinesFile";
 	import { formatDuration, routinesWeek } from "../../routines/routinesWeek";
 	import { weekdayName } from "../../routines/rules";
 	import { formatTimeRange } from "../../parser";
-	import { gridHeight, layoutBlocks, minutesToOffset, visibleHours, type TimelineGeometry } from "../timeline/layout";
-	import { peek } from "../actions/peek";
+	import { geometryFromSettings, layoutBlocks, type TimelineGeometry } from "../timeline/layout";
+	import DateCard from "../components/DateCard.svelte";
+	import HourGutter from "../components/HourGutter.svelte";
+	import HourLines from "../components/HourLines.svelte";
+	import HeaderBadge from "../timeline/HeaderBadge.svelte";
+	import TimelineBlock from "../timeline/TimelineBlock.svelte";
+	import { icon } from "../actions/icon";
 
 	interface Props {
 		routines: Routine[];
 		resolve: Resolver;
+		settings$: Readable<KairosSettings>;
 		isPaused: (r: Routine) => boolean;
 		/** Show this block routine in the list. */
 		onSelect: (r: BlockRoutine) => void;
+		/** Where the routines live, for the stand-in blocks' source. */
+		path: string;
 	}
 
-	let { routines, resolve, isPaused, onSelect }: Props = $props();
+	let { routines, resolve, settings$, isPaused, onSelect, path }: Props = $props();
 
 	const week = $derived(routinesWeek(routines));
-	const geo = $derived<TimelineGeometry>({
-		startHour: week.startHour,
-		endHour: week.endHour,
-		hourHeight: 40,
-		topPad: 0,
+
+	// The Week view's geometry (hour height, hours shown), widened to fit any
+	// routine outside those hours.
+	const geo = $derived.by<TimelineGeometry>(() => {
+		const base = geometryFromSettings($settings$);
+		const span = week.span;
+		if (!span) return base;
+		return {
+			...base,
+			startHour: Math.min(base.startHour, span.startHour),
+			endHour: Math.max(base.endHour, span.endHour),
+		};
 	});
 
-	/** A day's blocks placed in lanes, each paired back with its routine. */
-	function placed(blocks: BlockRoutine[]) {
-		const byLine = new Map(blocks.map((b) => [b.line, b]));
-		const asBlocks: Block[] = blocks.map((b) => ({
-			source: { path: "", line: b.line },
-			title: b.title,
+	/** A block routine as the timeline draws a block. */
+	function asBlock(r: BlockRoutine): Block {
+		return {
+			source: { path, line: r.line },
+			title: r.title,
+			...(r.assoc ? { assoc: r.assoc } : {}),
 			tasks: [],
 			scheduled: true,
-			time: b.time,
-		}));
-		return layoutBlocks(asBlocks, geo).map((p) => ({ ...p, routine: byLine.get(p.block.source.line)! }));
+			time: r.time,
+		};
 	}
 
-	const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
+	/** Its tasks as the timeline draws them: templates, inheriting the block's association. */
+	function asTasks(tasks: TaskRoutine[], block: Block): ResolvedTask[] {
+		return tasks.map((t) => {
+			const owner = t.assoc ?? t.inherited ?? block.assoc;
+			return {
+				source: { path, line: t.line },
+				text: t.text,
+				status: " ",
+				...(t.assoc ? { assoc: t.assoc } : {}),
+				date: "",
+				block,
+				...(owner ? { owner } : {}),
+				scheduled: true,
+			};
+		});
+	}
+
+	/** A day's blocks placed in lanes, each with its routine and tasks. */
+	function placed(day: (typeof week.days)[number]) {
+		const byLine = new Map(day.blocks.map((r) => [r.line, r]));
+		return layoutBlocks(day.blocks.map(asBlock), geo).map((p) => {
+			const routine = byLine.get(p.block.source.line)!;
+			return { ...p, routine, tasks: asTasks(day.tasks.get(routine) ?? [], p.block) };
+		});
+	}
+
+	// A read-only block never calls its write-backs.
+	const noop = () => {};
+	const INERT = {
+		onNavigate: noop,
+		onGestureStart: noop,
+		onDelete: noop,
+		onSetTaskStatus: noop,
+		onSetTaskText: noop,
+		onDeleteTask: noop,
+		onEditTaskAssoc: noop,
+		onNestTask: noop,
+		onMoveTaskToBacklog: noop,
+		onTaskGrab: noop,
+		onSetBlockTitle: noop,
+		onSetBlockTime: noop,
+		onAddTask: noop,
+		onAddNote: noop,
+		onSetNoteText: noop,
+		onEditAssoc: noop,
+	};
 
 	const extras = $derived(
 		[
@@ -56,178 +119,105 @@
 	);
 </script>
 
+{#snippet overlapIcon()}
+	<span class="rw-icon" use:icon={"alert-triangle"}></span>
+{/snippet}
+
 <div class="rw">
 	{#if extras.length > 0}
 		<div class="rw-extras">Also {extras.join(" · ")}, not shown here.</div>
 	{/if}
-	<div class="rw-grid">
-		<div class="rw-corner"></div>
-		{#each week.days as d (d.day)}
-			<div class="rw-head">
-				<span class="rw-day">{weekdayName(d.day)}</span>
-				<span class="rw-hours">{d.minutes > 0 ? formatDuration(d.minutes) : "Free"}</span>
-				{#if d.overlaps.size > 0}<span class="rw-overlap-tag">Overlap</span>{/if}
-			</div>
-		{/each}
 
-		<div class="rw-gutter" style:height="{gridHeight(geo)}px">
-			{#each visibleHours(geo) as h (h)}
-				<span class="rw-hour" style:top="{minutesToOffset(h * 60, geo)}px">{hourLabel(h)}</span>
+	<div class="rw-heads">
+		<HourGutter {geo} corner />
+		{#each week.days as d (d.day)}
+			<DateCard label={weekdayName(d.day)} value={d.minutes > 0 ? formatDuration(d.minutes) : "Free"}>
+				{#snippet badges()}
+					{#if d.overlaps.size > 0}
+						<HeaderBadge title="Overlaps" dateLabel={weekdayName(d.day)} count={d.overlaps.size} icon={overlapIcon} tone="warn">
+							{#each d.blocks.filter((b) => d.overlaps.has(b)) as b (b.line)}
+								<div class="kairos-meta-row rw-overlap-row">
+									<span class="kairos-meta">{formatTimeRange(b.time)}</span>
+									<span class="rw-overlap-title">{b.title}</span>
+								</div>
+							{/each}
+						</HeaderBadge>
+					{/if}
+				{/snippet}
+			</DateCard>
+		{/each}
+	</div>
+
+	<div class="rw-body">
+		<HourGutter {geo} />
+		<div class="rw-columns">
+			<HourLines {geo} />
+			{#each week.days as d (d.day)}
+				<div class="rw-col">
+					{#each placed(d) as p (p.routine.line)}
+						<TimelineBlock
+							block={p.block}
+							tasks={p.tasks}
+							top={p.top}
+							height={p.height}
+							column={p.column}
+							lanes={p.lanes}
+							{resolve}
+							readonly
+							muted={isPaused(p.routine)}
+							onSelect={() => onSelect(p.routine)}
+							{...INERT}
+						/>
+					{/each}
+				</div>
 			{/each}
 		</div>
-		{#each week.days as d (d.day)}
-			<div class="rw-col" style:height="{gridHeight(geo)}px">
-				{#each visibleHours(geo) as h (h)}
-					<div class="rw-line" style:top="{minutesToOffset(h * 60, geo)}px"></div>
-				{/each}
-				{#each placed(d.blocks) as p (p.routine.line)}
-					{@const r = p.routine}
-					{@const color = r.assoc ? resolve(r.assoc).color : undefined}
-					{@const tasks = d.taskCount.get(r) ?? 0}
-					<div
-						class="rw-block"
-						role="button"
-						tabindex="0"
-						class:is-overlap={d.overlaps.has(r)}
-						class:is-paused={isPaused(r)}
-						style:top="{p.top}px"
-						style:height="{Math.max(p.height, 14)}px"
-						style:left="calc({(p.column / p.lanes) * 100}% + 1px)"
-						style:width="calc({100 / p.lanes}% - 2px)"
-						style:--rw-color={color}
-						onclick={() => onSelect(r)}
-						onkeydown={(e) => {
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								onSelect(r);
-							}
-						}}
-					>
-						<span class="rw-title" use:peek>{r.title}</span>
-						{#if p.height >= 28}
-							<span class="rw-meta">{formatTimeRange(r.time)}{tasks > 0 ? ` · ${tasks} task${tasks === 1 ? "" : "s"}` : ""}</span>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		{/each}
 	</div>
 </div>
 
 <style>
-	.rw {
-		padding: 0 var(--size-4-3) var(--size-4-4);
-	}
 	.rw-extras {
 		font-size: var(--kairos-text-label);
 		color: var(--text-faint);
-		padding: 0 var(--size-4-1) var(--size-4-2);
+		padding: 0 var(--size-4-3) var(--size-4-2);
 	}
-	.rw-grid {
-		display: grid;
-		grid-template-columns: auto repeat(7, minmax(0, 1fr));
-		column-gap: var(--size-2-1);
-	}
-	.rw-head {
+	/* Laid out like the Week view: a header row of cards over the gutter and
+	   the day columns, both inset 10px. The header stays in view as the hours
+	   scroll under it. */
+	.rw-heads {
 		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--size-2-1);
-		padding-bottom: var(--size-4-2);
+		padding: 0 10px;
 		position: sticky;
 		top: 0;
+		z-index: 5;
 		background: var(--background-primary);
-		z-index: 2;
 	}
-	.rw-corner {
-		position: sticky;
-		top: 0;
-		background: var(--background-primary);
-		z-index: 2;
+	.rw-body {
+		display: flex;
+		padding: 0 10px var(--size-4-4);
+		min-width: 0;
 	}
-	.rw-day {
-		font-size: var(--kairos-text-label);
-		font-weight: var(--font-semibold);
-		color: var(--text-muted);
-		text-transform: uppercase;
-	}
-	.rw-hours {
-		font-size: var(--kairos-text-body);
-		color: var(--text-normal);
-		font-variant-numeric: tabular-nums;
-	}
-	.rw-overlap-tag {
-		font-size: var(--kairos-text-meta);
-		color: var(--color-orange);
-	}
-	.rw-gutter {
+	.rw-columns {
 		position: relative;
-		width: 3em;
-	}
-	.rw-hour {
-		position: absolute;
-		right: var(--size-4-1);
-		transform: translateY(-50%);
-		font-size: var(--kairos-text-meta);
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
-	}
-	.rw-hour:first-child {
-		transform: none;
+		flex: 1;
+		min-width: 0;
+		display: flex;
 	}
 	.rw-col {
+		flex: 1;
+		min-width: 0;
 		position: relative;
-		background: var(--background-secondary);
-		border-radius: var(--kairos-radius-s);
+		border-left: 1px solid var(--background-modifier-border);
 	}
-	.rw-line {
-		position: absolute;
-		left: 0;
-		right: 0;
-		border-top: 1px solid var(--background-modifier-border);
-	}
-	.rw-line:first-child {
-		display: none;
-	}
-	.rw-block {
-		position: absolute;
+	.rw-icon {
 		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		justify-content: flex-start;
-		padding: var(--size-2-1) var(--size-2-2);
-		box-sizing: border-box;
-		overflow: hidden;
-		cursor: pointer;
-		border: 1px solid var(--background-modifier-border);
-		border-left: var(--kairos-accent-width) solid var(--rw-color, var(--interactive-accent));
-		border-radius: var(--kairos-radius-s);
-		background: color-mix(in srgb, var(--rw-color, var(--interactive-accent)) 10%, var(--background-primary));
+		--icon-size: var(--icon-xs);
+	}
+	.rw-overlap-row {
+		padding: var(--size-2-1) var(--size-4-1);
+	}
+	.rw-overlap-title {
+		font-size: var(--kairos-text-body);
 		color: var(--text-normal);
-	}
-	.rw-block:hover {
-		background: color-mix(in srgb, var(--rw-color, var(--interactive-accent)) 20%, var(--background-primary));
-	}
-	.rw-block.is-overlap {
-		border-color: var(--color-orange);
-		border-left-color: var(--color-orange);
-	}
-	.rw-block.is-paused {
-		opacity: 0.5;
-	}
-	.rw-title {
-		max-width: 100%;
-		font-size: var(--kairos-text-label);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.rw-meta {
-		max-width: 100%;
-		font-size: var(--kairos-text-meta);
-		color: var(--text-muted);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 </style>
