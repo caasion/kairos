@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { TFile } from "obsidian";
+	import InlineText from "../inline/InlineText.svelte";
 	import type { App } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Readable, Unsubscriber } from "svelte/store";
@@ -1718,7 +1719,7 @@
 		style={`left: ${taskDrag.ghostX + 12}px; top: ${taskDrag.ghostY + 8}px;`}
 	>
 		{#if taskDrag.duplicate}<span class="ghost-copy-badge">+</span>{/if}
-		{taskDrag.label}
+		<span class="kairos-inline"><InlineText text={taskDrag.label} /></span>
 	</div>
 {/if}
 

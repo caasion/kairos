@@ -19,6 +19,7 @@
 	// drag it to another row or day.
 
 	import DraftTask from "../task/DraftTask.svelte";
+	import InlineText from "../inline/InlineText.svelte";
 	import { Menu } from "obsidian";
 	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
@@ -341,7 +342,7 @@
 				<svg class="grid-cell-landed-box" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
 					<rect x="1" y="1" width="14" height="14" rx="3" ry="3" />
 				</svg>
-				<span class="grid-cell-landed-text">{l.text}</span>
+				<span class="grid-cell-landed-text kairos-inline"><InlineText text={l.text} /></span>
 				<span class="grid-cell-landed-bar"></span>
 			</div>
 		{/each}

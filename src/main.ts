@@ -23,6 +23,7 @@ import { RoutinesStore } from './routines/routinesStore';
 import { registerRoutines } from './routines/register';
 import { RoutinesFeed } from './routines/routinesFeed';
 import { ViewLinks } from './viewLinks';
+import { HOVER_SOURCE, notesChanged, setLinkApp } from './ui/inline/links';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -104,6 +105,15 @@ export default class Kairos extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		// Links in item text (ui/inline/links.ts): open, preview and resolve
+		// through this app, and restyle when notes come, go or move.
+		setLinkApp(this.app);
+		this.register(() => setLinkApp(undefined));
+		this.registerHoverLinkSource(HOVER_SOURCE, { display: 'Kairos', defaultMod: true });
+		this.registerEvent(this.app.vault.on('create', notesChanged));
+		this.registerEvent(this.app.vault.on('delete', notesChanged));
+		this.registerEvent(this.app.vault.on('rename', notesChanged));
 
 		// The hover link follows its setting, live.
 		const unsubscribeHover = this.settings$.subscribe((s) =>
