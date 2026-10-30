@@ -12,6 +12,7 @@
 	// doesn't exist yet without leaving the picker.
 
 	import { onMount, tick } from "svelte";
+	import Popover from "../components/Popover.svelte";
 	import type { Association } from "../../types";
 	import {
 		filterOptions,
@@ -20,18 +21,9 @@
 		type AssociationOption,
 	} from "../../associationOptions";
 
-	// Render the panel under document.body. Obsidian leaf containers often have a
-	// CSS transform, which makes `position: fixed` resolve against that ancestor
-	// instead of the viewport — sending the panel off-screen. Portaling to body
-	// escapes any transformed ancestor so `fixed` matches viewport coordinates.
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			},
-		};
-	}
+	// The panel is a Popover, portaled to the body: Obsidian leaf containers
+	// often have a CSS transform, which makes `position: fixed` resolve against
+	// that ancestor instead of the viewport, sending the panel off-screen.
 
 	interface Props {
 		// All pickable options (from index.associationOptions()).
@@ -175,13 +167,13 @@
 	});
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
+<Popover
 	class="assoc-picker"
-	use:portal
-	bind:this={panelEl}
+	layer="menu"
+	overflow="hidden"
 	{style}
-	onpointerdown={(e) => e.stopPropagation()}
+	bind:el={panelEl}
+	onpointerdown={(e: PointerEvent) => e.stopPropagation()}
 	onkeydown={onKeydown}
 >
 	<input
@@ -250,21 +242,9 @@
 			{/if}
 		{/if}
 	</div>
-</div>
+</Popover>
 
 <style>
-	.assoc-picker {
-		position: fixed;
-		z-index: 1000;
-		display: flex;
-		flex-direction: column;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		overflow: hidden;
-	}
-
 	.assoc-search {
 		margin: 8px;
 		padding: 5px 8px;

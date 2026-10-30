@@ -53,6 +53,7 @@
 	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import Popover from "../components/Popover.svelte";
 	import {
 		geometryFromSettings,
 		gridHeight,
@@ -864,7 +865,13 @@
 			</button>
 
 			{#if showControls}
-				<div class="controls-popup">
+				<Popover
+					class="controls-popup"
+					placement="anchored"
+					padding="l"
+					gap="m"
+					style="top: calc(100% + 6px); right: 0; min-width: 170px;"
+				>
 					<label class="controls-field">
 						<span class="controls-label">Start hour</span>
 						<input type="number" class="controls-input" min="0" max="23" value={geo.startHour} onchange={(e) => commitNumber(e.currentTarget, setStartHour)} />
@@ -885,7 +892,7 @@
 						<span class="controls-label">Days after today</span>
 						<input type="number" class="controls-input" min="1" max="7" value={after} onchange={(e) => commitNumber(e.currentTarget, setDaysAfter)} />
 					</label>
-				</div>
+				</Popover>
 			{/if}
 		</div>
 	</div>
@@ -1211,22 +1218,6 @@
 		width: 14px;
 		height: 14px;
 		flex-shrink: 0;
-	}
-
-	.controls-popup {
-		position: absolute;
-		top: calc(100% + 6px);
-		right: 0;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		padding: 12px;
-		box-shadow: var(--shadow-s);
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 170px;
 	}
 
 	.controls-field {
@@ -1596,13 +1587,9 @@
 	}
 
 
-	:global(.resurface-popup) {
+	/* Places the calendar, which draws its own popover panel. */
+	.resurface-popup {
 		position: fixed;
-		z-index: 1000;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		padding: 4px;
+		z-index: var(--layer-menu);
 	}
 </style>

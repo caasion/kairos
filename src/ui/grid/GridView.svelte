@@ -113,6 +113,7 @@
 	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import Popover from "../components/Popover.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
 	import { intoViewHeader } from "../actions/viewHeader";
@@ -1457,7 +1458,13 @@
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
 			</button>
 			{#if showControls}
-				<div class="controls-popup">
+				<Popover
+					class="controls-popup"
+					placement="anchored"
+					padding="l"
+					gap="m"
+					style="top: calc(100% + 6px); right: 0; min-width: 170px;"
+				>
 					<label class="controls-field">
 						<span class="controls-label">Days before today</span>
 						<input type="number" class="controls-input" min="1" max="7" value={before} oninput={(e) => setDaysBefore(+e.currentTarget.value)} />
@@ -1478,7 +1485,7 @@
 						<span class="controls-label">Highlight across views</span>
 						<input type="checkbox" checked={settings.highlightAcrossViews} onchange={(e) => setHighlightAcrossViews(e.currentTarget.checked)} />
 					</label>
-				</div>
+				</Popover>
 			{/if}
 		</div>
 	</div>
@@ -1842,21 +1849,6 @@
 		flex-shrink: 0;
 	}
 
-	.controls-popup {
-		position: absolute;
-		top: calc(100% + 6px);
-		right: 0;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		padding: 12px;
-		box-shadow: var(--shadow-s);
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 170px;
-	}
 	.controls-field {
 		display: flex;
 		align-items: center;
@@ -2094,14 +2086,10 @@
 	}
 
 
-	:global(.resurface-popup) {
+	/* Places the calendar, which draws its own popover panel. */
+	.resurface-popup {
 		position: fixed;
-		z-index: 1000;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		padding: 4px;
+		z-index: var(--layer-menu);
 	}
 
 	.grid-datacell {
