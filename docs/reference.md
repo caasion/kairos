@@ -180,6 +180,7 @@ status:
 | Right-click a bar, then **Intensity** | Set or clear its intensity |
 | Select a bar, then press **Delete** | Delete the stretch |
 | Double-click a bar | Edit its intention |
+| Right-click a project's row label | **Show on domain's row** / **Give its own row** |
 
 ## Commands
 
