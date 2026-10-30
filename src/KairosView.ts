@@ -1,10 +1,12 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, Menu, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import DayView from "./ui/timeline/DayView.svelte";
 import type Kairos from "./main";
 import type { KairosSettings } from "./settings";
 import type { ISODate } from "./types";
+import { openSaveDay } from "./routines/register";
+import { todayISO } from "./dayNote";
 
 export const KAIROS_VIEW_TYPE = "kairos-day-view";
 
@@ -32,6 +34,28 @@ export class KairosView extends ItemView {
 
 	getIcon(): string {
 		return "clock";
+	}
+
+	onPaneMenu(menu: Menu, source: string): void {
+		super.onPaneMenu(menu, source);
+		const date = this.date;
+		if (!date) return;
+		menu.addItem((item) =>
+			item
+				.setTitle("Save this day as routines…")
+				.setIcon("repeat")
+				.setSection("action")
+				.onClick(() => openSaveDay(this.plugin, date)),
+		);
+		const past = date < todayISO();
+		menu.addItem((item) =>
+			item
+				.setTitle(past ? "Regenerate routines (past day)" : "Regenerate routines…")
+				.setIcon("refresh-cw")
+				.setSection("action")
+				.setDisabled(past)
+				.onClick(() => void this.plugin.dayPreparer.regenerate(date)),
+		);
 	}
 
 	async onOpen() {

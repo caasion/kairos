@@ -40,6 +40,8 @@ export interface RoutineActions {
 	insert: (date: ISODate, routines: Routine[]) => void;
 	/** Add everything missing and record the day as set up. */
 	addAll: (date: ISODate) => void;
+	/** Preview how the day differs from its routines, and apply what's picked. */
+	regenerate: (date: ISODate) => void;
 }
 
 /** What the Day view needs to offer the previous day's leftovers and act on them. */
@@ -88,6 +90,7 @@ export class RoutinesFeed {
 			active$: this.active$,
 			insert: (date, routines) => void preparer().insertRoutines(date, routines),
 			addAll: (date) => void preparer().applyToDate(date),
+			regenerate: (date) => void preparer().regenerate(date),
 		};
 	}
 

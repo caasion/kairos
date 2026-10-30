@@ -99,6 +99,8 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 - Right-click a task or a block in any view and select **Repeat…**. Choose when it repeats. The one you right-clicked stays where it is as the first occurrence.
 - Or open the **Routines** view from the hourglass menu and select **New routine**.
+- To keep a day you planned well, open the Day view's **⋯** menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task, and choose when the rest repeat (that weekday at first). Blocks and tasks that are already routines are shown but can't be checked. Unscheduled tasks aren't listed; use **Repeat…** for those.
+- Or write `Routines.md` yourself, or have an AI assistant write it. [Routines.md](reference.md#routinesmd) in the reference describes the whole format, so you can point the assistant there.
 
 **Add routines to a day**
 
@@ -111,9 +113,31 @@ Point at the pill to see the list. Select a routine's arrow to add it, or **Add 
 
 You can also run **Apply routines to this day** from the command palette. To add routines automatically whenever a daily note is created, turn on **Settings → Kairos → Add routines to new daily notes**.
 
+**Update a day after changing routines**
+
+Adding routines only adds what's missing. A block that's already in the day keeps its project or domain and its time when you change the routine. To bring a day in line with `Routines.md` again, right-click the day's header in the Week view and select **Regenerate routines…**. In the Day view, open the **⋯** menu and select **Regenerate routines…**, or run **Regenerate routines for this day** from the command palette.
+
+It shows the day as it would be, beside a list of what differs. Checking or unchecking a change updates the day, with what changes outlined. Nothing changes until you select **Apply**:
+
+- A block or task whose project or domain is different from its routine.
+- Routine tasks missing from a block, and routines missing from the day.
+- A block at a different time from its routine. These start unchecked, since you may have moved the block on purpose.
+
+Uncheck what you want to keep as it is. Nothing is removed: tasks you added to a routine block stay, and done tasks stay done. Past days can't be regenerated, so they keep the record of what happened.
+
 **Edit routines**
 
 The Routines view groups routines by when they repeat. Select a time or title to edit it, or point at a block's top-right corner to add a task, change its association or when it repeats, or delete it. Unscheduled has only a **+**, to add a task. Select **Open file** to edit `Routines.md` by hand.
+
+**See how your routines fit**
+
+Select **Week** at the top of the Routines view to see the days your routines make, Monday to Sunday, drawn like the Week view. It doesn't change anything; it shows:
+
+- How much of each day your blocks take, in the day's header. Time where blocks overlap is counted once.
+- Blocks that overlap, side by side, and a warning badge in the day's header. Point at it to see which blocks overlap.
+- Free time, as the empty space between blocks.
+
+Tasks with no block and monthly routines can't sit on a weekday, so the line above the week only counts them. Select a block to see it in the list, where you can edit it. Select **List** to go back.
 
 A routine that belongs to an inactive project or domain is paused, and shows as **Paused**. It comes back when the project is active again.
 

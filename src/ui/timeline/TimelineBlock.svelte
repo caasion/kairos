@@ -92,6 +92,15 @@
 		hover?: HoverTarget | null;
 		onHoverEnter?: (target: HoverTarget) => void;
 		onHoverLeave?: (target: HoverTarget) => void;
+		// Read-only (the Routines week): the same block, but nothing in it can be
+		// moved, resized or edited, and it has no actions or menus. Its tasks look
+		// like routine templates. A click anywhere selects it instead (`onSelect`);
+		// pointing still peeks at truncated text. The write-back callbacks above
+		// are never called, so a read-only caller passes no-ops.
+		readonly?: boolean;
+		onSelect?: (block: Block) => void;
+		// Greyed, like a paused routine.
+		muted?: boolean;
   }
 
   let {
@@ -126,6 +135,9 @@
 		hover = null,
 		onHoverEnter,
 		onHoverLeave,
+		readonly = false,
+		onSelect,
+		muted = false,
   }: Props = $props();
 
   // ── Hover link ──
@@ -270,7 +282,7 @@
     event: PointerEvent,
   ) {
     // Only the primary button drives gestures; ignore right/middle clicks.
-    if (event.button !== 0) return;
+    if (readonly || event.button !== 0) return;
     // A move or resize works on the block's real size.
     collapse();
     onGestureStart?.(mode, block, event);
@@ -507,6 +519,7 @@
 
   function openContextMenu(event: MouseEvent) {
     event.preventDefault();
+    if (readonly) return;
     const menu = new Menu();
     addBlockMenuItems(menu, block, {
       onAddTask: () => onAddTask(block),
@@ -548,6 +561,7 @@
 {#snippet chip(task: ResolvedTask, tr: ReturnType<Resolver> | undefined)}
   <TaskComponent
     {task}
+    template={readonly}
     association={task.owner}
     inherited={task.assoc === undefined}
     showAssociation={!sameAsBlock(task)}
@@ -558,11 +572,13 @@
     onNest={(rect) => onNestTask(block, task, rect)}
     nestLabel="Move to another block"
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
-    onRepeat={() => requestRepeat(task, block)}
-    onGrab={(e) => {
-      collapse();
-      onTaskGrab(block, task, e);
-    }}
+    onRepeat={readonly ? undefined : () => requestRepeat(task, block)}
+    onGrab={readonly
+      ? undefined
+      : (e) => {
+          collapse();
+          onTaskGrab(block, task, e);
+        }}
     onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
     onSetText={(t, text) => onSetTaskText(block, t, text)}
     onDelete={(t) => onDeleteTask(block, t)}
@@ -578,12 +594,26 @@
   class:dragging
   class:linked={blockLinked}
   class:expanded
+  class:readonly
+  class:muted
   style:--kairos-link-color={accentColor}
   data-block-line={block.source.line}
   bind:this={blockEl}
   style={`top: ${top}px; ${expanded ? `min-height: ${height}px;` : `height: ${height}px;`} left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}
   oncontextmenu={openContextMenu}
+  onclickcapture={(e) => {
+    // Read-only: a click selects the block and never reaches a task or field.
+    if (!readonly) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect?.(block);
+  }}
+  oncontextmenucapture={(e) => {
+    if (!readonly) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }}
   onpointerenter={(e) => {
     onHoverEnter?.(blockTarget);
     onBlockEnter(e);
@@ -595,6 +625,7 @@
   use:actionZone={{ layout: "stack" }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
+  {#if !readonly}
   <div
     class="tl-resize tl-resize-top"
     onpointerdown={(e) => {
@@ -602,12 +633,14 @@
       start("resize-top", e);
     }}
   ></div>
+  {/if}
 
 	<!-- Action bar: add task, add note, association, repeat and delete, the
 	     same as a Grid block header's. Woken from the top-right corner zone
 	     (see actions/actionZone.ts), not on any hover. On a mouse wake it's a
 	     vertical stack: delete stays in the corner and the rest rise above it
 	     (above the block). Touch keeps the bar. -->
+	{#if !readonly}
 	<div class="tl-actions kairos-action-bar">
 		<button
 			type="button"
@@ -675,6 +708,7 @@
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
 		</button>
 	</div>
+	{/if}
 
   <!-- Inner visual container -->
   <div
@@ -872,6 +906,7 @@
     {/if}
   </div>
 
+  {#if !readonly}
   <div
     class="tl-resize tl-resize-bottom"
     onpointerdown={(e) => {
@@ -879,6 +914,7 @@
       start("resize-bottom", e);
     }}
   ></div>
+  {/if}
 </div>
 
 
@@ -891,6 +927,15 @@
     padding: 0;
     cursor: grab;
     user-select: none;
+  }
+
+  .tl-block.readonly,
+  .tl-block.readonly :is(.tl-title, .tl-time) {
+    cursor: pointer;
+  }
+
+  .tl-block.muted {
+    opacity: 0.5;
   }
 
   .tl-block.dragging {

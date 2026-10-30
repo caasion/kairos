@@ -91,6 +91,14 @@ Each line is an item, with an optional association and an optional resurface dat
 
 Lines Kairos can't read are listed at the top of the Routines view.
 
+To have an AI assistant write or change this file, point it at this section. A few things it should know:
+
+- Kairos finds a routine in a day by name: a block by its title, a task by its text. Renaming a routine makes it a new one, so a day already set up is offered it again.
+- An association is `[Project]` or `[D:Domain]`, naming a project or domain you already have. A task without one takes its block's.
+- Kairos only ever adds routines to a day, never removes them, so a routine left out of the file just stops being offered.
+
+Check the result in the Routines view: lines it can't read are listed at the top, and **Week** shows overlaps and how full each day is.
+
 ### Project and domain files
 
 Kairos finds projects in the `Projects` folder and domains in the `Domains` folder (both can be changed in settings). A file counts only if its frontmatter has the tag `kairos/project` or `kairos/domain`, which Kairos adds when you create one from the Projects & domains view. The file name is the project's name.
@@ -155,6 +163,7 @@ status:
 | Point at or select "N more" | Grow the block to show all its tasks |
 | Drop a task on empty time | Make a 30-minute block around it |
 | Drop a task on Unscheduled | Take its time away |
+| Right-click a day's header (Week) | **Regenerate routines…**: bring the day in line with `Routines.md` (today and later) |
 
 ### Grid
 
@@ -191,6 +200,8 @@ status:
 - Open timeline view
 - Open routines view
 - Apply routines to this day
+- Save this day as routines
+- Regenerate routines for this day
 
 ## Settings
 
