@@ -268,12 +268,8 @@ body .kairos-action-stack:focus-within > * {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 }
-.kairos-regen-list {
-	max-height: 60vh;
-	overflow-y: auto;
-}
-.kairos-regen-row .setting-item-info {
-	cursor: pointer;
+.kairos-regen-modal {
+	width: min(760px, 92vw);
 }
 
 /* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
