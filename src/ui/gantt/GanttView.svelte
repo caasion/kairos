@@ -12,7 +12,7 @@
 	// page — different question (retrospective spans vs. present snapshot). Which
 	// of them earn a row depends on the viewport, not on today alone (gantt/rows).
 
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import { Menu } from "obsidian";
 	import type { App } from "obsidian";
 	import type { Unsubscriber } from "svelte/store";
@@ -44,13 +44,15 @@
 		rowTops,
 		dateToX,
 		getHeader,
-		getUnitViewport,
 		daysBetween,
 		dragBounds,
 		dragPeriod,
 		shiftDays,
-		stepUnit,
-		unitLabel,
+		stepView,
+		SUB_UNIT,
+		unitRange,
+		viewLabel,
+		viewRange,
 		xToDate,
 		xToDay,
 		type Interval,
@@ -59,6 +61,7 @@
 	import { addIntensityItem } from "./intensityMenu";
 	import { visibleEntities } from "../../gantt/rows";
 	import Datepicker from "../components/Datepicker.svelte";
+	import StepArrows from "../components/StepArrows.svelte";
 	import Portal from "../components/Portal.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
 	import IntensityBars from "../components/IntensityBars.svelte";
@@ -90,20 +93,25 @@
 	const today = $derived(todayISO());
 
 	// ── Viewport / interval / pan ──
-	// The view snaps to whole calendar units. `interval` picks the unit granularity
-	// (week/month/quarter/year); `anchor` is any date inside the shown unit, and the
-	// viewport is the whole unit containing it. Stepping moves by one unit; "Today"
-	// snaps back to the unit containing today.
-	let interval = $state<Interval>("month");
-	// Seed from the raw function (not the `today` derived) so this init doesn't
-	// capture a reactive value — `anchor` is user-driven from here on.
-	let anchor = $state<ISODate>(todayISO());
-	const viewport = $derived(getUnitViewport(interval, anchor));
-	// Number of whole days the current unit spans (drives px-per-day).
+	// `interval` picks the granularity (week/month/quarter/year) and the range is
+	// one unit of it long, starting at `start`. It opens on a whole unit; the
+	// big arrows move it a whole unit and the small arrows one unit down, which
+	// can leave it mid-unit (8 Oct – 7 Nov). "Today", the calendar and a change
+	// of interval snap it back to the whole unit around a date (ganttUtils).
+	const INITIAL_INTERVAL: Interval = "month";
+	let interval = $state<Interval>(INITIAL_INTERVAL);
+	let start = $state<ISODate>(unitRange(INITIAL_INTERVAL, todayISO()).start);
+	// The date a change of interval keeps in view: today, or the day last
+	// picked in the calendar, while it's still on screen.
+	let focus = $state<ISODate>(todayISO());
+	const viewport = $derived(viewRange(interval, start));
+	// Number of whole days the range spans (drives px-per-day).
 	const unitDays = $derived(daysBetween(viewport.start, viewport.end) + 1);
 	const atToday = $derived(
 		today >= viewport.start && today <= viewport.end,
 	);
+	// "Today" shows until the range is the whole unit around today again.
+	const atHome = $derived(start === unitRange(interval, today).start);
 
 	// Measure the plotting area to compute pixels-per-day (the unit fills the width).
 	let plotWidth = $state(0);
@@ -179,15 +187,47 @@
 		return { start: !row.indent, end: !(next?.indent) };
 	}
 
-	function pan(dir: 1 | -1) {
-		anchor = stepUnit(interval, viewport.start, dir);
+	function pan(dir: 1 | -1, big: boolean) {
+		const next = stepView(interval, start, dir, big);
+		void slidePlot(daysBetween(start, next));
+		start = next;
 	}
 	function jumpToday() {
-		anchor = today;
+		focus = today;
+		start = unitRange(interval, today).start;
 	}
 	function setInterval(next: Interval) {
-		// Keep the same anchor date visible when changing granularity.
+		// Keep the same date in view when changing granularity: the one picked
+		// (or today) if it's on screen, otherwise the range's first day.
+		const keep = focus >= viewport.start && focus <= viewport.end ? focus : viewport.start;
 		interval = next;
+		start = unitRange(next, keep).start;
+	}
+
+	// A step slides the plot from where it was to where it lands, so the eye can
+	// follow which way it went and how far; nothing re-centres. Each child of the
+	// plot starts drawn at its old place (shifted by the step) and eases to its
+	// new one. A jump (Today, the calendar, a new interval) just redraws.
+	// While it slides, `clip` keeps the shifted children inside the plot's own
+	// width without making it a scroll container, so the sticky header holds.
+	const SLIDE_MS = 200;
+	let slideTimer: number | undefined;
+	async function slidePlot(days: number) {
+		const el = plotEl;
+		if (!el || days === 0 || pxPerDay <= 0) return;
+		if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+		window.clearTimeout(slideTimer);
+		el.setCssProps({
+			"--gantt-slide-clip": "clip",
+			"--gantt-slide-time": "0s",
+			"--gantt-slide": `${days * pxPerDay}px`,
+		});
+		await tick();
+		void el.offsetWidth; // commit the shifted start before easing out of it
+		el.setCssProps({ "--gantt-slide-time": `${SLIDE_MS}ms`, "--gantt-slide": "0px" });
+		slideTimer = window.setTimeout(() => {
+			el.setCssProps({ "--gantt-slide-clip": "", "--gantt-slide-time": "", "--gantt-slide": "" });
+		}, SLIDE_MS + 50);
 	}
 
 	// ── Header calendar (pick the unit to jump to) ──
@@ -197,7 +237,8 @@
 	let calendarValue = $state<Date>(dateFromISO(todayISO()));
 	let dateNavRef = $state<HTMLDivElement>();
 	function onCalendarSelect(picked: Date) {
-		anchor = isoFromDate(picked);
+		focus = isoFromDate(picked);
+		start = unitRange(interval, focus).start;
 		showCalendar = false;
 	}
 	function handleClickOutside(event: MouseEvent) {
@@ -702,31 +743,17 @@
 	<!-- Header: shared left navigator (mirrors Grid / Week) + interval selector. -->
 	<div class="gantt-header-bar" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => { e.stopPropagation(); pan(-1); }}
-				aria-label="Previous"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-			</button>
+			<StepArrows big={`a ${interval}`} small={`a ${SUB_UNIT[interval]}`} onstep={pan}>
+				<button
+					class="day-date"
+					title="Click to jump to a {INTERVAL_LABEL[interval].toLowerCase()}"
+					onclick={(e) => { e.stopPropagation(); showCalendar = !showCalendar; }}
+				>
+					{viewLabel(interval, start)}
+				</button>
+			</StepArrows>
 
-			<button
-				class="day-date"
-				title="Click to jump to a {INTERVAL_LABEL[interval].toLowerCase()}"
-				onclick={(e) => { e.stopPropagation(); showCalendar = !showCalendar; }}
-			>
-				{unitLabel(interval, viewport.start)}
-			</button>
-
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => { e.stopPropagation(); pan(1); }}
-				aria-label="Next"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-			</button>
-
-			{#if !atToday}
+			{#if !atHome}
 				<button class="today-btn" onclick={(e) => { e.stopPropagation(); jumpToday(); }}>Today</button>
 			{/if}
 
@@ -1026,31 +1053,6 @@
 		align-items: center;
 		gap: 4px;
 	}
-	.icon-btn {
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary-alt);
-		color: var(--text-muted);
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 26px;
-		width: 26px;
-		flex-shrink: 0;
-	}
-	.icon-btn:hover {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-	}
-	/* Give the inline SVG an explicit size so it doesn't collapse to 0-width inside
-	   the flex button (renders as 0×14 = invisible otherwise). */
-	.icon-btn svg {
-		width: 14px;
-		height: 14px;
-		flex-shrink: 0;
-	}
-	.nav-btn { height: 24px; width: 24px; }
 	.day-date {
 		font-size: 12px;
 		font-weight: 600;
@@ -1185,6 +1187,13 @@
 		position: relative;
 		flex: 1;
 		min-width: 400px;
+		overflow-x: var(--gantt-slide-clip, visible);
+	}
+	/* A step's slide (slidePlot sets the variables): every child is drawn
+	   shifted by the step and eases back to its place. */
+	.gantt-plot > * {
+		translate: var(--gantt-slide, 0px) 0;
+		transition: translate var(--gantt-slide-time, 0s) ease-out;
 	}
 	/* Two-level header: a coarse grouping row stacked over a fine row. Tinted to
 	   match the header bar / label column (background-secondary). */

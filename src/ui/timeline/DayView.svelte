@@ -65,6 +65,7 @@
 	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import StepArrows from "../components/StepArrows.svelte";
 	import { placeUnderAnchor } from "../floating";
 	import {
 		hitTestTimeline,
@@ -1277,39 +1278,19 @@
 	     Obsidian's header look in place (kairos-header-bar is-native). -->
 	<div class="day-header kairos-header-bar is-native">
 		<div class="day-nav" bind:this={dateNavRef}>
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepDay(-1);
-				}}
-				aria-label="Previous day"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-			</button>
-
-			<button
-				class="day-date"
-				class:today={isToday}
-				title="Click to pick a date · Ctrl+click to open the daily note"
-				onclick={(e) => {
-					e.stopPropagation();
-					void openDayNote(e);
-				}}
-			>
-				{dateLabel}
-			</button>
-
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepDay(1);
-				}}
-				aria-label="Next day"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-			</button>
+			<StepArrows big="a week" small="a day" onstep={(dir, big) => stepDay(dir * (big ? 7 : 1))}>
+				<button
+					class="day-date"
+					class:today={isToday}
+					title="Click to pick a date · Ctrl+click to open the daily note"
+					onclick={(e) => {
+						e.stopPropagation();
+						void openDayNote(e);
+					}}
+				>
+					{dateLabel}
+				</button>
+			</StepArrows>
 
 			{#if !isToday}
 				<button
@@ -1799,11 +1780,6 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-	}
-
-	.nav-btn {
-		height: 24px;
-		width: 24px;
 	}
 
 	.day-date {

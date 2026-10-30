@@ -47,7 +47,8 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `AssocGroup` | A group heading for one project or domain: its icon, the name in serif, a count, an optional "+", and a bar in the domain colour down the whole group. | Unscheduled, the Inbox, the Backlog |
 | `RowLabel` | A project's or domain's name, note and intensity in the Grid and Timeline row-label column, with its hover card. | Grid and Timeline rows |
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
-| `Datepicker` | The date navigator and its calendar. | View headers |
+| `StepArrows` | The arrows around a header's date, « ‹ date › »: the outer pair takes the view's big step, the inner pair one smaller unit. Pass `big` and `small` as "a week", "7 days", and it writes the tooltips ("Back a week"). | Every view's date navigator |
+| `Datepicker` | The calendar behind a header's date. | View headers |
 | `Portal` | Renders its children at `<body>`, for popovers that mustn't be clipped. | Popovers, pickers |
 
 ## Next

@@ -9,6 +9,7 @@ import {
 	daysBetween,
 	dragBounds,
 	dragPeriod,
+	getHeader,
 	getUnitViewport,
 	getViewportWidth,
 	isoWeekNumber,
@@ -18,11 +19,15 @@ import {
 	rowHeightFor,
 	rowTops,
 	shiftDays,
+	shiftMonths,
 	startOfQuarter,
 	startOfWeek,
 	stepUnit,
+	stepView,
 	unitLabel,
 	unitRange,
+	viewLabel,
+	viewRange,
 	xToDate,
 	xToDay,
 } from "./ganttUtils";
@@ -356,6 +361,61 @@ describe("calendar-unit intervals", () => {
 		expect(unitLabel("month", "2026-08-01")).toBe("Aug 2026");
 		expect(unitLabel("quarter", "2026-07-01")).toBe("Q3 2026");
 		expect(unitLabel("year", "2026-01-01")).toBe("2026");
+	});
+});
+
+describe("the Timeline's range and its arrows", () => {
+	it("shiftMonths keeps the day, or the month's last when it has no such day", () => {
+		expect(shiftMonths("2026-10-08", 1)).toBe("2026-11-08");
+		expect(shiftMonths("2026-01-31", 1)).toBe("2026-02-28");
+		expect(shiftMonths("2026-11-15", 3)).toBe("2027-02-15"); // year wrap
+		expect(shiftMonths("2026-02-01", -3)).toBe("2025-11-01");
+		expect(shiftMonths("2026-05-01", -12)).toBe("2025-05-01");
+	});
+
+	it("viewRange is one unit long from any start", () => {
+		expect(viewRange("month", "2026-10-01")).toEqual({ start: "2026-10-01", end: "2026-10-31" });
+		expect(viewRange("month", "2026-10-08")).toEqual({ start: "2026-10-08", end: "2026-11-07" });
+		expect(viewRange("week", "2026-10-28")).toEqual({ start: "2026-10-28", end: "2026-11-03" });
+		expect(viewRange("quarter", "2026-11-01")).toEqual({ start: "2026-11-01", end: "2027-01-31" });
+		expect(viewRange("year", "2026-04-01")).toEqual({ start: "2026-04-01", end: "2027-03-31" });
+	});
+
+	it("the big arrows move a whole unit, the small ones one unit down", () => {
+		expect(stepView("week", "2026-10-26", 1, true)).toBe("2026-11-02");
+		expect(stepView("week", "2026-10-26", 1, false)).toBe("2026-10-27"); // a day
+		expect(stepView("month", "2026-10-01", 1, true)).toBe("2026-11-01");
+		expect(stepView("month", "2026-10-01", 1, false)).toBe("2026-10-08"); // a week
+		expect(stepView("month", "2026-10-01", -1, false)).toBe("2026-09-24");
+		expect(stepView("quarter", "2026-10-01", 1, false)).toBe("2026-11-01"); // a month
+		expect(stepView("quarter", "2026-10-01", -1, true)).toBe("2026-07-01");
+		expect(stepView("year", "2026-01-01", 1, false)).toBe("2026-04-01"); // a quarter
+		expect(stepView("year", "2026-01-01", -1, true)).toBe("2025-01-01");
+	});
+
+	it("a small step back undoes a small step forward", () => {
+		for (const iv of ["week", "month", "quarter", "year"] as const) {
+			const there = stepView(iv, "2026-10-01", 1, false);
+			expect(stepView(iv, there, -1, false)).toBe("2026-10-01");
+		}
+	});
+
+	it("viewLabel names a whole unit, and the ends of a range that isn't one", () => {
+		expect(viewLabel("month", "2026-10-01")).toBe("Oct 2026");
+		expect(viewLabel("month", "2026-10-08")).toBe("8 Oct – 7 Nov 2026");
+		expect(viewLabel("month", "2026-12-15")).toBe("15 Dec 2026 – 14 Jan 2027");
+		expect(viewLabel("quarter", "2026-10-01")).toBe("Q4 2026");
+		expect(viewLabel("quarter", "2026-08-01")).toBe("Aug – Oct 2026");
+		expect(viewLabel("quarter", "2026-11-01")).toBe("Nov 2026 – Jan 2027");
+		expect(viewLabel("year", "2026-04-01")).toBe("Apr 2026 – Mar 2027");
+		expect(viewLabel("week", "2026-10-28")).toBe("28 Oct – 3 Nov 2026");
+	});
+
+	it("a week range off a Monday shows both weeks it straddles", () => {
+		const { start, end } = viewRange("week", "2026-10-28"); // a Wednesday
+		const coarse = getHeader("week", start, end, 10).coarse.map((c) => c.label);
+		expect(coarse).toEqual(["Week 44", "Week 45"]);
+		expect(getHeader("week", "2026-10-26", "2026-11-01", 10).coarse.map((c) => c.label)).toEqual(["Week 44"]);
 	});
 });
 
