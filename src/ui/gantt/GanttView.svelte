@@ -470,6 +470,14 @@
 		editStretch(d.row, d.spanStart, d.kind, d.preview);
 	}
 
+	// The browser took the pointer: a touch that turned into a scroll, or a system
+	// gesture. Drop the drag without writing. pointercancel comes before the
+	// pointerleave that follows it, so endDrag then finds nothing to commit;
+	// before, that pointerleave saved a create or an edit nobody meant.
+	function cancelDrag() {
+		drag = null;
+	}
+
 	// Apply a bar edit to the live row and keep the bar selected under its new start.
 	function editStretch(row: GanttRow, start: ISODate, kind: StretchEditKind, to: ISODate) {
 		const live = currentRow(row.key);
@@ -831,6 +839,7 @@
 				onpointermove={moveDrag}
 				onpointerup={endDrag}
 				onpointerleave={endDrag}
+				onpointercancel={cancelDrag}
 				onkeydown={onPlotKeyDown}
 			>
 				<!-- Two-level header: coarse grouping row over a fine row. Fine labels
