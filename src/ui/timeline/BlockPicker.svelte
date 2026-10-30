@@ -10,22 +10,14 @@
 	// machinery — so the two feel identical and the grid can reuse this later.
 
 	import { onMount, tick } from "svelte";
+	import Popover from "../components/Popover.svelte";
 	import {
 		filterBlockOptions,
 		type BlockOption,
 	} from "../../blockOptions";
 	import Tag from "../components/Tag.svelte";
 
-	// Portal to body so `position: fixed` resolves against the viewport, not a
-	// transformed leaf-container ancestor (see AssociationPicker for the why).
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			},
-		};
-	}
+	// The panel is a Popover, portaled to the body like AssociationPicker's.
 
 	interface Props {
 		// The day's blocks as options (from blockOptions(), typically with the
@@ -132,13 +124,13 @@
 	});
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
+<Popover
 	class="block-picker"
-	use:portal
-	bind:this={panelEl}
+	layer="menu"
+	overflow="hidden"
 	{style}
-	onpointerdown={(e) => e.stopPropagation()}
+	bind:el={panelEl}
+	onpointerdown={(e: PointerEvent) => e.stopPropagation()}
 	onkeydown={onKeydown}
 >
 	<input
@@ -186,21 +178,9 @@
 			{/if}
 		{/if}
 	</div>
-</div>
+</Popover>
 
 <style>
-	.block-picker {
-		position: fixed;
-		z-index: 1000;
-		display: flex;
-		flex-direction: column;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		overflow: hidden;
-	}
-
 	.block-search {
 		margin: 8px;
 		padding: 5px 8px;

@@ -18,6 +18,7 @@
 	import type { RoutineItem, RoutineList } from "../../routines/preview";
 	import { formatTimeRange } from "../../parser";
 	import Pill from "../components/Pill.svelte";
+	import Popover from "../components/Popover.svelte";
 
 	interface Props {
 		list: RoutineList;
@@ -52,17 +53,6 @@
 	function clearTimer() {
 		window.clearTimeout(timer);
 		timer = undefined;
-	}
-
-	// The panel is portaled to the body and fixed there: a view's leaf is a
-	// transformed, clipping ancestor, which would otherwise offset and cut it.
-	function portal(node: HTMLElement) {
-		node.ownerDocument.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			},
-		};
 	}
 
 	function inside(target: EventTarget | null): boolean {
@@ -209,14 +199,18 @@
 	{/if}
 
 	{#if open}
-		<div
+		<!-- Portaled out of .ra (Popover), so it carries the accent itself. -->
+		<Popover
 			class="ra-panel"
-			style={panelStyle}
+			surface="secondary"
+			padding="l"
+			gap="s"
+			overflow="scroll"
+			style="{panelStyle} --ra-accent: var(--interactive-accent);"
 			role="dialog"
-			tabindex="-1"
+			tabindex={-1}
 			aria-label={`Routines for ${label}`}
-			bind:this={panelEl}
-			use:portal
+			bind:el={panelEl}
 			onpointerenter={onEnter}
 			onpointerleave={onLeave}
 		>
@@ -271,17 +265,13 @@
 					</div>
 				{/each}
 			{/if}
-		</div>
+		</Popover>
 	{/if}
 </div>
 
 <style>
-	/* The panel is portaled out of .ra, so it carries the accent itself. */
-	.ra,
-	.ra-panel {
-		--ra-accent: var(--interactive-accent);
-	}
 	.ra {
+		--ra-accent: var(--interactive-accent);
 		min-width: 0;
 	}
 
@@ -342,21 +332,6 @@
 	}
 
 	/* ── The list ── */
-	.ra-panel {
-		position: fixed;
-		z-index: var(--layer-popover);
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		/* The same look as the header badges' lists (HeaderBadge). */
-		padding: 10px 12px;
-		border-radius: var(--radius-s);
-		border: 1px solid var(--background-modifier-border);
-		background: var(--background-secondary);
-		box-shadow: var(--shadow-s);
-		text-align: left;
-	}
 	.ra-head {
 		display: flex;
 		align-items: baseline;
