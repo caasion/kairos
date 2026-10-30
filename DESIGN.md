@@ -44,6 +44,9 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 |---|---|---|
 | `IconButton` | Obsidian's frameless icon button (`clickable-icon`), with `label` as its tooltip. `icon` takes an Obsidian icon name; `children` takes an icon Obsidian doesn't have. `primary` puts it in the accent colour, `pressed` shows a toggle that's on, `size="m"` is for headers. | Every icon-only button |
 | `icon` action | Draws an Obsidian icon into an element: `<span use:icon={"plus"}>`. Sized by `--icon-size`. | Icons that aren't buttons |
+| `Pill` | A small framed button with an icon, an optional label and a count, that opens a list. `tone` is `neutral`, `warn` (waiting on a decision) or `accent` (offered routines, a filter that's on). `open` gives it the hover look while its list shows, `pressed` marks a list toggled into the view, `dropTarget` a drag over it. `size="s"` for day headers, `"m"` for the Day view's tray and view headers. Name one that opens a popover with `hiddenLabel`. | Tray pills (`TrayPill`), day-header badges (`HeaderBadge`), the routines pill, the Backlog's filter |
+| `Tag` | A short word in small capitals marking a row's state. Not a control. `tone="accent"` fills it, for the current row. | A project's status, "inactive" and "unscheduled" in pickers, "current" in status history |
+| `kairos-count` class | A count beside a name: label size, tabular figures, faint. Inside a `Pill` it takes the pill's colour. A class rather than a component, since it's one `<span>`. | Every number that says how many things a name holds |
 | `AssocGroup` | A group heading for one project or domain: its icon, the name in serif, a count, an optional "+", and a bar in the domain colour down the whole group. | Unscheduled, the Inbox, the Backlog |
 | `RowLabel` | A project's or domain's name, note and intensity in the Grid and Timeline row-label column, with its hover card. | Grid and Timeline rows |
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
@@ -55,6 +58,5 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 These still exist as several copies and are the next components to make, in this order:
 
 1. **Popover**: the panel behind header badges, pickers and hover cards (border, shadow, radius, padding).
-2. **Pill and count**: tray pills, header badges, status tags and the counts beside names.
-3. **Group heading**: move the Projects view's domain headers and the Routines view's group headers onto `AssocGroup`.
-4. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.
+2. **Group heading**: move the Projects view's domain headers and the Routines view's group headers onto `AssocGroup`.
+3. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.

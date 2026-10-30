@@ -42,6 +42,7 @@
 	import { addChangeDomainItem, addRollupItem } from "./projectMenu";
 	import { StatusHistoryModal } from "./StatusHistoryModal";
 	import { ConfirmModal, PromptModal, WhyModal } from "./modals";
+	import Tag from "../components/Tag.svelte";
 
 	interface Props {
 		app: App;
@@ -579,10 +580,10 @@
 					{/if}
 
 					{#if statusOf(row.domain) !== "active"}
-						<span class="status-tag">{STATUS_LABEL[statusOf(row.domain)]}</span>
+						<Tag>{STATUS_LABEL[statusOf(row.domain)]}</Tag>
 					{/if}
 
-					<span class="domain-count">{row.projects.length}</span>
+					<span class="kairos-count">{row.projects.length}</span>
 					<span class="pv-spacer"></span>
 
 					<!-- Color: a plain native color input. Clicking it opens the OS
@@ -627,7 +628,7 @@
 			<section class="domain-group">
 				<header class="domain-header">
 					<span class="domain-name unassigned">Unassigned</span>
-					<span class="domain-count">{orphanRows.length}</span>
+					<span class="kairos-count">{orphanRows.length}</span>
 					<span class="pv-spacer"></span>
 					<button class="icon-btn" title="New project"
 						onclick={(e) => { e.stopPropagation(); createProject(undefined); }} aria-label="New project">
@@ -702,7 +703,7 @@
 		{/if}
 
 		{#if statusOf(project) !== "active"}
-			<span class="status-tag">{STATUS_LABEL[statusOf(project)]}</span>
+			<Tag>{STATUS_LABEL[statusOf(project)]}</Tag>
 		{/if}
 
 		<span class="pv-spacer"></span>
@@ -866,11 +867,6 @@
 	.project-name.dim {
 		opacity: 0.55;
 	}
-	.domain-count {
-		font-size: 11px;
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
-	}
 	/* Inline description blurb (domains + projects), shown right after the name.
 	   Truncates so a long blurb never pushes the action icons off the row. */
 	.row-desc {
@@ -890,16 +886,6 @@
 		color: var(--text-faint);
 	}
 
-	.status-tag {
-		font-size: 10px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--text-faint);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 5px;
-		padding: 1px 5px;
-	}
 	.group-empty {
 		font-size: 12px;
 		color: var(--text-faint);
