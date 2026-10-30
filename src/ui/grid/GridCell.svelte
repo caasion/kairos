@@ -768,7 +768,9 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		width: 100%;
+		/* Stops short of the row's intention / intensity marks in the cell's
+		   corner (GridView sets their width), so it never covers them. */
+		width: calc(100% - max(0px, var(--grid-marks-width, 0px) - 4px));
 		height: auto;
 		min-height: 18px;
 		/* Lined up with a real group header (see .grid-cell-block-header). */
@@ -796,7 +798,7 @@
 	.grid-cell-add.floating {
 		position: absolute;
 		left: 4px;
-		right: 4px;
+		right: max(4px, var(--grid-marks-width, 0px));
 		bottom: 2px;
 		width: auto;
 		z-index: 3;

@@ -311,6 +311,80 @@ body .kairos-action-stack:focus-within > * {
 	overflow-y: auto;
 }
 
+/* ── Hover card (ui/components/HoverCard.svelte) ── */
+/* A popover in Kairos's own type: a full-height bar in the entity's colour,
+   the name in serif, a note and description in the UI font, and a small
+   labelled list of facts. Row labels and the Grid's marks open one. */
+.kairos-popover.kairos-hover-card {
+	flex-direction: row;
+	min-width: 180px;
+	max-width: 270px;
+}
+.kairos-hover-card-accent {
+	width: 4px;
+	flex-shrink: 0;
+	background: var(--text-faint);
+}
+.kairos-hover-card-body {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	padding: 12px 14px;
+}
+.kairos-hover-card-name {
+	margin: 1px 0 6px;
+	font-family: var(--kairos-font-serif);
+	font-size: 18px;
+	font-weight: 400;
+	line-height: 1.2;
+	color: var(--text-normal);
+}
+.kairos-hover-card-note {
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	line-height: var(--line-height-tight);
+	overflow-wrap: anywhere;
+}
+.kairos-hover-card-desc {
+	margin-top: 2px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	line-height: var(--line-height-tight);
+	overflow-wrap: anywhere;
+}
+.kairos-hover-card-facts {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 5px 12px;
+	align-items: center;
+	margin: 10px 0 0;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+.kairos-hover-card-facts dt {
+	align-self: start;
+	color: var(--text-muted);
+}
+.kairos-hover-card-facts dd {
+	margin: 0;
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	color: var(--text-normal);
+	overflow-wrap: anywhere;
+}
+.kairos-hover-card-bars {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+.kairos-hover-card-dim {
+	color: var(--text-faint);
+}
+
 /* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
 /* A popover too (.kairos-popover), made from TypeScript. */
 .kairos-peek {

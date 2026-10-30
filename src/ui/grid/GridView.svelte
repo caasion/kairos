@@ -106,8 +106,8 @@
 	} from "../../dayNote";
 	import { nextDraftLine } from "../../draftLine";
 	import GridCell from "./GridCell.svelte";
+	import CellMarks from "./CellMarks.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
-	import IntensityBars from "../components/IntensityBars.svelte";
 	import type { RowLabelInfo } from "../components/rowLabel";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { createAssociation } from "../association/createAssociation";
@@ -392,7 +392,7 @@
 	// window reads left to right like the Gantt does. The label's intention stays
 	// today's (prose is too long to be a starting point the way the intensity bars are),
 	// so a new intention anywhere in the window, the first day included, gets a
-	// notebook icon in its cell whose tooltip reads it out.
+	// notebook icon in its cell (CellMarks), whose hover card reads it out.
 	function labelInfo(row: Exclude<GridRow, { kind: "unassigned" }>): RowLabelInfo {
 		const on = dates[0];
 		if (!snapshot || !on) return row.info;
@@ -403,10 +403,13 @@
 		if (!snapshot || inactive || date === dates[0]) return null;
 		return intensityChange(row, date, snapshot);
 	}
-	function intentionOn(row: GridRow, date: ISODate, inactive: boolean): string | null {
+	function intentionOn(row: GridRow, date: ISODate, inactive: boolean) {
 		if (!snapshot || inactive) return null;
 		return intentionChange(row, date, snapshot);
 	}
+	// Each cell's marks' width, by `rowKey|date`, so the cell's floating "+"
+	// stops short of them instead of covering them.
+	let marksWidth = $state<Record<string, number>>({});
 
 	// ── Resurfaced backlog nudges ──
 	// Entries with a resurface date surface on one day (max(resurface, today)),
@@ -1609,31 +1612,21 @@
 					<div
 						class="grid-datacell"
 						class:today={isToday(date)}
+						style:--grid-marks-width={change || intention
+							? `${marksWidth[`${row.key}|${date}`] ?? 0}px`
+							: undefined}
 						data-grid-date={date}
 						data-grid-row-key={row.key}
 					>
 						{#if change || intention}
-							<span
-								class="grid-cell-marks"
-								style={"color" in row && row.color ? `color: ${row.color};` : undefined}
-							>
-								{#if intention}
-									<!-- A new intention starts on this day; the tooltip reads it out. -->
-									<span class="grid-intention-change" title={`Intention: ${intention}`}>
-										<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11.75V22"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M2 6h4"/><path d="M20 11.75V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5.65"/><circle cx="18" cy="5" r="3"/></svg>
-									</span>
-								{/if}
-								{#if change}
-									<!-- Intensity moves on this day: an arrow and the new level. -->
-									<span
-										class="grid-intensity-change"
-										title={`Intensity ${change.from ?? "unset"} → ${change.to} from this day`}
-									>
-										<span class="grid-intensity-arrow">{change.from === null || change.to > change.from ? "↑" : "↓"}</span>
-										<IntensityBars level={change.to} />
-									</span>
-								{/if}
-							</span>
+							<CellMarks
+								name={row.name}
+								color={"color" in row ? row.color : undefined}
+								{date}
+								{intention}
+								intensity={change}
+								bind:width={marksWidth[`${row.key}|${date}`]}
+							/>
 						{/if}
 						{#if day}
 							{@const cell = cellFor(row, day)}
@@ -2098,33 +2091,6 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
 		min-width: 0;
-	}
-	/* Where a row's intention or intensity changes: a notebook icon and/or a small
-	   arrow with the intensity bars, in the row's accent, tucked in the cell's bottom-right
-	   corner, under task action bars and the cell's "+" (both sit higher). */
-	.grid-cell-marks {
-		position: absolute;
-		right: 4px;
-		bottom: 2px;
-		z-index: 1;
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		color: var(--text-faint);
-		font-size: 9px;
-		line-height: 1;
-		opacity: 0.85;
-	}
-	.grid-intention-change {
-		display: inline-flex;
-	}
-	.grid-intensity-change {
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-	}
-	.grid-intensity-arrow {
-		margin-right: 1px;
 	}
 	/* Faint tint marking the currently active day's column. */
 	.grid-datacell.today {
