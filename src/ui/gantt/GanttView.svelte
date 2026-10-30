@@ -311,6 +311,12 @@
 			history: applyStretchEdit(drag.history, drag.spanStart, drag.kind, drag.preview, today),
 		};
 	});
+	// The cursor a bar drag holds across the plot (unset otherwise).
+	const dragCursor = $derived(
+		drag?.kind === "move" && drag.moved ? "grabbing"
+			: drag?.kind === "start" || drag?.kind === "end" ? "ew-resize"
+			: undefined,
+	);
 	function historyFor(row: GanttRow): StatusRecord[] {
 		return dragHistory?.key === row.key ? dragHistory.history : row.entity.history;
 	}
@@ -799,6 +805,7 @@
 						class:domain={row.isDomain}
 						class:group-start={group.start}
 						class:group-end={group.end}
+						class:alt={i % 2 === 1}
 						style:height={`${rowHeight(i)}px`}
 						style:margin-bottom={`${ROW_GAP}px`}
 						style={row.color ? `--row-accent: ${row.color};` : undefined}
@@ -821,6 +828,7 @@
 				bind:clientWidth={plotWidth}
 				tabindex="-1"
 				style:height={`${contentHeight}px`}
+				style:--drag-cursor={dragCursor}
 				onpointermove={moveDrag}
 				onpointerup={endDrag}
 				onpointerleave={endDrag}
@@ -845,6 +853,17 @@
 						{/each}
 					</div>
 				</div>
+				<!-- Every other row is faintly shaded, through its gap, level with the
+				     label column's, so a bar far from its label still reads as its row's. -->
+				{#each rows as row, i (row.key)}
+					{#if i % 2 === 1}
+						<div
+							class="gantt-row-band"
+							style:top={`${rowTop(i)}px`}
+							style:height={`${rowHeight(i) + ROW_GAP}px`}
+						></div>
+					{/if}
+				{/each}
 				<!-- Fine gridlines at column boundaries; coarse boundaries drawn heavier. -->
 				{#each header.fine as f}
 					<div class="gantt-gridline" style:left={`${f.gridX}px`} style:top={`${HEADER_HEIGHT}px`} style:height={`${contentHeight - HEADER_HEIGHT}px`}></div>
@@ -891,9 +910,9 @@
 								{@const openEnded = span.open && !box.clampedEnd}
 								{@const key = spanKey(row.key, span.start)}
 								{@const selected = shownSelectedKey === key}
-								<!-- An edge is grabbable on a selected bar (its handles stand
-								     outside its ends) or a bar wide enough to leave room to move. -->
-								{@const handles = selected || box.width >= 32}
+								<!-- How far each edge's hit zone reaches into the body: a
+								     quarter of a thin bar, so the middle still moves it. -->
+								{@const handleIn = Math.min(6, Math.max(1, Math.floor(box.width / 4)))}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<div
 									class="gantt-bar"
@@ -909,6 +928,7 @@
 									style:height={`${BAR_HEIGHT}px`}
 									style:--bar-h={`${BAR_HEIGHT}px`}
 									style:--bar-color={barColor(row)}
+									style:--handle-in={`${handleIn}px`}
 									use:peek={{
 										text: span.note || "No intention",
 										detail: `${formatDate(span.start)} → ${span.open ? "now" : formatDate(span.end)}`,
@@ -919,19 +939,18 @@
 									oncontextmenu={(e) => openMenu(e, row, span)}
 								>
 									<!-- Left edge: drag to move this period's start date. -->
-									{#if !box.clampedStart && handles}
+									{#if !box.clampedStart}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
 											class="gantt-handle left"
 											onpointerdown={(e) => beginBarDrag(e, "start", row, span)}
-											title="Drag to move the start date"
 										></div>
 									{/if}
 									<!-- Intensity bars: three stacked, two levels a bar. Hidden on an
 									     unrated bar until hover, so they double as the way to rate it;
 									     dropped on a bar too narrow to hold them beside a label. -->
 									{#if box.width >= 40}
-										<span class="gantt-pips" title="Intensity: click a bar to set · 0–5 keys on a selected bar">
+										<span class="gantt-pips">
 											<IntensityBars level={span.intensity} onpick={(level) => setIntensity(row, span, level)} />
 										</span>
 									{/if}
@@ -958,12 +977,11 @@
 										</span>
 									{/if}
 									<!-- Right edge: drag to move the end date, or (open-ended) to set one. -->
-									{#if !box.clampedEnd && handles}
+									{#if !box.clampedEnd}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
 											class="gantt-handle right"
 											onpointerdown={(e) => beginBarDrag(e, "end", row, span)}
-											title={openEnded ? "Drag left to set an end date" : "Drag to move the end date"}
 										></div>
 									{/if}
 								</div>
@@ -1194,6 +1212,23 @@
 		height: 1px;
 		background: var(--background-modifier-border);
 	}
+	/* Alternate rows: a faint shade through the row and its gap, behind the
+	   label (the label column is its stacking context) and the plot's bars. */
+	.gantt-label.alt::before {
+		content: "";
+		position: absolute;
+		inset: 0 0 calc(-1 * var(--row-gap)) 0;
+		z-index: -1;
+		background: var(--kairos-row-band);
+		pointer-events: none;
+	}
+	.gantt-row-band {
+		position: absolute;
+		left: 0;
+		right: 0;
+		background: var(--kairos-row-band);
+		pointer-events: none;
+	}
 	.gantt-group-line {
 		position: absolute;
 		left: 0;
@@ -1202,7 +1237,10 @@
 		background: var(--background-modifier-border);
 		pointer-events: none;
 	}
+	/* While a bar is dragged the cursor holds wherever the pointer wanders: the
+	   plot and everything in it take --drag-cursor while it's set. */
 	.gantt-plot {
+		cursor: var(--drag-cursor, auto);
 		position: relative;
 		flex: 1;
 		min-width: 400px;
@@ -1286,7 +1324,7 @@
 		left: 0;
 		right: 0;
 		z-index: 0;
-		cursor: crosshair;
+		cursor: var(--drag-cursor, crosshair);
 	}
 	.gantt-create-zone:hover {
 		background: color-mix(in srgb, var(--interactive-accent) 5%, transparent);
@@ -1303,7 +1341,7 @@
 	.gantt-bar {
 		position: absolute;
 		border-radius: 5px;
-		cursor: grab;
+		cursor: var(--drag-cursor, grab);
 		display: flex;
 		align-items: center;
 		/* visible so the open-ended arrow cap (::after) isn't clipped; the inner
@@ -1410,33 +1448,51 @@
 		color: var(--text-faint);
 		font-style: italic;
 	}
+	/* An edge's hit zone straddles it: --edge-out past the bar's outer edge (its
+	   3px border plus 4px of row) and --handle-in into the body, which the bar
+	   sets smaller on a thin bar so there's body left to move it by. It sits
+	   above the intensity lines, so the left edge always offers a resize. */
 	.gantt-handle {
+		--edge-out: 7px;
 		position: absolute;
 		top: 0;
-		width: 8px;
+		width: calc(var(--edge-out) + var(--handle-in, 6px));
 		height: 100%;
-		cursor: ew-resize;
-		z-index: 2;
+		cursor: var(--drag-cursor, ew-resize);
+		z-index: 4;
 	}
-	.gantt-handle.left { left: 0; }
-	.gantt-handle.right { right: 0; }
-	.gantt-handle:hover { background: color-mix(in srgb, var(--bar-color) 45%, transparent); }
+	.gantt-handle.left { left: calc(-1 * var(--edge-out)); }
+	.gantt-handle.right { right: calc(-1 * var(--edge-out)); }
+	/* Pointing at an edge lights it, so you see which one a press will grab. */
+	.gantt-handle::before {
+		content: "";
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 3px;
+	}
+	.gantt-handle.left::before { left: calc(var(--edge-out) - 3px); }
+	.gantt-handle.right::before { right: calc(var(--edge-out) - 3px); }
+	.gantt-handle:hover::before { background: var(--interactive-accent); }
 	/* The open-ended arrow cap doubles as the right handle's visual affordance. */
-	.gantt-bar.open-ended .gantt-handle.right { right: -9px; width: 17px; }
-	/* A selected bar's handles stand outside its ends, as visible grips, so they
-	   never cover the body (which moves the bar) however thin the bar is. */
+	.gantt-bar.open-ended .gantt-handle.right { --edge-out: 13px; }
+	/* A selected bar's handles reach further out and show a grip there, so its
+	   edges can be grabbed however thin the bar is. */
 	.gantt-bar.selected .gantt-handle {
-		width: 10px;
+		--edge-out: 15px;
 		height: calc(100% + 6px);
 		top: -3px;
+	}
+	.gantt-bar.selected.open-ended .gantt-handle.right { --edge-out: 24px; }
+	.gantt-bar.selected .gantt-handle::before {
+		width: 10px;
 		background: var(--interactive-accent);
 		border-radius: var(--kairos-radius-s);
 		opacity: 0.85;
 	}
-	.gantt-bar.selected .gantt-handle.left { left: -13px; }
-	.gantt-bar.selected .gantt-handle.right { right: -13px; }
-	.gantt-bar.selected.open-ended .gantt-handle.right { right: -22px; }
-	.gantt-bar.selected .gantt-handle:hover { opacity: 1; }
+	.gantt-bar.selected .gantt-handle.left::before { left: 0; }
+	.gantt-bar.selected .gantt-handle.right::before { right: 0; }
+	.gantt-bar.selected .gantt-handle:hover::before { opacity: 1; }
 	.gantt-drag-marker {
 		position: absolute;
 		top: 0;

@@ -12,7 +12,7 @@
 
 import type { ISODate } from "../types";
 
-export const ROW_HEIGHT = 38;
+export const ROW_HEIGHT = 34;
 export const ROW_GAP = 6;
 export const BAR_HEIGHT = 26;
 // Space above and below a row label, the Grid's row-label padding. The label

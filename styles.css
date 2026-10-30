@@ -562,4 +562,7 @@ body {
 	--kairos-row-label-pad-right: 10px;
 	/* Extra inset for a project under its domain. */
 	--kairos-row-label-indent: 14px;
+	/* The faint shade on every other Timeline row, so a bar far from its label
+	   can be followed back to it. */
+	--kairos-row-band: color-mix(in srgb, var(--background-modifier-hover) 60%, transparent);
 }
