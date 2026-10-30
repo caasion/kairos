@@ -1,10 +1,17 @@
 // Small native Obsidian modals the Projects & Domains page uses in place of the
 // browser's `window.prompt` / `window.confirm`, which Obsidian's Electron sandbox
 // disables (they throw "prompt() is not supported"). Both resolve through a
-// callback, matching the DomainReorderModal style; styling lives in styles.css
-// under `.kairos-modal-*`.
+// callback, matching the DomainReorderModal style. They use Obsidian's own
+// modal parts (its title, `modal-button-container`, `mod-cta`/`mod-warning`
+// buttons) so they look like Obsidian's dialogs; the little styling they add
+// lives in styles.css under `.kairos-modal-*`.
 
-import { App, Modal, Setting } from "obsidian";
+/** Obsidian's row of dialog buttons, right-aligned at the bottom. */
+function buttonRow(parent: HTMLElement): HTMLElement {
+	return parent.createDiv({ cls: "modal-button-container" });
+}
+
+import { App, ButtonComponent, Modal, Setting } from "obsidian";
 
 /**
  * A single-line text prompt. Calls `onSubmit` with the trimmed value when the
@@ -64,14 +71,12 @@ export class PromptModal extends Modal {
 		});
 		setting.settingEl.addClass("kairos-modal-field");
 
-		new Setting(contentEl)
-			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
-			.addButton((b) =>
-				b
-					.setButtonText(this.cta)
-					.setCta()
-					.onClick(() => this.submit()),
-			);
+		const buttons = buttonRow(contentEl);
+		new ButtonComponent(buttons).setButtonText("Cancel").onClick(() => this.close());
+		new ButtonComponent(buttons)
+			.setButtonText(this.cta)
+			.setCta()
+			.onClick(() => this.submit());
 	}
 
 	private submit() {
@@ -97,6 +102,7 @@ export class ConfirmModal extends Modal {
 	private readonly cta: string;
 	private readonly danger: boolean;
 	private readonly onConfirm: () => void;
+	private readonly alt?: { text: string; onClick: () => void };
 
 	constructor(
 		app: App,
@@ -106,11 +112,14 @@ export class ConfirmModal extends Modal {
 			cta?: string;
 			danger?: boolean;
 			onConfirm: () => void;
+			/** A gentler choice, shown between Cancel and the confirm button. */
+			alt?: { text: string; onClick: () => void };
 		},
 	) {
 		super(app);
 		this.title = opts.title;
 		this.message = opts.message;
+		this.alt = opts.alt;
 		this.cta = opts.cta ?? "Confirm";
 		this.danger = opts.danger ?? false;
 		this.onConfirm = opts.onConfirm;
@@ -126,16 +135,21 @@ export class ConfirmModal extends Modal {
 			body.createEl("p", { text: para });
 		}
 
-		new Setting(contentEl)
-			.addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
-			.addButton((b) => {
-				b.setButtonText(this.cta).onClick(() => {
-					this.close();
-					this.onConfirm();
-				});
-				if (this.danger) b.setWarning();
-				else b.setCta();
+		const buttons = buttonRow(contentEl);
+		new ButtonComponent(buttons).setButtonText("Cancel").onClick(() => this.close());
+		if (this.alt) {
+			const alt = this.alt;
+			new ButtonComponent(buttons).setButtonText(alt.text).onClick(() => {
+				this.close();
+				alt.onClick();
 			});
+		}
+		const confirm = new ButtonComponent(buttons).setButtonText(this.cta).onClick(() => {
+			this.close();
+			this.onConfirm();
+		});
+		if (this.danger) confirm.setWarning();
+		else confirm.setCta();
 	}
 
 	onClose() {
@@ -179,14 +193,12 @@ export class WhyModal extends Modal {
 		});
 		setting.settingEl.addClass("kairos-modal-field");
 
-		new Setting(contentEl)
-			.addButton((b) => b.setButtonText("Skip").onClick(() => this.close()))
-			.addButton((b) =>
-				b
-					.setButtonText("Save")
-					.setCta()
-					.onClick(() => this.save()),
-			);
+		const buttons = buttonRow(contentEl);
+		new ButtonComponent(buttons).setButtonText("Skip").onClick(() => this.close());
+		new ButtonComponent(buttons)
+			.setButtonText("Save")
+			.setCta()
+			.onClick(() => this.save());
 	}
 
 	private save() {
