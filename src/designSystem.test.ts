@@ -48,17 +48,17 @@ const DRIFT: Drift[] = [
 	{
 		what: "Font sizes in px: use a --kairos-text-* token or Obsidian's --font-ui-*",
 		pattern: /font-size:\s*\d+px/g,
-		baseline: 104,
+		baseline: 95,
 	},
 	{
 		what: "Corner radii in px: use a --kairos-radius-* token",
 		pattern: /border-radius:\s*\d+px/g,
-		baseline: 61,
+		baseline: 59,
 	},
 	{
 		what: "Inline SVG icons: use IconButton or the icon action (Obsidian's icons)",
 		pattern: /<svg\b/g,
-		baseline: 81,
+		baseline: 79,
 	},
 	{
 		what: "Hand-made frameless buttons (box-shadow: none): use IconButton",
