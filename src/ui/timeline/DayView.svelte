@@ -29,7 +29,7 @@
 	import { leftovers, type Leftover } from "../../carry";
 	import LeftoverBanner from "./LeftoverBanner.svelte";
 	import { leftOpenLabel } from "./todayLeftovers";
-	import AssocGroup from "./AssocGroup.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import TrayPill from "./TrayPill.svelte";
 	import { surfacedOn } from "../../backlogModel";

@@ -42,7 +42,7 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "./LeftoverTask.svelte";
 	import HeaderBadge from "./HeaderBadge.svelte";
-	import AssocGroup from "./AssocGroup.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import { leftOpenLabel, todayLeftovers } from "./todayLeftovers";
 	import LeftoverButtons from "./LeftoverButtons.svelte";

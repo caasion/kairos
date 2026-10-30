@@ -82,7 +82,7 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "../timeline/LeftoverTask.svelte";
 	import HeaderBadge from "../timeline/HeaderBadge.svelte";
-	import AssocGroup from "../timeline/AssocGroup.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
 	import { groupByAssoc } from "../timeline/groupByAssoc";
 	import TaskRow from "../task/Task.svelte";
 	import { leftOpenLabel, todayLeftovers } from "../timeline/todayLeftovers";

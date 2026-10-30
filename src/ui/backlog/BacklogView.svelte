@@ -32,7 +32,7 @@
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
 	import { nextDraftLine } from "../../draftLine";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
-	import AssocGroup from "../timeline/AssocGroup.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
 	import { createAssociation } from "../association/createAssociation";
 	import Datepicker from "../components/Datepicker.svelte";
 	import { autogrow, singleLine } from "../actions/autogrow";
