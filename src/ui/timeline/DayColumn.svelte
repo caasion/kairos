@@ -601,6 +601,16 @@
 		links.setDrag(null);
 	}
 
+	// The browser took the pointer (a touch that turned into a scroll, a system
+	// gesture) or the window lost focus: drop any task drag or block gesture
+	// without writing. Left live, the next pointerup would commit it.
+	export function cancelPointer() {
+		cancelTaskDrag();
+		gesture = null;
+		preview = new Map();
+		draft = null;
+	}
+
 	// Parent forwards window pointer moves so a drag keeps tracking across
 	// columns. Returns whether this column is handling a live gesture.
 	export function handlePointerMove(event: PointerEvent): boolean {
