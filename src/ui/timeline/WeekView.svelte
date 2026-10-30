@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { App } from "obsidian";
+	import { Menu, type App } from "obsidian";
 	import { onMount } from "svelte";
 	import type { Readable } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
@@ -236,6 +236,21 @@
 	}
 	function isToday(date: ISODate): boolean {
 		return date === todayISO();
+	}
+
+	/** A date card's right-click menu. Past days keep their routines as they were. */
+	function openDayMenu(e: MouseEvent, date: ISODate) {
+		e.preventDefault();
+		const past = date < todayISO();
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle(past ? "Regenerate routines (past day)" : "Regenerate routines…")
+				.setIcon("refresh-cw")
+				.setDisabled(past)
+				.onClick(() => routineActions.regenerate(date)),
+		);
+		menu.showAtMouseEvent(e);
 	}
 
 	// ── Calendar + hour controls (mirrors DayView's header popovers) ──
@@ -902,6 +917,7 @@
 					e.stopPropagation();
 					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
 				}}
+				oncontextmenu={(e: MouseEvent) => openDayMenu(e, date)}
 			>
 				{#snippet badges()}
 				<!-- The day's lists as badges on its header — Unscheduled,

@@ -16,6 +16,9 @@
 //     the day the Day view shows when it is focused, else the open daily note,
 //     else a day the user picks. It never silently creates a note the user
 //     didn't choose.
+//   • "Regenerate routines" (the command, the Day view's menu, a Week day
+//     header's menu), on today or later: a preview of what differs from the
+//     routines file (regenerate.ts), applied as picked, recording the hash.
 //   • Opening a day whose recorded routines hash is out of date shows a notice
 //     once.
 //   • Saving the routines file reports any line Kairos can't use, so a typo in
@@ -30,7 +33,10 @@ import { CARRIED_KEY, carryOver } from "../carry";
 import { ensureNoteForDate, shiftISO, todayISO } from "../dayNote";
 import { parseSchedule } from "../parser";
 import { KairosView } from "../KairosView";
-import { ROUTINES_KEY, applyRoutines, routinesFor, routinesStale } from "./apply";
+import { ROUTINES_KEY, applyRoutines, routinesFor, routinesHash, routinesStale } from "./apply";
+import { applyRegenerate, regenerateChanges } from "./regenerate";
+import { RegenerateModal } from "../ui/routines/RegenerateModal";
+import { resolveAssociation } from "../association";
 import { activeRoutines, ownerActive, type OwnerActive } from "./owners";
 import { parseRoutines, type ParsedRoutines, type Routine } from "./routinesFile";
 import { dayLabel as label, manualMessage, planDayPrep, type PrepMode, type PrepPlan } from "./plan";
@@ -109,6 +115,80 @@ export class DayPreparer {
 		const plan = await this.prepare(file, date, "manual", parsed);
 		if (!plan) return; // already being prepared
 		new Notice(manualMessage(plan, date, parsed, this.plugin.settings.routinesPath));
+	}
+
+	/** The command: regenerate the routines of the day in front of the user. */
+	async regenerateCurrentDay(): Promise<void> {
+		const date = await this.currentDay();
+		if (date) await this.regenerate(date);
+	}
+
+	/**
+	 * Preview what bringing `date` back in line with the routines file would
+	 * change, and apply what the user picks. Only today and later: a past day
+	 * is a record of what happened.
+	 */
+	async regenerate(date: ISODate): Promise<void> {
+		if (date < todayISO()) {
+			new Notice(`${label(date)} is past, so its routines stay as they were.`);
+			return;
+		}
+		const due = await this.dueOn(date);
+		const day = this.plugin.indexAdapter.index.snapshot().days.get(date);
+		const changes = regenerateChanges(day?.blocks ?? [], due);
+		if (changes.length === 0) {
+			const msg =
+				due.length === 0 ? `No routines are due on ${label(date)}.` : `${label(date)} already matches your routines.`;
+			new Notice(msg);
+			if (day) await this.recordHash(date, due);
+			return;
+		}
+		const { projects, domains } = this.plugin.indexAdapter.index.snapshot();
+		new RegenerateModal(this.plugin.app, {
+			label: label(date),
+			changes,
+			assocName: (a) => resolveAssociation(a, projects, domains).displayName,
+			onApply: (keys) => void this.applyRegenerate(date, keys),
+		}).open();
+	}
+
+	/**
+	 * Apply the picked changes (by key) to `date`, recomputed against the day
+	 * as it is now, so an edit made while the preview was open isn't lost.
+	 */
+	private async applyRegenerate(date: ISODate, keys: Set<string>): Promise<void> {
+		const file = await this.noteFor(date);
+		if (!file) return;
+		const due = await this.dueOn(date);
+		const blocks = await this.currentBlocks(file, date);
+		const picked = regenerateChanges(blocks, due).filter((c) => keys.has(c.key));
+		await this.recordHash(date, due, file);
+		if (picked.length > 0) {
+			this.plugin.indexAdapter.index.applyDayEdit(date, file.path, applyRegenerate(blocks, picked, file.path));
+		}
+		const n = picked.length;
+		new Notice(`Made ${n} change${n === 1 ? "" : "s"} to ${label(date)} from your routines.`);
+	}
+
+	/** The routines due on `date` whose project or domain is active then. */
+	private async dueOn(date: ISODate): Promise<Routine[]> {
+		const { routines } = await this.loadRoutines();
+		return activeRoutines(routinesFor(routines, date), date, this.ownerActive());
+	}
+
+	/** Record `due`'s hash on `date`'s note, as applying does (removed when none are due). */
+	private async recordHash(date: ISODate, due: Routine[], file?: TFile): Promise<void> {
+		const note = file ?? this.plugin.app.vault.getAbstractFileByPath(
+			this.plugin.indexAdapter.index.snapshot().days.get(date)?.path ?? "",
+		);
+		if (!(note instanceof TFile)) return;
+		const hash = routinesHash(due, date);
+		const recorded = readKey(this.plugin.app.metadataCache.getFileCache(note)?.frontmatter?.[ROUTINES_KEY]);
+		if ((recorded ?? "") === hash) return;
+		await this.plugin.app.fileManager.processFrontMatter(note, (front: Record<string, unknown>) => {
+			if (hash === "") delete front[ROUTINES_KEY];
+			else front[ROUTINES_KEY] = hash;
+		});
 	}
 
 	/**
@@ -303,7 +383,7 @@ export class DayPreparer {
 		if (this.warnedStale.has(date)) return;
 		this.warnedStale.add(date);
 		new Notice(
-			`Your routines for ${label(date)} changed since that day was set up. Run "Apply routines to this day" to add the new ones.`,
+			`Your routines for ${label(date)} changed since that day was set up. Run "Regenerate routines for this day" to see what changed.`,
 		);
 	}
 }

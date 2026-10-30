@@ -113,6 +113,18 @@ Point at the pill to see the list. Select a routine's arrow to add it, or **Add 
 
 You can also run **Apply routines to this day** from the command palette. To add routines automatically whenever a daily note is created, turn on **Settings → Kairos → Add routines to new daily notes**.
 
+**Update a day after changing routines**
+
+Adding routines only adds what's missing. A block that's already in the day keeps its project or domain and its time when you change the routine. To bring a day in line with `Routines.md` again, right-click the day's header in the Week view and select **Regenerate routines…**. In the Day view, open the **⋯** menu and select **Regenerate routines…**, or run **Regenerate routines for this day** from the command palette.
+
+It lists what differs, and nothing changes until you select **Apply**:
+
+- A block or task whose project or domain is different from its routine.
+- Routine tasks missing from a block, and routines missing from the day.
+- A block at a different time from its routine. These start unchecked, since you may have moved the block on purpose.
+
+Uncheck what you want to keep as it is. Nothing is removed: tasks you added to a routine block stay, and done tasks stay done. Past days can't be regenerated, so they keep the record of what happened.
+
 **Edit routines**
 
 The Routines view groups routines by when they repeat. Select a time or title to edit it, or point at a block's top-right corner to add a task, change its association or when it repeats, or delete it. Unscheduled has only a **+**, to add a task. Select **Open file** to edit `Routines.md` by hand.

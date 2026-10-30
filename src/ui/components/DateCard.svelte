@@ -7,6 +7,7 @@
 	// Cards sit edge to edge, square, in a row; only the last one rounds its
 	// top-right corner (the row's gutter spacer rounds the top-left). With
 	// `onclick` it's a button that brightens on hover; without, a plain card.
+	// `oncontextmenu` opens the day's menu on either.
 
 	import type { Snippet } from "svelte";
 
@@ -19,11 +20,12 @@
 		today?: boolean;
 		title?: string;
 		onclick?: (event: MouseEvent) => void;
+		oncontextmenu?: (event: MouseEvent) => void;
 		/** Badges over the card's bottom-right corner. */
 		badges?: Snippet;
 	}
 
-	let { label, value, today = false, title, onclick, badges }: Props = $props();
+	let { label, value, today = false, title, onclick, oncontextmenu, badges }: Props = $props();
 </script>
 
 {#snippet face()}
@@ -36,9 +38,10 @@
 
 <div class="date-card-wrap">
 	{#if onclick}
-		<button class="date-card is-button" class:today {title} {onclick}>{@render face()}</button>
+		<button class="date-card is-button" class:today {title} {onclick} {oncontextmenu}>{@render face()}</button>
 	{:else}
-		<div class="date-card" class:today {title}>{@render face()}</div>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="date-card" class:today {title} {oncontextmenu}>{@render face()}</div>
 	{/if}
 	{#if badges}
 		<div class="date-card-badges">{@render badges()}</div>
