@@ -375,7 +375,7 @@
 						<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
 					</span>
 					<span class="group-name">{group.name}</span>
-					<span class="group-count">{group.routines.length}</span>
+					<span class="kairos-count">{group.routines.length}</span>
 					<button class="add-btn" aria-label="Add a routine here" use:tooltip={"Add a routine here"} onclick={(e) => openAddMenu(group.rule, e)}>
 						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 					</button>
@@ -534,11 +534,6 @@
 		letter-spacing: 0.02em;
 		text-transform: uppercase;
 		color: var(--text-normal);
-	}
-	.group-count {
-		font-size: 11px;
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
 	}
 	.add-btn {
 		margin-left: auto;

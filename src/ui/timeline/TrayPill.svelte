@@ -14,6 +14,7 @@
 	// and the Unscheduled pill is itself the drop target (`dropDate`).
 
 	import type { Snippet } from "svelte";
+	import Pill from "../components/Pill.svelte";
 
 	interface Props {
 		label: string;
@@ -158,24 +159,24 @@
 	$effect(() => () => clearTimer());
 </script>
 
-<button
-	class="tray-pill"
-	class:open
-	class:expanded
-	class:drop-target={dropTarget}
-	class:warn={tone === "warn"}
+<!-- Named by its visible label and count, not aria-label: Obsidian shows
+     every aria-label as a tooltip, which would cover the peek. -->
+<Pill
+	size="m"
+	{icon}
+	{label}
+	{count}
+	{tone}
+	{open}
+	pressed={expanded}
+	{dropTarget}
 	data-unscheduled-date={dropDate}
 	aria-expanded={expanded}
-	aria-label={`${label}, ${count}`}
-	bind:this={pillEl}
+	bind:el={pillEl}
 	onclick={onClick}
 	onpointerenter={onEnter}
 	onpointerleave={onLeave}
->
-	{@render icon()}
-	<span class="tp-label">{label}</span>
-	<span class="tp-count">{count}</span>
-</button>
+/>
 
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -200,56 +201,6 @@
 {/if}
 
 <style>
-	.tray-pill {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		flex-shrink: 0;
-		min-width: 0;
-		height: 22px;
-		padding: 0 7px;
-		border-radius: var(--radius-s);
-		border: 1px solid var(--background-modifier-border);
-		background: var(--background-primary);
-		box-shadow: none;
-		color: var(--text-muted);
-		font-size: 11px;
-		cursor: pointer;
-	}
-	.tray-pill:hover,
-	.tray-pill.open {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-		box-shadow: none;
-	}
-	.tray-pill.expanded {
-		border-color: color-mix(in srgb, var(--interactive-accent) 50%, var(--background-modifier-border));
-		background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
-		color: var(--text-normal);
-	}
-	.tray-pill.warn {
-		border-color: color-mix(in srgb, var(--color-orange) 45%, transparent);
-		background: color-mix(in srgb, var(--color-orange) 12%, var(--background-primary));
-		color: var(--color-orange);
-	}
-	.tray-pill.drop-target {
-		border-color: var(--interactive-accent);
-		background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
-		color: var(--text-normal);
-	}
-	.tray-pill :global(svg) {
-		flex-shrink: 0;
-	}
-	.tp-label {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.tp-count {
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
-	}
-
 	.tray-panel {
 		position: fixed;
 		z-index: var(--layer-popover);
