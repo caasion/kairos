@@ -42,6 +42,8 @@
 	import { addChangeDomainItem, addRollupItem } from "./projectMenu";
 	import { StatusHistoryModal } from "./StatusHistoryModal";
 	import { ConfirmModal, PromptModal, WhyModal } from "./modals";
+	import AssocGroup from "../components/AssocGroup.svelte";
+	import IconButton from "../components/IconButton.svelte";
 
 	interface Props {
 		app: App;
@@ -530,116 +532,72 @@
 	<div class="pv-scroll">
 		{#each domainRows as row (row.domain.id)}
 			{@const domainInactive = statusOf(row.domain) !== "active"}
-			<section
-				class="domain-group"
-				style={`--domain-accent: ${row.domain.color || "var(--text-faint)"};`}
+			<!-- The group heading every list uses (AssocGroup): the domain icon, the
+			     name in serif and its count, and a bar in the domain color down its
+			     projects. Select the name to rename it, Ctrl/Cmd+click to open the
+			     file, right-click (or ⋯) for the rest. -->
+			<AssocGroup
+				assoc={{ kind: "domain", id: row.domain.id }}
+				label={row.domain.name}
+				color={row.domain.color || undefined}
+				count={row.projects.length}
+				sticky
+				dim={domainInactive}
+				editing={isEditing(row.domain)}
+				onStartRename={() => startRename(row.domain)}
+				onRename={(name: string) => finishRename(row.domain, true, name)}
+				onOpen={(e: MouseEvent) => openFile(row.domain, e)}
+				oncontextmenu={(e: MouseEvent) => openDomainMenu(row.domain, e)}
 			>
-				<!-- The whole header is one interactive object: hovering highlights the
-				     full line, right-click opens the context menu (change status, add
-				     project, delete, …). Only color and backlog stay as inline icons.
-				     The group's accent is the domain color: it tints the kind icon here
-				     and runs as a continuous left line down the project list below (like
-				     the grid/week views), so a domain and its projects read as one block. -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<header
-					class="domain-header"
-					class:dim={domainInactive}
-					oncontextmenu={(e) => openDomainMenu(row.domain, e)}
-				>
-					<!-- Kind icon: this page's top-level rows are always domains. Same
-					     icon the grid/timeline/backlog use for a domain association,
-					     tinted the domain's color to accent it (in place of a stripe). -->
-					<span class="kind-icon" title="Domain">
-						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-					</span>
-
-					{#if isEditing(row.domain)}
-						<!-- svelte-ignore a11y_autofocus -->
-						<input
-							class="name-input domain kairos-inline-input"
-							value={row.domain.name}
-							autofocus
-							onclick={(e) => e.stopPropagation()}
-							onblur={(e) => finishRename(row.domain, true, e.currentTarget.value)}
-							onkeydown={(e) => {
-								if (e.key === "Enter") e.currentTarget.blur();
-								if (e.key === "Escape") { e.currentTarget.value = row.domain.name; e.currentTarget.blur(); }
-							}}
-						/>
-					{:else}
-						<button
-							class="domain-name"
-							title="Click to rename · Ctrl/Cmd-click to open file · Right-click for more"
-							onclick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) openFile(row.domain, e); else startRename(row.domain); }}
-						>{row.domain.name}</button>
-					{/if}
-
+				{#snippet meta()}
 					{#if row.domain.description}
 						<span class="row-desc" title={row.domain.description}>{row.domain.description}</span>
 					{/if}
-
-					{#if statusOf(row.domain) !== "active"}
+					{#if domainInactive}
 						<span class="status-tag">{STATUS_LABEL[statusOf(row.domain)]}</span>
 					{/if}
-
-					<span class="domain-count">{row.projects.length}</span>
-					<span class="pv-spacer"></span>
-
+				{/snippet}
+				{#snippet actions()}
 					<!-- Color: a plain native color input. Clicking it opens the OS
 					     picker; the swatch shows the current color. -->
 					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<label class="icon-btn color-btn" title="Set color" onclick={(e) => e.stopPropagation()}>
 						<span class="swatch" style={`background:${row.domain.color || "var(--text-faint)"};`}></span>
 						<input class="color-native" type="color" value={row.domain.color || "#888888"}
 							oninput={(e) => pickColor(row.domain, e.currentTarget.value)} />
 					</label>
-
-					<!-- Backlog -->
-					<button class="icon-btn" title="View this domain's backlog"
-						onclick={(e) => { e.stopPropagation(); backlogForDomain(row); }} aria-label="View backlog">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-					</button>
-
-					<!-- More actions (also available via right-click on the row) -->
-					<button class="icon-btn" title="More actions"
-						onclick={(e) => openDomainMenu(row.domain, e)} aria-label="More actions">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-					</button>
-				</header>
+					<IconButton label="View this domain's backlog" icon="inbox" onclick={() => backlogForDomain(row)} />
+					<IconButton label="More actions" icon="more-horizontal" onclick={(e: MouseEvent) => openDomainMenu(row.domain, e)} />
+				{/snippet}
 
 				{#if row.projects.length === 0}
 					<div class="group-empty">No projects here.</div>
 				{:else}
-					<!-- The continuous accent line lives on the list, so it spans every
-					     child project and stops at the last one — extending the domain's
-					     accent down through its projects. -->
-					<ul class="project-list accented" class:dim={domainInactive}>
+					<ul class="project-list">
 						{#each row.projects as project (project.source.path)}
 							{@render projectRow(project, domainInactive)}
 						{/each}
 					</ul>
 				{/if}
-			</section>
+			</AssocGroup>
 		{/each}
 
 		<!-- Orphan projects (no domain) -->
 		{#if orphanRows.length > 0}
-			<section class="domain-group">
-				<header class="domain-header">
-					<span class="domain-name unassigned">Unassigned</span>
-					<span class="domain-count">{orphanRows.length}</span>
-					<span class="pv-spacer"></span>
-					<button class="icon-btn" title="New project"
-						onclick={(e) => { e.stopPropagation(); createProject(undefined); }} aria-label="New project">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-					</button>
-				</header>
+			<AssocGroup
+				noneLabel="Unassigned"
+				count={orphanRows.length}
+				sticky
+				addLabel="New project"
+				onAdd={() => createProject(undefined)}
+			>
 				<ul class="project-list">
 					{#each orphanRows as project (project.source.path)}
 						{@render projectRow(project, false)}
 					{/each}
 				</ul>
-			</section>
+			</AssocGroup>
 		{/if}
 
 		{#if domainRows.length === 0 && orphanRows.length === 0}
@@ -812,64 +770,8 @@
 		pointer-events: none;
 	}
 
-	/* ── Domain group ── */
-	.domain-group {
-		margin-bottom: 16px;
-	}
-	.domain-header {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 7px 8px;
-		border-radius: 7px;
-		position: sticky;
-		top: 0;
-		/* Sticky at the top of the scroll, with the project rows passing
-		   underneath it — so its fill has to stay opaque. */
-		background: var(--background-primary);
-		z-index: 1;
-	}
-	/* The whole domain row is one hover object (spec §5). The hover token is a
-	   translucent tint, so it is painted as a layer *over* the opaque base rather
-	   than assigned to `background`: the shorthand would drop the primary fill and
-	   let whatever is scrolled under the header read through it. */
-	.domain-header:hover {
-		background-image: linear-gradient(
-			var(--background-modifier-hover),
-			var(--background-modifier-hover)
-		);
-	}
-	.domain-header.dim {
-		opacity: 0.55;
-	}
-	.domain-name {
-		font-size: 13px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		padding: 0;
-		cursor: pointer;
-	}
-	.domain-name:hover {
-		color: var(--interactive-accent);
-	}
-	.domain-name.unassigned {
-		color: var(--text-faint);
-		font-style: italic;
-		text-transform: none;
-		letter-spacing: 0;
-		cursor: default;
-	}
 	.project-name.dim {
 		opacity: 0.55;
-	}
-	.domain-count {
-		font-size: 11px;
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
 	}
 	/* Inline description blurb (domains + projects), shown right after the name.
 	   Truncates so a long blurb never pushes the action icons off the row. */
@@ -913,17 +815,6 @@
 		margin: 0;
 		padding: 0;
 	}
-	/* The domain's accent continues as a left line down its project list (mirrors
-	   the grid/week views), so a domain and its projects read as one block. The
-	   line descends from under the domain's tinted kind icon (~15px in); rows are
-	   indented to clear it. It fades with the group when the domain is inactive. */
-	.project-list.accented {
-		margin-left: 15px;
-		border-left: 2px solid var(--domain-accent, var(--text-faint));
-	}
-	.project-list.accented.dim {
-		opacity: 0.55;
-	}
 	.project-row {
 		display: flex;
 		align-items: center;
@@ -931,9 +822,6 @@
 		padding: 5px 10px 5px 8px;
 		border-radius: 7px;
 		position: relative;
-	}
-	.project-list.accented .project-row {
-		padding-left: 10px;
 	}
 	.project-row:hover {
 		background: var(--background-modifier-hover);
@@ -974,10 +862,10 @@
 	.project-name:hover {
 		color: var(--interactive-accent);
 	}
-	/* Rename inputs (project + domain) are styled to be indistinguishable from the
+	/* A project's rename input is styled to be indistinguishable from the
 	   static name — no box, no border, no box-shadow — so renaming feels like
-	   putting the cursor on the name, matching the backlog/task rows. The domain
-	   variant keeps the heading's uppercase weight so it doesn't jump on edit. */
+	   putting the cursor on the name, matching the backlog/task rows. A domain's
+	   is AssocGroup's. */
 	.name-input {
 		font-size: 13px;
 		font-family: inherit;
@@ -998,26 +886,6 @@
 		box-shadow: none;
 		outline: none;
 	}
-	.name-input.domain {
-		font-size: 13px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-	}
-
-	/* ── Kind icon (domain marker in the header) ── */
-	/* The domain kind icon carries the domain's accent color (its stripe used to);
-	   falls back to faint when no color is set. */
-	.kind-icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--domain-accent, var(--text-faint));
-		flex-shrink: 0;
-		/* Obsidian's base styling can collapse an inline SVG to 0 width; pin it. */
-		min-width: min-content;
-	}
-
 	/* ── Row action bar (always visible on this page) ── */
 	.row-actions {
 		display: flex;
@@ -1044,8 +912,7 @@
 		cursor: pointer;
 		flex-shrink: 0;
 	}
-	.project-row:hover .icon-btn,
-	.domain-header .icon-btn {
+	.project-row:hover .icon-btn {
 		color: var(--text-muted);
 	}
 	.icon-btn:hover {
