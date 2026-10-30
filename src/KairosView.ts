@@ -6,6 +6,7 @@ import type Kairos from "./main";
 import type { KairosSettings } from "./settings";
 import type { ISODate } from "./types";
 import { openSaveDay } from "./routines/register";
+import { todayISO } from "./dayNote";
 
 export const KAIROS_VIEW_TYPE = "kairos-day-view";
 
@@ -45,6 +46,15 @@ export class KairosView extends ItemView {
 				.setIcon("repeat")
 				.setSection("action")
 				.onClick(() => openSaveDay(this.plugin, date)),
+		);
+		const past = date < todayISO();
+		menu.addItem((item) =>
+			item
+				.setTitle(past ? "Regenerate routines (past day)" : "Regenerate routines…")
+				.setIcon("refresh-cw")
+				.setSection("action")
+				.setDisabled(past)
+				.onClick(() => void this.plugin.dayPreparer.regenerate(date)),
 		);
 	}
 

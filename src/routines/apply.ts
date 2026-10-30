@@ -81,7 +81,7 @@ export function applyRoutines(
 
 // ─── matching ──────────────────────────────────────────────────
 
-function sameAssoc(a: Association | undefined, b: Association | undefined): boolean {
+export function sameAssoc(a: Association | undefined, b: Association | undefined): boolean {
 	if (!a || !b) return a === b;
 	return a.kind === b.kind && a.id === b.id;
 }
@@ -127,7 +127,7 @@ export function claimBlocks(blocks: Block[], due: Routine[]): Map<BlockRoutine, 
 }
 
 /** The association a routine task means: its own, else its home line's. */
-function effectiveAssoc(r: TaskRoutine): Association | undefined {
+export function effectiveAssoc(r: TaskRoutine): Association | undefined {
 	return r.assoc ?? r.inherited;
 }
 
@@ -137,7 +137,7 @@ function effectiveAssoc(r: TaskRoutine): Association | undefined {
  * may sit in (and inherit from) a tagged block — and a day task whose tag was
  * removed still counts as that routine's copy.
  */
-function compatibleAssoc(a: Association | undefined, b: Association | undefined): boolean {
+export function compatibleAssoc(a: Association | undefined, b: Association | undefined): boolean {
 	return !a || !b || sameAssoc(a, b);
 }
 
@@ -152,7 +152,7 @@ function hasTask(blocks: Block[], r: TaskRoutine): boolean {
 
 // ─── building ──────────────────────────────────────────────────
 
-function makeRoutineBlock(r: BlockRoutine, path: string): Block {
+export function makeRoutineBlock(r: BlockRoutine, path: string): Block {
 	return {
 		source: { path, line: nextDraftLine() },
 		title: r.title,
@@ -170,7 +170,7 @@ function makeRoutineBlock(r: BlockRoutine, path: string): Block {
  * The association is written only when inheriting from the destination block
  * wouldn't already say it — so the line stays literally true either way.
  */
-function insertTask(blocks: Block[], r: TaskRoutine, path: string): Block[] {
+export function insertTask(blocks: Block[], r: TaskRoutine, path: string): Block[] {
 	const assoc = effectiveAssoc(r);
 	const home =
 		r.home === undefined
