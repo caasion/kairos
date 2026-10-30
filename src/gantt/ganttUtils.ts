@@ -201,6 +201,93 @@ export function getUnitViewport(
 	return unitRange(interval, date);
 }
 
+/**
+ * Shift an ISO date by whole calendar months. The day stays where the target
+ * month has it, and is pulled back to the month's last day where it doesn't
+ * (31 Jan + 1 → 28 Feb).
+ */
+export function shiftMonths(date: ISODate, months: number): ISODate {
+	const total = year(date) * 12 + (month(date) - 1) + months;
+	const y = Math.floor(total / 12);
+	const m = total - y * 12 + 1;
+	const mm = String(m).padStart(2, "0");
+	const last = Number(shiftDays(startOfNextMonth(`${y}-${mm}-01`), -1).slice(8, 10));
+	const d = Math.min(Number(date.slice(8, 10)), last);
+	return `${y}-${mm}-${String(d).padStart(2, "0")}`;
+}
+
+// ── The Timeline's range ─────────────────────────────────────────────────────
+// The range is one unit of the interval long, but it needn't start on a unit
+// boundary: the small arrows step it one unit down (Week → a day, Month → a
+// week, Quarter → a month, Year → a quarter), so a Month view can sit at
+// 8 Oct – 7 Nov. Every step is a plain shift, so back undoes forward exactly.
+// "Today", the calendar and a change of interval snap it back to a whole unit.
+
+function shiftBy(interval: Interval, date: ISODate, units: number): ISODate {
+	switch (interval) {
+		case "week":
+			return shiftDays(date, units * 7);
+		case "month":
+			return shiftMonths(date, units);
+		case "quarter":
+			return shiftMonths(date, units * 3);
+		case "year":
+			return shiftMonths(date, units * 12);
+	}
+}
+
+/** The unit one step down from `interval`, which the small arrows move by. */
+export const SUB_UNIT: Record<Interval, "day" | "week" | "month" | "quarter"> = {
+	week: "day",
+	month: "week",
+	quarter: "month",
+	year: "quarter",
+};
+
+/** The [start, end] inclusive dates of the range one `interval` long from `start`. */
+export function viewRange(interval: Interval, start: ISODate): { start: ISODate; end: ISODate } {
+	return { start, end: shiftDays(shiftBy(interval, start, 1), -1) };
+}
+
+/**
+ * Where the range starts after one press of an arrow: `big` moves it a whole
+ * unit of `interval`, otherwise one unit down (SUB_UNIT).
+ */
+export function stepView(interval: Interval, start: ISODate, dir: 1 | -1, big: boolean): ISODate {
+	if (big) return shiftBy(interval, start, dir);
+	switch (SUB_UNIT[interval]) {
+		case "day":
+			return shiftDays(start, dir);
+		case "week":
+			return shiftDays(start, dir * 7);
+		case "month":
+			return shiftMonths(start, dir);
+		case "quarter":
+			return shiftMonths(start, dir * 3);
+	}
+}
+
+/**
+ * The header date button's label for the range starting at `start`: the
+ * unit's own name when the range is a whole unit ("Oct 2026", "Q4 2026"),
+ * otherwise the dates or months it runs between.
+ */
+export function viewLabel(interval: Interval, start: ISODate): string {
+	if (unitRange(interval, start).start === start) return unitLabel(interval, start);
+	const { end } = viewRange(interval, start);
+	const sameYear = year(start) === year(end);
+	if (interval === "week" || interval === "month") {
+		const day = (d: ISODate) => `${Number(d.slice(8, 10))} ${MONTHS[month(d) - 1]}`;
+		return sameYear
+			? `${day(start)} – ${day(end)} ${year(end)}`
+			: `${day(start)} ${year(start)} – ${day(end)} ${year(end)}`;
+	}
+	const mon = (d: ISODate) => MONTHS[month(d) - 1]!;
+	return sameYear
+		? `${mon(start)} – ${mon(end)} ${year(end)}`
+		: `${mon(start)} ${year(start)} – ${mon(end)} ${year(end)}`;
+}
+
 /** A short human label for the current unit (used in the header date button). */
 export function unitLabel(interval: Interval, start: ISODate): string {
 	const { end } = unitRange(interval, start);
@@ -333,7 +420,8 @@ function fmtDay(date: ISODate): string {
 
 /**
  * Build the two-level header for `interval` over `[viewportStart, viewportEnd]`.
- * Assumes the viewport is a whole unit (as `getUnitViewport` guarantees).
+ * The viewport is one unit long but may start mid-unit (`viewRange`), so the
+ * bands are walked from its first day rather than assumed whole.
  */
 export function getHeader(
 	interval: Interval,
@@ -386,16 +474,14 @@ export function getHeader(
 
 	switch (interval) {
 		case "week": {
-			// Fine = days; coarse = the single week (by ISO week-of-year number).
-			const right = xOf(shiftDays(viewportEnd, 1));
+			// Fine = days; coarse = the week (by ISO week-of-year number), or the
+			// two it straddles once the small arrows have moved it off a Monday.
 			return {
 				fine: dayFine(),
-				coarse: [{
-					label: `Week ${isoWeekNumber(viewportStart)}`,
-					gridX: 0,
-					labelX: right / 2,
-					width: right,
-				}],
+				coarse: groupsBy(
+					(d) => shiftDays(startOfWeek(d), 7),
+					(s) => `Week ${isoWeekNumber(s)}`,
+				),
 			};
 		}
 		case "month": {
@@ -429,8 +515,8 @@ export function getHeader(
 			}
 			return {
 				fine,
-				// The whole viewport is one quarter → within a single year, so the
-				// month bands don't need the year suffix.
+				// Three months fit without a year on each band; when the range
+				// crosses a year, the header date button names both.
 				coarse: groupsBy(
 					(d) => startOfNextMonth(d),
 					(s) => MONTHS[month(s) - 1]!,
@@ -438,8 +524,8 @@ export function getHeader(
 			};
 		}
 		case "year": {
-			// Fine = months; coarse = quarters (year is fixed by the viewport, so no
-			// year suffix on each quarter band).
+			// Fine = months; coarse = quarters (no year suffix on each band; the
+			// header date button names the year, or both when the range crosses one).
 			const fine: FineTick[] = [];
 			let cur = startOfMonth(viewportStart);
 			while (cur <= viewportEnd) {
