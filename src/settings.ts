@@ -136,6 +136,20 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'gridRowLines': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.gridRowLines = on;
+				});
+				return;
+			}
+			case 'gridRowShading': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.gridRowShading = on;
+				});
+				return;
+			}
 			case 'gridShowRollupProjects': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {

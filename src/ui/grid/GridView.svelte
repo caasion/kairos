@@ -372,6 +372,16 @@
 			s.gridUnscheduledInCells = on;
 		});
 	}
+	function setRowLines(on: boolean) {
+		updateSettings((s) => {
+			s.gridRowLines = on;
+		});
+	}
+	function setRowShading(on: boolean) {
+		updateSettings((s) => {
+			s.gridRowShading = on;
+		});
+	}
 	function setShowRollupProjects(on: boolean) {
 		updateSettings((s) => {
 			s.gridShowRollupProjects = on;
@@ -1471,6 +1481,14 @@
 						<input type="checkbox" checked={settings.gridUnscheduledInCells} onchange={(e) => setUnscheduledInCells(e.currentTarget.checked)} />
 					</label>
 					<label class="controls-field">
+						<span class="controls-label">Line under every row</span>
+						<input type="checkbox" checked={settings.gridRowLines} onchange={(e) => setRowLines(e.currentTarget.checked)} />
+					</label>
+					<label class="controls-field">
+						<span class="controls-label">Shade every other row</span>
+						<input type="checkbox" checked={settings.gridRowShading} onchange={(e) => setRowShading(e.currentTarget.checked)} />
+					</label>
+					<label class="controls-field">
 						<span class="controls-label">Show projects on rolled-up tasks</span>
 						<input type="checkbox" checked={settings.gridShowRollupProjects} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
 					</label>
@@ -1571,7 +1589,12 @@
 	</div>
 
 	<div class="grid-scroll" data-drag-scroll>
-		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
+		<div
+			class="grid-table"
+			class:row-lines={settings.gridRowLines}
+			class:row-shading={settings.gridRowShading}
+			style={`grid-template-columns: ${gridTemplate};`}
+		>
 			<!-- Body rows -->
 			{#each rows as row, i (row.key)}
 				{@const rowArchived = isCellInactive(row, todayISO())}
@@ -2064,17 +2087,22 @@
 	.grid-rowlabel.unassigned {
 		border-left-color: transparent;
 	}
-	/* Child project rows sit deeper under their domain. Every row keeps its
-	   line, so each row's line runs from the label across the cells; the accent
-	   stripe on the left still runs unbroken down the group. */
+	/* Child project rows sit deeper under their domain. By default the label
+	   column drops the line between a domain and its projects, so the group reads
+	   as one block; **Line under every row** keeps every row's line, so it runs
+	   from the label across the cells. The accent stripe runs unbroken either way. */
 	.grid-rowlabel.child {
 		padding-left: calc(var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent));
 	}
-	/* Every other row is tinted, label and cells alike, so a row is easy to
+	.grid-table:not(.row-lines) .grid-rowlabel.child:not(.group-end),
+	.grid-table:not(.row-lines) .grid-rowlabel.domain {
+		border-bottom-color: transparent;
+	}
+	/* **Shade every other row**: label and cells alike, so a row is easy to
 	   follow across the days. Laid over the row's own background (the label
 	   column's, today's). */
-	.grid-rowlabel.alt,
-	.grid-datacell.alt {
+	.grid-table.row-shading .grid-rowlabel.alt,
+	.grid-table.row-shading .grid-datacell.alt {
 		background-image: linear-gradient(var(--kairos-row-alt), var(--kairos-row-alt));
 	}
 	/* A row for an entity that is inactive/archived today — present for its

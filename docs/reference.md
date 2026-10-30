@@ -204,6 +204,8 @@ Find these in **Settings → Kairos**. Some are also in a view's gear menu.
 | Days before today | 1 | How many past days the Week view and Grid show. |
 | Days after today | 5 | How many future days the Week view and Grid show. |
 | Show unscheduled tasks in the grid | On | Show each day's tasks without a time in the Grid's cells. Off, they're listed behind the Unscheduled badge on the day's header. |
+| Line under every row | Off | Draw a line under every Grid row, including between a domain and its projects. |
+| Shade every other row | Off | Tint every other Grid row, so a row is easier to follow across the days. |
 | Show projects on rolled-up tasks | Off | On a domain row with rolled-up projects, show each task's project at the end of its line. |
 | Highlight across views | On | Pointing at a block or task lights it up in every view. |
 | Follow the grid | On | Working on a day in the Grid shows it in the Day view, and in the Week view when it's out of sight. |
