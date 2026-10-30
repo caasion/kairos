@@ -141,6 +141,9 @@ status:
 | **Esc** during a drag | Cancel it |
 | Ctrl/Cmd+click a date | Open (or create) that day's note |
 | Ctrl/Cmd+click a task's or block's project | Open the project's note |
+| Select « or » in a header | Step back or forward a big step: a week (Day), the whole window (Week, Grid), the interval (Timeline) |
+| Select ‹ or › in a header | Step back or forward a small step: a day (Day, Week, Grid, Timeline Week), a week (Timeline Month), a month (Timeline Quarter), a quarter (Timeline Year) |
+| Select **Today** in a header | Go back to today |
 
 ### Day and Week views
 
