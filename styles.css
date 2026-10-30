@@ -244,7 +244,10 @@ body .kairos-action-stack:focus-within > * {
 	}
 }
 
-/* ── Prompt / Confirm modals (modals.ts) ── */
+/* ── Prompt / Confirm modals (modals.ts) ──
+   Obsidian's own modal parts do the rest: its title, and the button row
+   (`modal-button-container`). The text field fills the dialog, and a
+   confirmation's message reads like Obsidian's own dialogs. */
 .kairos-modal-field {
 	border-top: none;
 	padding-top: 0;
@@ -253,10 +256,9 @@ body .kairos-action-stack:focus-within > * {
 	width: 100%;
 }
 .kairos-modal-message p {
-	margin: 0 0 8px;
+	margin: 0 0 var(--size-4-2);
 	color: var(--text-muted);
-	font-size: 13px;
-	line-height: 1.5;
+	line-height: var(--line-height-normal);
 }
 .kairos-modal-message p:last-child {
 	margin-bottom: 0;
@@ -293,10 +295,10 @@ body .kairos-action-stack:focus-within > * {
 /* ── Status history modal (StatusHistoryModal.ts) ── */
 /* A "Status history" caption trailing the entity name in the modal title. */
 .kairos-history-sub {
-	margin-left: 8px;
-	font-size: 12px;
-	font-weight: 400;
-	color: var(--text-faint);
+	margin-left: var(--size-4-2);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-normal);
+	color: var(--text-muted);
 }
 
 /* ── Task & block metadata (the "icon + muted label" line) ── */

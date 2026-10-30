@@ -11,8 +11,10 @@
 	//
 	// The open row is re-resolved from the live `projectsDomains()` feed on every
 	// edit (the feed republishes on each applyProjectEdit/applyDomainEdit), so the
-	// list refreshes in place. Buttons use Obsidian's native classes (mod-cta /
-	// mod-warning) so they match the rest of the app's modal styling.
+	// list refreshes in place. It's built from Obsidian's own parts (setting
+	// rows, `modal-button-container`, mod-cta / mod-warning buttons) so it reads
+	// like Obsidian's dialogs. The fields of a record are one form
+	// (StatusRecordForm), used to add a change and to edit one.
 
 	import { onMount } from "svelte";
 	import type { Unsubscriber } from "svelte/store";
@@ -34,8 +36,8 @@
 	} from "../../projectActions";
 	import { dateFromISO, isoFromDate, todayISO } from "../../dayNote";
 	import { INTENSITY_MAX } from "../../projectFile";
-	import Datepicker from "../components/Datepicker.svelte";
 	import IntensityBars from "../components/IntensityBars.svelte";
+	import StatusRecordForm from "./StatusRecordForm.svelte";
 
 	interface Props {
 		index: KairosIndex;
@@ -73,8 +75,7 @@
 		return feed.orphans.find((p) => p.source.path === path) ?? null;
 	});
 
-	// Intensity choices for the select; "" is unset (no claim).
-	const LEVELS = Array.from({ length: INTENSITY_MAX + 1 }, (_, i) => i);
+	// "" is unset (no claim).
 	const parseLevel = (v: string): number | undefined => (v === "" ? undefined : Number(v));
 
 	// The states offered when adding/editing a record: domains can't archive.
@@ -84,14 +85,15 @@
 
 	// ── Add-a-record form ──
 	let addDate = $state<Date>(dateFromISO(todayISO()));
-	let addPickDate = $state(false);
+	let addStatus = $state<LifecycleState>("active");
 	let addNote = $state("");
 	let addWhy = $state("");
 	let addIntensity = $state(""); // applies only when the added record is active
 
-	function addStatusRecord(status: LifecycleState) {
+	function addStatusRecord() {
 		const e = row;
 		if (!e) return;
+		const status = addStatus;
 		const date = isoFromDate(addDate);
 		const note = addNote.trim();
 		const why = addWhy.trim();
@@ -110,7 +112,6 @@
 	let editNote = $state("");
 	let editWhy = $state("");
 	let editIntensity = $state("");
-	let editPickDate = $state(false);
 
 	function startEditRecord(rec: StatusRecord) {
 		editingDate = rec.date;
@@ -119,7 +120,6 @@
 		editNote = rec.note ?? "";
 		editWhy = rec.why ?? "";
 		editIntensity = rec.intensity === undefined ? "" : String(rec.intensity);
-		editPickDate = false;
 	}
 	function commitEditRecord() {
 		const e = row;
@@ -158,281 +158,170 @@
 </script>
 
 {#if row}
+	<div class="setting-item setting-item-heading">
+		<div class="setting-item-info"><div class="setting-item-name">History</div></div>
+	</div>
 	{#if row.history.length === 0}
-		<div class="history-empty">No status changes recorded — defaults to Active.</div>
+		<p class="kairos-history-empty">No changes recorded yet, so it counts as active.</p>
 	{:else}
 		{@const today = todayISO()}
 		{@const effective = row.history.filter((r) => r.date <= today).at(-1)}
-		<ul class="history-list">
+		<ul class="kairos-history-list">
 			{#each [...row.history].reverse() as rec (rec.date)}
 				{@const isCurrent = rec === effective}
 				{@const isFuture = rec.date > today}
 				{#if editingDate === rec.date}
-					<!-- Inline edit form for this record. -->
-					<li class="history-item editing">
-						<div class="history-edit-row">
-							<button class="history-date-btn" onclick={() => (editPickDate = !editPickDate)}>
-								<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-								<span>{formatDate(isoFromDate(editDate))}</span>
-							</button>
-							<select class="dropdown history-select" bind:value={editStatus}>
-								{#each historyStates as s}
-									<option value={s}>{STATUS_LABEL[s]}</option>
-								{/each}
-							</select>
-							{#if editStatus === "active"}
-								<select class="dropdown history-select" bind:value={editIntensity} title="Intensity">
-									<option value="">Intensity —</option>
-									{#each LEVELS as l (l)}
-										<option value={String(l)}>Intensity {l}</option>
-									{/each}
-								</select>
-							{/if}
-						</div>
-						<!-- The note is not gated on `active`: an intention for an
-						     inactive or archived stretch is just as useful. -->
-						<input
-							class="history-note-input"
-							placeholder="intention for this stretch"
-							bind:value={editNote}
-							onkeydown={(e) => { if (e.key === "Enter") commitEditRecord(); }}
+					<li class="kairos-history-edit">
+						<StatusRecordForm
+							bind:date={editDate}
+							bind:status={editStatus}
+							bind:note={editNote}
+							bind:why={editWhy}
+							bind:intensity={editIntensity}
+							states={historyStates}
+							onSubmit={commitEditRecord}
 						/>
-						<input
-							class="history-note-input"
-							placeholder="why it changed"
-							bind:value={editWhy}
-							onkeydown={(e) => { if (e.key === "Enter") commitEditRecord(); }}
-						/>
-						{#if editPickDate}
-							<div class="history-datepicker">
-								<Datepicker inline bind:value={editDate} onselect={() => (editPickDate = false)} />
-							</div>
-						{/if}
-						<div class="history-edit-actions">
-							<button class="mod-cta" onclick={commitEditRecord}>Save</button>
-							<button onclick={() => (editingDate = null)}>Cancel</button>
-							<span class="history-spacer"></span>
+						<div class="modal-button-container">
 							<button class="mod-warning" onclick={() => deleteRecord(rec.date)}>Delete</button>
+							<span class="kairos-history-spacer"></span>
+							<button onclick={() => (editingDate = null)}>Cancel</button>
+							<button class="mod-cta" onclick={commitEditRecord}>Save</button>
 						</div>
 					</li>
 				{:else}
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-					<li class="history-item" class:current={isCurrent} onclick={() => startEditRecord(rec)} title="Click to edit">
-						<div class="history-line">
-							<span class="history-dot" class:active={rec.status === "active"}></span>
-							<span class="history-status">{STATUS_LABEL[rec.status]}</span>
-							{#if rec.status === "active" && rec.intensity !== undefined}
-								<span class="history-intensity" title={`Intensity ${rec.intensity} of ${INTENSITY_MAX}`}>
-									<IntensityBars level={rec.intensity} />
-								</span>
-							{/if}
-							{#if rec.note}<span class="history-note">{rec.note}</span>{/if}
-							<span class="history-spacer"></span>
-							<span class="history-date">{formatDate(rec.date)}</span>
-							{#if isCurrent}<span class="history-badge">current</span>
-							{:else if isFuture}<span class="history-badge">scheduled</span>{/if}
+					<li>
+						<div
+							class="kairos-history-row"
+							role="button"
+							tabindex="0"
+							title="Edit this change"
+							onclick={() => startEditRecord(rec)}
+							onkeydown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									e.preventDefault();
+									startEditRecord(rec);
+								}
+							}}
+						>
+							<span class="kairos-history-line">
+								<span class="kairos-history-dot" data-status={rec.status}></span>
+								<span class="kairos-history-status">{STATUS_LABEL[rec.status]}</span>
+								{#if rec.status === "active" && rec.intensity !== undefined}
+									<span class="kairos-history-intensity" title={`Intensity ${rec.intensity} of ${INTENSITY_MAX}`}>
+										<IntensityBars level={rec.intensity} />
+									</span>
+								{/if}
+								{#if isCurrent}<span class="kairos-history-when">Now</span>
+								{:else if isFuture}<span class="kairos-history-when">Scheduled</span>{/if}
+								<span class="kairos-history-spacer"></span>
+								<span class="kairos-history-date">{formatDate(rec.date)}</span>
+							</span>
+							{#if rec.note}<span class="kairos-history-note">{rec.note}</span>{/if}
+							<span class="kairos-history-why" class:none={!rec.why}>{rec.why || "No reason recorded"}</span>
 						</div>
-						{#if rec.why}
-							<div class="history-why">{rec.why}</div>
-						{:else}
-							<div class="history-why none">No reason recorded</div>
-						{/if}
 					</li>
 				{/if}
 			{/each}
 		</ul>
 	{/if}
 
-	<!-- Add a new record. Editing/deleting a prior record is inline above
-	     (click a row); invariants are enforced by the pure edit functions. -->
-	<div class="history-add">
-		<span class="history-add-label">Add change</span>
-		<div class="history-add-row">
-			<button class="history-date-btn" onclick={() => (addPickDate = !addPickDate)}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-				<span>{formatDate(isoFromDate(addDate))}</span>
-			</button>
-			<input
-				class="history-note-input"
-				placeholder="intention for this stretch (optional)"
-				bind:value={addNote}
-			/>
-			<select class="dropdown history-select" bind:value={addIntensity} title="Intensity, if adding an active record">
-				<option value="">Intensity —</option>
-				{#each LEVELS as l (l)}
-					<option value={String(l)}>Intensity {l}</option>
-				{/each}
-			</select>
-			<span class="history-spacer"></span>
-			{#each historyStates as s}
-				<button onclick={() => addStatusRecord(s)}>{STATUS_LABEL[s]}</button>
-			{/each}
-		</div>
-		<input
-			class="history-note-input why-input"
-			placeholder="why it changed (optional)"
-			bind:value={addWhy}
-		/>
-		{#if addPickDate}
-			<div class="history-datepicker">
-				<Datepicker inline bind:value={addDate} onselect={() => (addPickDate = false)} />
-			</div>
-		{/if}
+	<div class="setting-item setting-item-heading">
+		<div class="setting-item-info"><div class="setting-item-name">Add a change</div></div>
+	</div>
+	<StatusRecordForm
+		bind:date={addDate}
+		bind:status={addStatus}
+		bind:note={addNote}
+		bind:why={addWhy}
+		bind:intensity={addIntensity}
+		states={historyStates}
+		onSubmit={addStatusRecord}
+	/>
+	<div class="modal-button-container">
+		<button class="mod-cta" onclick={addStatusRecord}>Add change</button>
 	</div>
 {/if}
 
 <style>
-	.history-empty {
-		font-size: 12px;
-		color: var(--text-faint);
-		font-style: italic;
-		padding: 4px 0 10px;
+	.kairos-history-empty {
+		margin: 0 0 var(--size-4-2);
+		color: var(--text-muted);
 	}
-	.history-list {
+	.kairos-history-list {
 		list-style: none;
-		margin: 0 0 10px;
+		margin: 0;
 		padding: 0;
 	}
-	.history-spacer {
+	.kairos-history-spacer {
 		flex: 1;
 	}
-	.history-item {
-		display: block;
-		padding: 6px 4px;
-		border-bottom: 1px solid var(--background-modifier-border);
-	}
-	.history-line {
+	/* A change reads like a line in Obsidian's lists: plain, with a hover fill,
+	   and selecting it opens it for editing. */
+	.kairos-history-row {
 		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-	/* The reason line. Muted with an explicit color, never opacity: an inactive
-	   row can already be dimmed by its container, and two opacities multiply. */
-	.history-why {
-		font-size: 11px;
-		font-weight: 400; /* the current record's row is bold; the reason stays quiet */
-		color: var(--text-muted);
-		margin: 3px 0 0 15px;
-	}
-	.history-why.none {
-		color: var(--text-faint);
-		font-style: italic;
-	}
-	.history-item.current {
-		font-weight: 600;
-	}
-	.history-item:not(.editing) {
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--size-2-1);
+		padding: var(--size-4-2);
+		border-radius: var(--radius-s);
 		cursor: pointer;
 	}
-	.history-item:not(.editing):hover {
+	.kairos-history-row:hover {
 		background: var(--background-modifier-hover);
 	}
-	.history-item.editing {
-		display: block;
-		background: var(--background-secondary);
-		border-radius: 6px;
-		padding: 8px;
-	}
-	.history-note {
-		font-size: 11px;
-		color: var(--text-muted);
-		font-style: italic;
-		background: var(--background-modifier-border);
-		border-radius: 4px;
-		padding: 1px 6px;
-	}
-	.history-note-input {
-		flex: 1;
-		min-width: 0;
-		height: 26px;
-		padding: 0 8px;
-		font-size: 11px;
-	}
-	.history-edit-row {
+	.kairos-history-line {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: var(--size-4-2);
 	}
-	.history-select {
-		height: 26px;
-		font-size: 11px;
-	}
-	.history-item.editing .history-note-input {
-		margin-top: 6px;
-		width: 100%;
-	}
-	.history-add .why-input {
-		margin-top: 5px;
-		width: 100%;
-	}
-	.history-intensity {
-		display: inline-flex;
-		color: var(--text-muted);
-	}
-	.history-edit-actions {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		margin-top: 8px;
-	}
-	.history-dot {
+	.kairos-history-dot {
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: var(--text-faint);
 		flex-shrink: 0;
+		background: var(--text-faint);
 	}
-	.history-dot.active {
-		background: var(--interactive-accent);
+	.kairos-history-dot[data-status="active"] {
+		background: var(--color-green);
 	}
-	.history-status {
-		font-size: 12px;
+	.kairos-history-dot[data-status="archived"] {
+		background: var(--color-red);
+	}
+	.kairos-history-status {
 		color: var(--text-normal);
+		font-size: var(--font-ui-small);
 	}
-	.history-date {
-		font-size: 11px;
+	.kairos-history-intensity {
+		display: inline-flex;
 		color: var(--text-muted);
+	}
+	.kairos-history-when {
+		color: var(--text-accent);
+		font-size: var(--font-ui-smaller);
+	}
+	.kairos-history-date {
+		color: var(--text-muted);
+		font-size: var(--font-ui-smaller);
 		font-variant-numeric: tabular-nums;
 	}
-	.history-badge {
-		font-size: 9px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		color: var(--text-on-accent);
-		background: var(--interactive-accent);
-		border-radius: 4px;
-		padding: 1px 5px;
+	.kairos-history-note,
+	.kairos-history-why {
+		padding-left: calc(7px + var(--size-4-2));
+		font-size: var(--font-ui-smaller);
+		white-space: normal;
 	}
-	.history-add {
-		border-top: 1px solid var(--background-modifier-border);
-		padding-top: 10px;
+	.kairos-history-note {
+		color: var(--text-normal);
 	}
-	.history-add-label {
-		font-size: 10px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
+	.kairos-history-why {
+		color: var(--text-muted);
+	}
+	.kairos-history-why.none {
 		color: var(--text-faint);
 	}
-	.history-add-row {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		margin-top: 6px;
-	}
-	.history-date-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		height: 26px;
-		padding: 0 8px;
-		font-size: 11px;
-		cursor: pointer;
-	}
-	.history-datepicker {
-		margin-top: 8px;
+	.kairos-history-edit {
+		padding: 0 var(--size-4-2) var(--size-4-2);
+		border-radius: var(--radius-m);
+		background: var(--background-secondary);
 	}
 </style>

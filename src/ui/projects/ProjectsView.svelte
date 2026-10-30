@@ -424,23 +424,27 @@
 	// ConfirmModal.
 	function deleteProject(project: Project) {
 		new ConfirmModal(app, {
-			title: `Delete project "${project.name}"?`,
+			title: `Delete "${project.name}"?`,
 			message:
-				`Archiving is usually better. Any daily-note tags naming this ` +
-				`project (including its aliases) will become dangling references — ` +
-				`they'll still show by name but lose their color.`,
+				`This deletes the project's note. Daily notes that tag it keep the ` +
+				`tag, but it loses its color and no longer opens the project.\n\n` +
+				`To put it away and keep its history, archive it instead.`,
 			cta: "Delete",
 			danger: true,
 			onConfirm: () => void index.deleteProject(project.name),
+			alt:
+				statusOf(project) === "archived"
+					? undefined
+					: { text: "Archive instead", onClick: () => archiveProject(project) },
 		}).open();
 	}
 	function deleteDomain(domain: Domain) {
 		new ConfirmModal(app, {
-			title: `Delete domain "${domain.name}"?`,
+			title: `Delete "${domain.name}"?`,
 			message:
-				`Archiving is usually better. Any daily-note tags naming this ` +
-				`domain (including its aliases), and projects linked to it, will ` +
-				`become dangling references.`,
+				`This deletes the domain's note. Daily notes that tag it keep the ` +
+				`tag but lose its color, and its projects no longer have a domain.\n\n` +
+				`To set it aside for now, make it inactive instead.`,
 			cta: "Delete",
 			danger: true,
 			onConfirm: () => void index.deleteDomain(domain.name),
