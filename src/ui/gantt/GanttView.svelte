@@ -805,7 +805,6 @@
 						class:domain={row.isDomain}
 						class:group-start={group.start}
 						class:group-end={group.end}
-						class:alt={i % 2 === 1}
 						style:height={`${rowHeight(i)}px`}
 						style:margin-bottom={`${ROW_GAP}px`}
 						style={row.color ? `--row-accent: ${row.color};` : undefined}
@@ -853,17 +852,6 @@
 						{/each}
 					</div>
 				</div>
-				<!-- Every other row is faintly shaded, through its gap, level with the
-				     label column's, so a bar far from its label still reads as its row's. -->
-				{#each rows as row, i (row.key)}
-					{#if i % 2 === 1}
-						<div
-							class="gantt-row-band"
-							style:top={`${rowTop(i)}px`}
-							style:height={`${rowHeight(i) + ROW_GAP}px`}
-						></div>
-					{/if}
-				{/each}
 				<!-- Fine gridlines at column boundaries; coarse boundaries drawn heavier. -->
 				{#each header.fine as f}
 					<div class="gantt-gridline" style:left={`${f.gridX}px`} style:top={`${HEADER_HEIGHT}px`} style:height={`${contentHeight - HEADER_HEIGHT}px`}></div>
@@ -1211,23 +1199,6 @@
 		bottom: calc(-1 * var(--row-gap));
 		height: 1px;
 		background: var(--background-modifier-border);
-	}
-	/* Alternate rows: a faint shade through the row and its gap, behind the
-	   label (the label column is its stacking context) and the plot's bars. */
-	.gantt-label.alt::before {
-		content: "";
-		position: absolute;
-		inset: 0 0 calc(-1 * var(--row-gap)) 0;
-		z-index: -1;
-		background: var(--kairos-row-band);
-		pointer-events: none;
-	}
-	.gantt-row-band {
-		position: absolute;
-		left: 0;
-		right: 0;
-		background: var(--kairos-row-band);
-		pointer-events: none;
 	}
 	.gantt-group-line {
 		position: absolute;
