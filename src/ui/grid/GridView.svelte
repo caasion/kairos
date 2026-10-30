@@ -1289,8 +1289,17 @@
 			if (taskDrag) void onTaskDragUp();
 			if (blockDrag) void onBlockDragUp();
 		};
+		// The browser took the pointer (a system gesture, an Obsidian drawer swipe)
+		// or the window lost focus: end the drag without dropping. Left live, the
+		// ghost stays stuck and the next pointerup drops at the last target.
+		const cancel = () => {
+			if (taskDrag) cancelTaskDrag();
+			if (blockDrag) cancelBlockDrag();
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", cancel);
+		window.addEventListener("blur", cancel);
 
 		return () => {
 			unsub();
@@ -1302,6 +1311,8 @@
 			unsubscribeGrid?.();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", cancel);
+			window.removeEventListener("blur", cancel);
 		};
 	});
 </script>
