@@ -48,6 +48,9 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `Tag` | A short word in small capitals marking a row's state. Not a control. `tone="accent"` fills it, for the current row. | A project's status, "inactive" and "unscheduled" in pickers, "current" in status history |
 | `kairos-count` class | A count beside a name: label size, tabular figures, faint. Inside a `Pill` it takes the pill's colour. A class rather than a component, since it's one `<span>`. | Every number that says how many things a name holds |
 | `AssocGroup` | A group heading and its rows: an icon, the name in serif, the count right after it, an optional "+", and a bar in the domain colour down the whole group. Built for a project or domain; a group that isn't one (a routine's repeat) passes `label` and `icon` and gets a plain bar. `meta` adds a description or status after the count, `actions` adds buttons before the "+". `onStartRename`/`editing`/`onRename` rename it in place, `onOpen` or `onNavigate` open it on Ctrl/Cmd+click, `dim` fades an inactive group, `sticky` keeps the heading in view. | Unscheduled, the Inbox, the Backlog, the Projects view's domains, the Routines view's repeat groups |
+| `ItemRow` | One item in a list: `lead` (an 18px leading control), the text, then `trailing` (a muted label that gives way first), `tag` (where it came from) and `trail` (buttons); `meta` for the line beneath; `actions` for the corner bar, woken by `zone`. `size="m"` for sidebar lists, `square` inside blocks, `lit`/`tinted` for tints in `color`. No state or effects, so it costs nothing per row beyond its elements. | Tasks, leftovers, backlog nudges, backlog entries, the typing row |
+| `ItemText` | An item's text: one line or `lines` lines with an ellipsis, peek when truncated, edit in place with `onCommit` (Enter or leaving commits, Escape cancels; `editing` can be bound), hold to drag with `onGrab`. | The text in every `ItemRow` |
+| `AssocMeta` | An item's project or domain on its meta line, Ctrl/Cmd-click to open. | `ItemRow`'s `meta` |
 | `RowLabel` | A project's or domain's name, note and intensity in the Grid and Timeline row-label column, with its hover card. | Grid and Timeline rows |
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
 | `Datepicker` | The date navigator and its calendar. | View headers |
@@ -60,4 +63,5 @@ A block's header in a list (the Grid cell's and the Routines view's `HH:MM Title
 
 These still exist as several copies and are the next components to make, in this order:
 
-1. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.
+1. **Row buttons**: the corner action bars of tasks, nudges and backlog entries, and the leftover and nudge arrows, onto `IconButton`.
+2. **Routine suggestions**: the rows in the Routines alert panel (`RoutinesAlert.svelte`) onto `ItemRow`.

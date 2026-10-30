@@ -13,13 +13,16 @@
 	// (icon + canonical name, ctrl-click to open), and the snooze action lives in
 	// a hover-revealed action bar top-right — not a persistent chip. Purely
 	// presentational: it owns no data and no writes; every action is an intent
-	// forwarded to the parent, which holds the day + index and persists.
+	// forwarded to the parent, which holds the day + index and persists. Built
+	// on the shared item row (ItemRow), tinted.
 
 	import { Menu } from "obsidian";
 	import type { Association, BacklogEntry } from "../../types";
 	import type { ResolvedAssociation } from "../../association";
-	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
+	import AssocMeta from "../components/AssocMeta.svelte";
+	import ItemRow from "../components/ItemRow.svelte";
+	import ItemText from "../components/ItemText.svelte";
 
 	interface Props {
 		entry: BacklogEntry;
@@ -78,24 +81,24 @@
 		);
 		menu.showAtMouseEvent(event);
 	}
-
-	function clickAssoc(event: MouseEvent) {
-		if (!entry.assoc || !onNavigate) return;
-		if (event.ctrlKey || event.metaKey) {
-			event.stopPropagation();
-			onNavigate(entry.assoc);
-		}
-	}
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<div
-	class="nudge"
-	style={`--nudge-accent: ${accent};`}
-	title="Resurfaced backlog item — click the arrow to schedule it into this day"
-	use:actionZone={{ layout: "stack" }}
->
+{#snippet insert()}
+	<!-- The arrow replaces the checkbox: it schedules the entry into the day. -->
+	<button
+		class="nudge-insert"
+		title="Schedule into this day"
+		aria-label="Schedule into this day"
+		onclick={(e) => {
+			e.stopPropagation();
+			onInsert(entry);
+		}}
+	>
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+	</button>
+{/snippet}
+
+{#snippet actionBar()}
 	<!-- Action bar, floating top-right over the row — mirrors the task row's
 	     action bar (woken from the top-right corner zone, see
 	     actions/actionZone.ts). Holds the snooze action. Uses the stack layout
@@ -110,84 +113,34 @@
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
 		</button>
 	</div>
+{/snippet}
 
-	<div class="nudge-row">
-		<!-- The arrow replaces the checkbox: it schedules the entry into the day. -->
-		<button
-			class="nudge-insert"
-			title="Schedule into this day"
-			aria-label="Schedule into this day"
-			onclick={(e) => {
-				e.stopPropagation();
-				onInsert(entry);
-			}}
-		>
-			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-		</button>
-
-		<span class="nudge-text">{entry.text}</span>
-		{#if sourceTag}<span class="src-tag" title="Resurfaced from the backlog"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>{sourceTag}</span>{/if}
-	</div>
-
-	{#if entry.assoc && showAssociation}
-		<!-- Association line beneath the text — icon + canonical name, aligned
-		     under the text past the arrow, ctrl-click to open. Literally the task
-		     row's association line now: same shared `.kairos-meta` classes, and the
-		     alignment comes from the row wrapper rather than this component owning
-		     its own copy of the indent. -->
-		<div class="kairos-meta-row is-indented">
-			<div
-				class="kairos-meta"
-				class:is-linked={canNavigate}
-				title={canNavigate ? "Ctrl+click to open" : undefined}
-				onclick={clickAssoc}
-			>
-				{#if entry.assoc.kind === "domain"}
-					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-				{:else}
-					<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
-				{/if}
-				<span class="kairos-meta-label">{assocLabel}</span>
-			</div>
-		</div>
+{#snippet assocLine()}
+	{#if entry.assoc}
+		{@const assoc = entry.assoc}
+		<AssocMeta
+			association={assoc}
+			label={assocLabel}
+			linked={canNavigate}
+			onNavigate={onNavigate ? () => onNavigate(assoc) : undefined}
+		/>
 	{/if}
-</div>
+{/snippet}
+
+<ItemRow
+	tinted
+	color={accent}
+	title="Resurfaced backlog item — click the arrow to schedule it into this day"
+	zone={{ layout: "stack" }}
+	lead={insert}
+	actions={actionBar}
+	tag={sourceTag ? { icon: "clock", text: sourceTag, title: "Resurfaced from the backlog" } : undefined}
+	meta={entry.assoc && showAssociation ? assocLine : undefined}
+>
+	<ItemText text={entry.text} />
+</ItemRow>
 
 <style>
-	/* Where an Inbox row came from, at the row's right. */
-	.src-tag {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		flex-shrink: 0;
-		font-size: var(--kairos-meta-font-size);
-		color: var(--text-faint);
-		white-space: nowrap;
-	}
-	.nudge {
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		padding: 2px 4px;
-		border-radius: 7px;
-		position: relative;
-		min-width: 0;
-		/* ~10% accent tint so surfaced intentions are in-your-face. */
-		background: color-mix(in srgb, var(--nudge-accent) 10%, var(--background-primary));
-		border: 1px solid color-mix(in srgb, var(--nudge-accent) 22%, transparent);
-	}
-	.nudge:hover {
-		background: color-mix(in srgb, var(--nudge-accent) 16%, var(--background-primary));
-	}
-
-	/* ── Row: arrow + text ── */
-	.nudge-row {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-	}
-
 	.nudge-insert {
 		display: flex;
 		align-items: center;
@@ -199,25 +152,14 @@
 		padding: 0px;
 		border-radius: 5px;
 		background: transparent;
-		color: var(--nudge-accent);
+		color: var(--kairos-link-color);
 		cursor: pointer;
 		box-shadow: none;
 	}
 	.nudge-insert:hover {
-		background: var(--nudge-accent);
+		background: var(--kairos-link-color);
 		color: var(--text-on-accent);
 		box-shadow: none;
-	}
-
-	.nudge-text {
-		flex: 1;
-		font-size: 12px;
-		line-height: 1.4;
-		color: var(--text-normal);
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	/* ── Hover action bar (snooze) — mirrors the task row's action bar. ── */
@@ -229,7 +171,7 @@
 		gap: 2px;
 		padding: 2px;
 		/* Blend into the tinted nudge background so it reads through cleanly. */
-		background: color-mix(in srgb, var(--nudge-accent) 10%, var(--background-primary));
+		background: color-mix(in srgb, var(--kairos-link-color) 10%, var(--background-primary));
 		z-index: 2;
 		/* Shown/hidden by the shared .kairos-action-bar rules in styles.css. */
 	}
@@ -252,7 +194,4 @@
 		background: var(--background-modifier-hover);
 		box-shadow: none;
 	}
-
-	/* The association line is the shared `.kairos-meta` family in styles.css,
-	   including the indent that aligns it under the text past the 18px arrow. */
 </style>
