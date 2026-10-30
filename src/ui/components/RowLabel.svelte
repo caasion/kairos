@@ -11,7 +11,7 @@
 
 	import { formatShortDate } from "../../dayNote";
 	import type { RowLabelInfo } from "./rowLabel";
-	import Popover from "./Popover.svelte";
+	import HoverCard from "./HoverCard.svelte";
 	import IntensityBars from "./IntensityBars.svelte";
 
 	let { info }: { info: RowLabelInfo } = $props();
@@ -137,62 +137,47 @@
 {/snippet}
 
 {#if hovering && hasCardBody}
-	<Popover
-		class="row-label-card"
-		surface="secondary"
-		overflow="hidden"
-		style="{cardStyle} pointer-events: none;"
-		bind:el={cardEl}
-	>
-		<!-- The card in Kairos's own type — a full-height bar in the
-		     entity's color, the name in serif, the status as a dot before the
-		     first line under it, the note and description in the UI font, and the dates as a small
-		     labelled list with intensity drawn as its stacked bars. -->
-		<div class="rlc">
-			<span
-				class="rlc-accent"
-				style={info.color ? `background: ${info.color};` : undefined}
-			></span>
-			<div class="rlc-body">
-				<span class="rlc-name">
-					{#if dotLine === "name"}{@render statusDot()}{/if}{info.name}
-				</span>
-				{#if info.note.trim() !== ""}
-					<div class="rlc-note">{@render statusDot()}{info.note}</div>
-				{/if}
-				{#if info.description.trim() !== ""}
-					<div class="rlc-desc">
-						{#if dotLine === "description"}{@render statusDot()}{/if}{info.description}
-					</div>
-				{/if}
-				{#if info.intensity || info.since !== null || rolledUp.length > 0}
-					<dl class="rlc-facts">
-						{#if info.intensity}
-							<dt>Intensity</dt>
-							<dd>
-								<span
-									class="rlc-bars"
-									style={info.color ? `color: ${info.color};` : undefined}
-								><IntensityBars level={info.intensity.level} /></span>
-								<span class="rlc-dim">({info.intensity.level})</span>
-								<span>on {formatShortDate(info.intensity.on)}</span>
-							</dd>
-						{/if}
-						{#if info.since !== null}
-							<dt>{statusLabel}</dt>
-							<dd>
-								Since {formatShortDate(info.since)}{#if info.until !== null}<span class="rlc-dim">&nbsp;· until {formatShortDate(info.until)}</span>{/if}
-							</dd>
-						{/if}
-						{#if rolledUp.length > 0}
-							<dt>Also here</dt>
-							<dd>{rolledUpText}</dd>
-						{/if}
-					</dl>
-				{/if}
+	<!-- The name in serif, the status as a dot before the first line under
+	     it, the note and description in the UI font, and the dates as a small
+	     labelled list with intensity drawn as its stacked bars. -->
+	<HoverCard color={info.color} style={cardStyle} bind:el={cardEl}>
+		<span class="kairos-hover-card-name">
+			{#if dotLine === "name"}{@render statusDot()}{/if}{info.name}
+		</span>
+		{#if info.note.trim() !== ""}
+			<div class="kairos-hover-card-note">{@render statusDot()}{info.note}</div>
+		{/if}
+		{#if info.description.trim() !== ""}
+			<div class="kairos-hover-card-desc">
+				{#if dotLine === "description"}{@render statusDot()}{/if}{info.description}
 			</div>
-		</div>
-	</Popover>
+		{/if}
+		{#if info.intensity || info.since !== null || rolledUp.length > 0}
+			<dl class="kairos-hover-card-facts">
+				{#if info.intensity}
+					<dt>Intensity</dt>
+					<dd>
+						<span
+							class="kairos-hover-card-bars"
+							style={info.color ? `color: ${info.color};` : undefined}
+						><IntensityBars level={info.intensity.level} /></span>
+						<span class="kairos-hover-card-dim">({info.intensity.level})</span>
+						<span>on {formatShortDate(info.intensity.on)}</span>
+					</dd>
+				{/if}
+				{#if info.since !== null}
+					<dt>{statusLabel}</dt>
+					<dd>
+						Since {formatShortDate(info.since)}{#if info.until !== null}<span class="kairos-hover-card-dim">&nbsp;· until {formatShortDate(info.until)}</span>{/if}
+					</dd>
+				{/if}
+				{#if rolledUp.length > 0}
+					<dt>Also here</dt>
+					<dd>{rolledUpText}</dd>
+				{/if}
+			</dl>
+		{/if}
+	</HoverCard>
 {/if}
 
 <style>
@@ -275,25 +260,7 @@
 		color: var(--text-faint);
 	}
 
-	/* ── Hover card (Kairos style) ── */
-	.rlc {
-		min-width: 180px;
-		max-width: 270px;
-		display: flex;
-	}
-	/* Full-height bar in the entity's color (faint when none is set). */
-	.rlc-accent {
-		width: 4px;
-		flex-shrink: 0;
-		background: var(--text-faint);
-	}
-	.rlc-body {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		padding: 12px 14px;
-	}
+	/* The status dot in the hover card (HoverCard). */
 	.rlc-dot {
 		display: inline-block;
 		width: 6px;
@@ -308,53 +275,5 @@
 	}
 	.rlc-dot.archived {
 		background: var(--color-red);
-	}
-	.rlc-name {
-		margin: 1px 0 6px;
-		font-family: var(--kairos-font-serif);
-		font-size: 18px;
-		font-weight: 400;
-		line-height: 1.2;
-		color: var(--text-normal);
-	}
-	.rlc-note {
-		font-size: var(--font-ui-small);
-		color: var(--text-normal);
-		line-height: var(--line-height-tight);
-	}
-	.rlc-desc {
-		margin-top: 2px;
-		font-size: var(--font-ui-smaller);
-		color: var(--text-muted);
-		line-height: var(--line-height-tight);
-	}
-	.rlc-facts {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 5px 12px;
-		align-items: center;
-		margin: 10px 0 0;
-		padding-top: 8px;
-		border-top: 1px solid var(--background-modifier-border);
-		font-size: var(--font-ui-smaller);
-		font-variant-numeric: tabular-nums;
-	}
-	.rlc-facts dt {
-		color: var(--text-muted);
-	}
-	.rlc-facts dd {
-		margin: 0;
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		min-width: 0;
-		color: var(--text-normal);
-	}
-	.rlc-bars {
-		display: inline-flex;
-		color: var(--text-muted);
-	}
-	.rlc-dim {
-		color: var(--text-faint);
 	}
 </style>
