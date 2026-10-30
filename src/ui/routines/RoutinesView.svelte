@@ -7,12 +7,16 @@
 	// picker. Each row shows what the routine makes (a block with its time, a
 	// task for the day's list, or a task homed in a block) and its association.
 	//
+	// A List | Week switch in the header shows the same routines as the week
+	// they produce instead (RoutinesWeek, decision 119); the list is where
+	// they're edited.
+	//
 	// The file is the source of truth and stays hand-editable: the view reads the
 	// parsed file from the RoutinesStore and makes every change through one pure
 	// routinesWriter edit (surgical — other lines are left byte-identical).
 
 	import { Menu, Notice, type App } from "obsidian";
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import type { Association, Task } from "../../types";
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
@@ -20,18 +24,21 @@
 	import { singleLine } from "../actions/autogrow";
 	import TaskRow from "../task/Task.svelte";
 	import RoutineGroupHeader from "./RoutineGroupHeader.svelte";
+	import RoutinesWeek from "./RoutinesWeek.svelte";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import type { BlockOption } from "../../blockOptions";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { createAssociation } from "../association/createAssociation";
 	import { RuleModal } from "./RuleModal";
-	import type { Readable } from "svelte/store";
+	import type { Readable, Writable } from "svelte/store";
+	import type { RoutinesMode } from "../../KairosRoutinesView";
 	import type { RoutinesStore } from "../../routines/routinesStore";
 	import type { OwnerActive } from "../../routines/owners";
 	import { routineAssoc } from "../../routines/apply";
 	import { todayISO } from "../../dayNote";
 	import { formatClock, formatTimeRange, parseTimeRangeText } from "../../parser";
 	import {
+		type BlockRoutine,
 		type ParsedRoutines,
 		type Routine,
 		type TaskRoutine,
@@ -53,9 +60,11 @@
 		store: RoutinesStore;
 		/** Whether a routine's project or domain is active on a date (owners.ts). */
 		active$: Readable<OwnerActive>;
+		/** List or Week; the view saves it with the workspace. */
+		mode$: Writable<RoutinesMode>;
 	}
 
-	let { app, index, store, active$ }: Props = $props();
+	let { app, index, store, active$, mode$ }: Props = $props();
 
 	// A routine whose project or domain isn't active today is paused (decision
 	// 87): greyed here, and offered nowhere until its owner is active again.
@@ -67,6 +76,21 @@
 	let parsed = $state<ParsedRoutines>({ routines: [], problems: [] });
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 	const groups = $derived<RoutineGroup[]>(groupRoutines(parsed.routines));
+
+	// List or Week, kept in the view's state so the tab reopens the same way.
+	function setMode(next: RoutinesMode) {
+		mode$.set(next);
+	}
+	const mode = $derived($mode$);
+
+	/** From the week: back to the list, scrolled to that block's group. */
+	async function showInList(r: BlockRoutine) {
+		setMode("list");
+		await tick();
+		const el = listEl?.querySelector(`[data-routine-line="${r.line}"]`);
+		el?.scrollIntoView({ block: "center" });
+	}
+	let listEl = $state<HTMLElement>();
 
 	const DAILY = parseRule("daily")!;
 	const NEW_TASK = "New routine";
@@ -336,6 +360,10 @@
 <div class="routines-view">
 	<div class="routines-header">
 		<span class="routines-title">Routines</span>
+		<div class="routines-modes" role="tablist" aria-label="Show routines as">
+			<button class="clickable-icon routines-mode" class:is-active={mode === "list"} role="tab" aria-selected={mode === "list"} onclick={() => setMode("list")}>List</button>
+			<button class="clickable-icon routines-mode" class:is-active={mode === "week"} role="tab" aria-selected={mode === "week"} onclick={() => setMode("week")}>Week</button>
+		</div>
 		<span class="routines-header-spacer"></span>
 		<button class="routines-btn" title="Open {store.filePath} to edit it by hand" onclick={() => void store.openFile()}>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
@@ -347,7 +375,12 @@
 		</button>
 	</div>
 
-	<div class="routines-scroll">
+	{#if mode === "week"}
+	<div class="routines-scroll is-week">
+		<RoutinesWeek routines={parsed.routines} {resolve} {isPaused} onSelect={(r) => void showInList(r)} />
+	</div>
+	{:else}
+	<div class="routines-scroll" bind:this={listEl}>
 		{#if parsed.problems.length > 0}
 			<div class="routines-problems">
 				<div class="routines-problems-title">
@@ -386,7 +419,7 @@
 				     "+" adds a task to that block. -->
 				<div class="routine-blocks">
 					{#each blockGroupsOf(group.routines) as bg (bg.key)}
-						<div class="routine-block-group">
+						<div class="routine-block-group" data-routine-line={bg.block?.line}>
 							{#if bg.block}
 								{@const b = bg.block}
 								{@const ba = b.assoc ? resolve(b.assoc) : undefined}
@@ -421,6 +454,7 @@
 			</section>
 		{/each}
 	</div>
+	{/if}
 </div>
 
 {#if schedule}
@@ -463,6 +497,26 @@
 		font-size: 14px;
 		font-weight: 700;
 		color: var(--text-normal);
+	}
+	.routines-modes {
+		display: flex;
+		gap: var(--size-2-1);
+		padding: var(--size-2-1);
+		border: 1px solid var(--background-modifier-border);
+		border-radius: var(--kairos-radius-m);
+	}
+	/* Obsidian's frameless button, holding a word instead of an icon. */
+	.routines-mode {
+		width: auto;
+		padding: var(--size-2-1) var(--size-4-2);
+		font-size: var(--kairos-text-label);
+	}
+	.routines-mode.is-active {
+		color: var(--text-normal);
+		background: var(--background-modifier-hover);
+	}
+	.routines-scroll.is-week {
+		padding: 0;
 	}
 	.routines-header-spacer {
 		flex: 1;
