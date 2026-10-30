@@ -58,7 +58,7 @@ const DRIFT: Drift[] = [
 	{
 		what: "Inline SVG icons: use IconButton or the icon action (Obsidian's icons)",
 		pattern: /<svg\b/g,
-		baseline: 104,
+		baseline: 96,
 	},
 	{
 		what: "Hand-made frameless buttons (box-shadow: none): use IconButton",
