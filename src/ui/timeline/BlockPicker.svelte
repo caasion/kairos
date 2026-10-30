@@ -14,6 +14,7 @@
 		filterBlockOptions,
 		type BlockOption,
 	} from "../../blockOptions";
+	import Tag from "../components/Tag.svelte";
 
 	// Portal to body so `position: fixed` resolves against the viewport, not a
 	// transformed leaf-container ancestor (see AssociationPicker for the why).
@@ -171,7 +172,7 @@
 					{#if option.timeLabel}
 						<span class="block-time">{option.timeLabel}</span>
 					{:else}
-						<span class="block-badge">unscheduled</span>
+						<Tag>unscheduled</Tag>
 					{/if}
 				</div>
 			{/each}
@@ -284,16 +285,6 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.block-badge {
-		flex-shrink: 0;
-		font-size: 9px;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--text-faint);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 4px;
-		padding: 0 4px;
-	}
 
 	.block-empty {
 		padding: 8px;

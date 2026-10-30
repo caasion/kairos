@@ -36,6 +36,7 @@
 	import { INTENSITY_MAX } from "../../projectFile";
 	import Datepicker from "../components/Datepicker.svelte";
 	import IntensityBars from "../components/IntensityBars.svelte";
+	import Tag from "../components/Tag.svelte";
 
 	interface Props {
 		index: KairosIndex;
@@ -231,8 +232,8 @@
 							{#if rec.note}<span class="history-note">{rec.note}</span>{/if}
 							<span class="history-spacer"></span>
 							<span class="history-date">{formatDate(rec.date)}</span>
-							{#if isCurrent}<span class="history-badge">current</span>
-							{:else if isFuture}<span class="history-badge">scheduled</span>{/if}
+							{#if isCurrent}<Tag tone="accent">current</Tag>
+							{:else if isFuture}<Tag tone="accent">scheduled</Tag>{/if}
 						</div>
 						{#if rec.why}
 							<div class="history-why">{rec.why}</div>
@@ -395,16 +396,6 @@
 		font-size: 11px;
 		color: var(--text-muted);
 		font-variant-numeric: tabular-nums;
-	}
-	.history-badge {
-		font-size: 9px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		color: var(--text-on-accent);
-		background: var(--interactive-accent);
-		border-radius: 4px;
-		padding: 1px 5px;
 	}
 	.history-add {
 		border-top: 1px solid var(--background-modifier-border);

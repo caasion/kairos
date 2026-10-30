@@ -359,22 +359,25 @@ body {
 	font-variant-numeric: tabular-nums;
 }
 
-/* A trailing count (e.g. the grid badge's "+3"). Sits outside the ellipsizing
-   label so it is never the first thing truncation eats, and takes its spacing
-   from the item's gap rather than a leading space in the string. */
-.kairos-meta-count {
+/* A count beside a name: a group heading's, a pill's, a list heading's.
+   Every number that says how many things a name holds uses this class, so
+   they all set the same way: label size, tabular figures, faint. In a pill
+   it takes the pill's colour (DESIGN.md). */
+.kairos-count {
 	flex-shrink: 0;
+	font-size: var(--kairos-text-label);
+	font-weight: var(--font-normal);
 	font-variant-numeric: tabular-nums;
-	/* Tinted so the count reads as a quantity distinct from the label beside it,
-	   rather than as more of the same muted text. Carried over from the grid
-	   badge's own rule, which nested this inside the label. */
-	background: color-mix(
-		in srgb,
-		var(--interactive-accent) 20%,
-		var(--background-modifier-border)
-	);
-	padding: 0 3px;
-	border-radius: var(--radius-s, 4px);
+	color: var(--text-faint);
+}
+
+.kairos-pill .kairos-count {
+	color: inherit;
+}
+
+/* A pill's icon passed as a snippet keeps its size. */
+.kairos-pill svg {
+	flex-shrink: 0;
 }
 
 /* A fixed-size SVG dot separator: it can't perturb line-height the way a text

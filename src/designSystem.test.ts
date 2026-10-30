@@ -48,12 +48,12 @@ const DRIFT: Drift[] = [
 	{
 		what: "Font sizes in px: use a --kairos-text-* token or Obsidian's --font-ui-*",
 		pattern: /font-size:\s*\d+px/g,
-		baseline: 128,
+		baseline: 116,
 	},
 	{
 		what: "Corner radii in px: use a --kairos-radius-* token",
 		pattern: /border-radius:\s*\d+px/g,
-		baseline: 85,
+		baseline: 78,
 	},
 	{
 		what: "Inline SVG icons: use IconButton or the icon action (Obsidian's icons)",
@@ -63,7 +63,7 @@ const DRIFT: Drift[] = [
 	{
 		what: "Hand-made frameless buttons (box-shadow: none): use IconButton",
 		pattern: /box-shadow:\s*none/g,
-		baseline: 54,
+		baseline: 50,
 	},
 	{
 		what: "Serif font stack typed out: use --kairos-font-serif",
@@ -73,7 +73,7 @@ const DRIFT: Drift[] = [
 	{
 		what: ":global() in a component: global CSS belongs in styles.css",
 		pattern: /:global\(/g,
-		baseline: 51,
+		baseline: 48,
 	},
 ];
 
