@@ -21,7 +21,7 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 
 **Tasks**
 
-- **Add a task:** point at the block's top-right corner and select **Add task**, or right-click the block.
+- **Add a task:** point at the block's top-right corner and select **Add task**, or right-click the block, then type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it. A short block grows while you type.
 - **Rename it:** select its text. **Enter** saves, **Esc** cancels.
 - **Check it off:** select its checkbox. Each click moves it along: open → half-done → done → open.
 - **Cancel it:** press and hold its checkbox, or right-click and select **Mark cancelled**.
@@ -55,7 +55,7 @@ The Grid has one row per project and domain, and one column per day. Use it to s
 
 **Adding and moving**
 
-- **Add a task to a block:** point at the top-right corner of the block's header and select **Add task**. A block header has the same corner actions as a block in the Day view.
+- **Add a task to a block:** point at the top-right corner of the block's header and select **Add task**, then type its name, as in a cell. A block header has the same corner actions as a block in the Day view.
 - **Add a task without a time:** select the **+** in the cell's corner, or the **+** on its Unscheduled header, and type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it.
 - **Move a task:** press and hold its text, then drag.
   - Onto a block in the same cell: it moves into that block.
