@@ -14,6 +14,7 @@
 	// and the Unscheduled pill is itself the drop target (`dropDate`).
 
 	import type { Snippet } from "svelte";
+	import Popover from "../components/Popover.svelte";
 
 	interface Props {
 		label: string;
@@ -69,17 +70,6 @@
 	function clearTimer() {
 		window.clearTimeout(timer);
 		timer = undefined;
-	}
-
-	// Portaled to the body and fixed there: a view's leaf is a transformed,
-	// clipping ancestor, which would otherwise offset and cut it.
-	function portal(node: HTMLElement) {
-		node.ownerDocument.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			},
-		};
 	}
 
 	function inside(target: EventTarget | null): boolean {
@@ -178,25 +168,28 @@
 </button>
 
 {#if open}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<div
+	<!-- Portaled to the body and fixed there (Popover): a view's leaf is a
+	     transformed, clipping ancestor, which would otherwise offset and cut it. -->
+	<Popover
 		class="tray-panel"
+		padding="s"
+		gap="s"
+		overflow="scroll"
 		style={panelStyle}
 		role="dialog"
-		tabindex="-1"
+		tabindex={-1}
 		aria-label={title}
-		bind:this={panelEl}
-		use:portal
+		bind:el={panelEl}
 		onpointerenter={onEnter}
 		onpointerleave={onLeave}
-		onclick={(e) => e.stopPropagation()}
+		onclick={(e: MouseEvent) => e.stopPropagation()}
 	>
 		<div class="tp-head">
 			<span class="tp-title">{title}</span>
 			{#if actions}{@render actions()}{/if}
 		</div>
 		{@render children()}
-	</div>
+	</Popover>
 {/if}
 
 <style>
@@ -250,22 +243,6 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.tray-panel {
-		position: fixed;
-		z-index: var(--layer-popover);
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-		padding: 4px 6px 6px;
-		border-radius: 8px;
-		/* Obsidian's menu edge: a border and shadow that hold up over the
-		   views' own dark surfaces. */
-		border: 1px solid var(--background-modifier-border-hover);
-		background: var(--background-primary);
-		box-shadow: var(--shadow-l);
-		text-align: left;
-	}
 	.tp-head {
 		display: flex;
 		align-items: center;

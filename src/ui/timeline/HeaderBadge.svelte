@@ -10,6 +10,7 @@
 	// these replace pushed every column down.
 
 	import type { Snippet } from "svelte";
+	import Popover from "../components/Popover.svelte";
 
 	interface Props {
 		/** The list's heading, in serif ("Unscheduled"). */
@@ -68,15 +69,6 @@
 	function clearTimer() {
 		window.clearTimeout(timer);
 		timer = undefined;
-	}
-
-	function portal(node: HTMLElement) {
-		node.ownerDocument.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			},
-		};
 	}
 
 	function inside(target: EventTarget | null): boolean {
@@ -185,14 +177,16 @@
 		<span class="hb-count">{count}</span>
 	</button>
 	{#if open}
-		<div
+		<Popover
 			class="hb-panel"
+			surface="secondary"
+			padding="l"
+			overflow="hidden"
 			style={panelStyle}
 			role="dialog"
-			tabindex="-1"
+			tabindex={-1}
 			aria-labelledby={headId}
-			bind:this={panelEl}
-			use:portal
+			bind:el={panelEl}
 			onpointerenter={onEnter}
 			onpointerleave={onLeave}
 		>
@@ -209,7 +203,7 @@
 			<div class="hb-list">
 				{@render children()}
 			</div>
-		</div>
+		</Popover>
 	{/if}
 </div>
 
@@ -264,21 +258,6 @@
 
 	.hb-count {
 		font-variant-numeric: tabular-nums;
-	}
-
-	.hb-panel {
-		position: fixed;
-		z-index: var(--layer-popover);
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		background: var(--background-secondary);
-		/* Obsidian's menu edge: a border and shadow that hold up over the
-		   views' own dark surfaces. */
-		border: 1px solid var(--background-modifier-border-hover);
-		border-radius: var(--radius-s);
-		box-shadow: var(--shadow-l);
-		padding: 10px 12px 10px;
 	}
 
 	/* Kairos's own type: the list's name in serif, the day in small capitals

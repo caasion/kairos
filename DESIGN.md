@@ -48,13 +48,13 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `RowLabel` | A project's or domain's name, note and intensity in the Grid and Timeline row-label column, with its hover card. | Grid and Timeline rows |
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
 | `Datepicker` | The date navigator and its calendar. | View headers |
-| `Portal` | Renders its children at `<body>`, for popovers that mustn't be clipped. | Popovers, pickers |
+| `Popover` | The panel that opens over a view: Obsidian's menu edge (a firmer border, a larger shadow), the `--kairos-radius-l` corner, its children in a column. `placement` is `"portal"` (the default: moved to `<body>` and fixed, placed with `top`/`left` in `style`), `"anchored"` (absolute in its parent) or `"inline"` (in the flow, for a wrapper that places it). `surface="secondary"` is for Kairos's own lists and cards; `padding` and `gap` take `s`/`m`/`l` steps of Obsidian's spacing; `overflow` clips or scrolls; `layer="menu"` lifts pickers over modals. When it opens, closes and where it goes stay with its owner. TypeScript-made panels add the `kairos-popover` class. | Header badge lists, the routines list, tray lists, pickers, hover cards, the calendar, header settings, the full-text peek |
+| `Portal` | Renders its children at `<body>`, for anything else that mustn't be clipped. | The calendar's fixed wrapper, the Gantt date card |
 
 ## Next
 
 These still exist as several copies and are the next components to make, in this order:
 
-1. **Popover**: the panel behind header badges, pickers and hover cards (border, shadow, radius, padding).
-2. **Pill and count**: tray pills, header badges, status tags and the counts beside names.
-3. **Group heading**: move the Projects view's domain headers and the Routines view's group headers onto `AssocGroup`.
-4. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.
+1. **Pill and count**: tray pills, header badges, status tags and the counts beside names.
+2. **Group heading**: move the Projects view's domain headers and the Routines view's group headers onto `AssocGroup`.
+3. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.

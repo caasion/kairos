@@ -764,17 +764,11 @@
 	}
 
 	/* ── Popups ── */
+	/* Places the calendar, which draws its own popover panel. */
 	.popup {
 		position: absolute;
 		top: calc(100% + 4px);
 		right: 8px;
 		z-index: 100;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-	}
-	.datepicker-popup {
-		padding: 4px;
 	}
 </style>

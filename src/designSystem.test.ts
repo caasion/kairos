@@ -53,7 +53,7 @@ const DRIFT: Drift[] = [
 	{
 		what: "Corner radii in px: use a --kairos-radius-* token",
 		pattern: /border-radius:\s*\d+px/g,
-		baseline: 85,
+		baseline: 74,
 	},
 	{
 		what: "Inline SVG icons: use IconButton or the icon action (Obsidian's icons)",
@@ -73,7 +73,7 @@ const DRIFT: Drift[] = [
 	{
 		what: ":global() in a component: global CSS belongs in styles.css",
 		pattern: /:global\(/g,
-		baseline: 51,
+		baseline: 34,
 	},
 ];
 

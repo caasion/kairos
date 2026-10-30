@@ -262,19 +262,63 @@ body .kairos-action-stack:focus-within > * {
 	margin-bottom: 0;
 }
 
+/* ── Popover (ui/components/Popover.svelte) ── */
+/* The panel behind header badges, pickers, hover cards and the calendar.
+   Obsidian's menu edge, a firmer border and a larger shadow, holds up over
+   the views' own dark surfaces. */
+.kairos-popover {
+	display: flex;
+	flex-direction: column;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: var(--kairos-radius-l);
+	box-shadow: var(--shadow-l);
+	text-align: left;
+}
+.kairos-popover.is-portal {
+	position: fixed;
+	z-index: var(--layer-popover);
+}
+.kairos-popover.is-anchored {
+	position: absolute;
+	z-index: var(--layer-popover);
+}
+.kairos-popover.is-layer-menu {
+	z-index: var(--layer-menu);
+}
+.kairos-popover.is-secondary {
+	background: var(--background-secondary);
+}
+.kairos-popover.is-pad-s {
+	padding: var(--size-4-1);
+}
+.kairos-popover.is-pad-m {
+	padding: var(--size-4-2);
+}
+.kairos-popover.is-pad-l {
+	padding: var(--size-4-3);
+}
+.kairos-popover.is-gap-s {
+	gap: var(--size-2-1);
+}
+.kairos-popover.is-gap-m {
+	gap: var(--size-4-2);
+}
+.kairos-popover.is-clipped {
+	overflow: hidden;
+}
+.kairos-popover.is-scrolling {
+	overflow-y: auto;
+}
+
 /* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
+/* A popover too (.kairos-popover), made from TypeScript. */
 .kairos-peek {
 	position: fixed;
 	z-index: var(--layer-popover);
 	max-width: min(320px, calc(100vw - 16px));
 	padding: var(--size-4-2) var(--size-4-3);
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	box-shadow: var(--shadow-s);
 	pointer-events: none;
-	display: flex;
-	flex-direction: column;
 	gap: var(--size-2-1);
 }
 .kairos-peek-text {
