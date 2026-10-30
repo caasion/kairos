@@ -595,7 +595,8 @@
 
 	// A "+" opens a field in its cell for the new task instead of making a
 	// "New task" at once (DraftTask), so nothing is made until it has a name.
-	let draft = $state<{ rowKey: GridRow["key"]; date: ISODate } | null>(null);
+	// A block's own "+" opens it in that block (`block`, its line).
+	let draft = $state<{ rowKey: GridRow["key"]; date: ISODate; block?: number } | null>(null);
 	function draftInCell(row: GridRow, date: ISODate): boolean {
 		return draft?.rowKey === row.key && draft.date === date;
 	}
@@ -633,27 +634,30 @@
 
 	async function addDraft(row: GridRow, date: ISODate, text: string) {
 		const assoc = rowAssociation(row);
+		const blockLine = draft?.block;
+		if (blockLine !== undefined) {
+			const day = dayOf(date);
+			const block = day?.blocks.find((b) => b.source.line === blockLine);
+			if (!day || day.path === null || !block) return;
+			commit(date, day.path, addTaskToBlock(day.blocks, block, text, assoc, nextDraftLine()));
+			return;
+		}
 		const day = dayOf(date);
 		const path = day?.path ?? (await ensureNoteForDate(date));
 		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
 		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
 	}
 
-	// A group's "+" (grouping on): a new task in that block, filed under the row
-	// it was added from. Unscheduled's adds to Unscheduled, like the cell's "+".
+	// A group's "+" (grouping on): a field for a new task in that block, filed
+	// under the row it was added from. Unscheduled's adds to Unscheduled, like
+	// the cell's "+".
 	async function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
 		if (isUnscheduledBlock(block)) {
 			await onCreate(row, date);
 			return;
 		}
 		focusDay(date);
-		const day = dayOf(date);
-		if (!day || day.path === null) return;
-		commit(
-			date,
-			day.path,
-			addTaskToBlock(day.blocks, block, "New task", rowAssociation(row), nextDraftLine()),
-		);
+		draft = { rowKey: row.key, date, block: block.source.line };
 	}
 
 	// ── Task drag-to-reschedule (grid DnD) ──
@@ -1645,6 +1649,7 @@
 								{onMoveToBacklog}
 								onCreate={() => onCreate(row, date)}
 								draftOpen={draftInCell(row, date)}
+								draftBlock={draftInCell(row, date) ? draft?.block : undefined}
 								onDraftSubmit={(text: string) => void addDraft(row, date, text)}
 								onDraftClose={() => (draft = null)}
 								holdLanded={!settings.gridUnscheduledInCells}

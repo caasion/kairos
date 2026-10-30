@@ -616,12 +616,12 @@
 	// (real lines are >= 0).
 
 
-	function handleAddTask(block: Block) {
+	function handleAddTask(block: Block, text: string) {
 		const real = ownerFor(block);
 		if (!real) return;
 		const task: Task = {
 			source: { path: real.source.path, line: nextDraftLine() },
-			text: "New task",
+			text,
 			status: " ",
 		};
 		real.tasks = [...real.tasks, task];

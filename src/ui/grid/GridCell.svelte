@@ -50,6 +50,8 @@
 		onCreate: () => void;
 		// The "+" opened its new-task field in this cell.
 		draftOpen?: boolean;
+		// The field is in this block (its line), not Unscheduled.
+		draftBlock?: number;
 		onDraftSubmit?: (text: string) => void;
 		onDraftClose?: () => void;
 		// Unscheduled isn't shown in the cells (it's behind the day header's
@@ -115,6 +117,7 @@
 		onNavigate,
 		onCreate,
 		draftOpen = false,
+		draftBlock,
 		onDraftSubmit,
 		onDraftClose,
 		holdLanded = false,
@@ -144,6 +147,7 @@
 	}: Props = $props();
 
 	// The field and the tasks just typed in it.
+	const usDraft = $derived(draftOpen && draftBlock === undefined);
 	const hasUnscheduledGroup = $derived(blockGroups.some((g) => isUnscheduledBlock(g.block)));
 	const LANDED_MS = 1400;
 	let landed = $state<{ id: number; text: string }[]>([]);
@@ -345,7 +349,7 @@
 				<span class="grid-cell-landed-bar"></span>
 			</div>
 		{/each}
-		{#if draftOpen && onDraftSubmit && onDraftClose}
+		{#if usDraft && onDraftSubmit && onDraftClose}
 			<DraftTask {color} placeholder="New task" onSubmit={submitDraft} onClose={onDraftClose} />
 		{/if}
 	{/snippet}
@@ -473,6 +477,8 @@
 			{/each}
 			{#if isUnscheduledBlock(group.block)}
 				{@render draftTail()}
+			{:else if draftOpen && draftBlock === group.block.source.line && onDraftSubmit && onDraftClose}
+				<DraftTask {color} placeholder="New task" onSubmit={onDraftSubmit} onClose={onDraftClose} />
 			{/if}
 			{#if canCreate && onCreateInBlock && isUnscheduledBlock(group.block)}
 				<!-- Unscheduled's "+", at the right end of its header line (a
@@ -501,7 +507,7 @@
 		</div>
 	{/if}
 
-	{#if !hasUnscheduledGroup && (draftOpen || landed.length > 0)}
+	{#if !hasUnscheduledGroup && (usDraft || landed.length > 0)}
 		<!-- The field always sits under an Unscheduled header, so it says where
 		     the task goes: here the cell has no Unscheduled group yet (or it's
 		     behind the header badge), so the field brings one. -->
