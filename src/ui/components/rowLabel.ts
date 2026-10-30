@@ -35,6 +35,12 @@ export interface RowLabelInfo {
 	 * domain's label is where they stay visible.
 	 */
 	rolledUp?: string[];
+	/**
+	 * Timeline project rows only: the name of the domain whose Grid row this
+	 * project is rolled up onto (#11). Draws a small marker beside the name; the
+	 * Timeline still gives the project its own row.
+	 */
+	rolledUpOnto?: string;
 }
 
 /**
