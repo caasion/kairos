@@ -28,6 +28,10 @@ body {
 
 	/* Accent bar down a group or row, in the domain colour */
 	--kairos-accent-width: 3px;
+
+	/* The tint on every other row of a table (Grid, Timeline), laid over the
+	   row's own background so it reads through today's tint too */
+	--kairos-row-alt: color-mix(in srgb, var(--text-normal) 3%, transparent);
 }
 
 /* ── Inline edit inputs ──

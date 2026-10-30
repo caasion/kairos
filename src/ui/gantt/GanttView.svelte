@@ -777,6 +777,7 @@
 						class:domain={row.isDomain}
 						class:group-start={group.start}
 						class:group-end={group.end}
+						class:alt={i % 2 === 1}
 						style:height={`${rowHeight(i)}px`}
 						style:margin-bottom={`${ROW_GAP}px`}
 						style={row.color ? `--row-accent: ${row.color};` : undefined}
@@ -835,6 +836,17 @@
 				{#if atToday && todayX >= 0 && todayX <= plotWidth}
 					<div class="gantt-today" style:left={`${todayX}px`} style:height={`${contentHeight}px`}></div>
 				{/if}
+
+				<!-- Every other row is tinted, level with its label, as in the Grid. -->
+				{#each rows as row, i (row.key)}
+					{#if i % 2 === 1}
+						<div
+							class="gantt-row-alt"
+							style:top={`${rowTop(i)}px`}
+							style:height={`${rowHeight(i)}px`}
+						></div>
+					{/if}
+				{/each}
 
 				<!-- The line under each group, level with the label column's. -->
 				{#each rows as row, i (row.key)}
@@ -1172,6 +1184,16 @@
 		bottom: calc(-1 * var(--row-gap));
 		height: 1px;
 		background: var(--background-modifier-border);
+	}
+	.gantt-label.alt,
+	.gantt-row-alt {
+		background-image: linear-gradient(var(--kairos-row-alt), var(--kairos-row-alt));
+	}
+	.gantt-row-alt {
+		position: absolute;
+		left: 0;
+		right: 0;
+		pointer-events: none;
 	}
 	.gantt-group-line {
 		position: absolute;

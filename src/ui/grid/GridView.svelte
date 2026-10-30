@@ -1582,6 +1582,7 @@
 					class:unassigned={row.kind === "unassigned"}
 					class:dim={rowArchived}
 					class:group-end={isGroupEnd(i)}
+					class:alt={i % 2 === 1}
 					style={row.kind !== "unassigned" && "color" in row && row.color
 						? `--row-accent: ${row.color};`
 						: undefined}
@@ -1601,6 +1602,7 @@
 					{@const intention = intentionOn(row, date, inactive)}
 					<div
 						class="grid-datacell"
+						class:alt={i % 2 === 1}
 						class:today={isToday(date)}
 						data-grid-date={date}
 						data-grid-row-key={row.key}
@@ -2062,15 +2064,18 @@
 	.grid-rowlabel.unassigned {
 		border-left-color: transparent;
 	}
-	/* Child project rows sit deeper and share the domain's continuous accent, so
-	   the divider between a domain and its children is dropped — the group reads as
-	   one block. */
+	/* Child project rows sit deeper under their domain. Every row keeps its
+	   line, so each row's line runs from the label across the cells; the accent
+	   stripe on the left still runs unbroken down the group. */
 	.grid-rowlabel.child {
 		padding-left: calc(var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent));
 	}
-	.grid-rowlabel.child:not(.group-end),
-	.grid-rowlabel.domain {
-		border-bottom-color: transparent;
+	/* Every other row is tinted, label and cells alike, so a row is easy to
+	   follow across the days. Laid over the row's own background (the label
+	   column's, today's). */
+	.grid-rowlabel.alt,
+	.grid-datacell.alt {
+		background-image: linear-gradient(var(--kairos-row-alt), var(--kairos-row-alt));
 	}
 	/* A row for an entity that is inactive/archived today — present for its
 	   history, but dimmed to read as past (mirrors the Projects page). */
