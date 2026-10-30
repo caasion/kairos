@@ -36,7 +36,7 @@ import { KairosView } from "../KairosView";
 import { ROUTINES_KEY, applyRoutines, routinesFor, routinesHash, routinesStale } from "./apply";
 import { applyRegenerate, regenerateChanges } from "./regenerate";
 import { RegenerateModal } from "../ui/routines/RegenerateModal";
-import { resolveAssociation } from "../association";
+import { get } from "svelte/store";
 import { activeRoutines, ownerActive, type OwnerActive } from "./owners";
 import { parseRoutines, type ParsedRoutines, type Routine } from "./routinesFile";
 import { dayLabel as label, manualMessage, planDayPrep, type PrepMode, type PrepPlan } from "./plan";
@@ -143,11 +143,14 @@ export class DayPreparer {
 			if (day) await this.recordHash(date, due);
 			return;
 		}
-		const { projects, domains } = this.plugin.indexAdapter.index.snapshot();
+		const index = this.plugin.indexAdapter.index;
 		new RegenerateModal(this.plugin.app, {
 			label: label(date),
+			blocks: day?.blocks ?? [],
 			changes,
-			assocName: (a) => resolveAssociation(a, projects, domains).displayName,
+			path: day?.path ?? "",
+			resolve: get(index.resolver()),
+			settings: this.plugin.settings,
 			onApply: (keys) => void this.applyRegenerate(date, keys),
 		}).open();
 	}
