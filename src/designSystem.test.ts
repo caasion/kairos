@@ -43,22 +43,22 @@ const DRIFT: Drift[] = [
 	{
 		what: "Hex colours: use an Obsidian colour variable (--color-green, --text-muted, …)",
 		pattern: /#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b/g,
-		baseline: 17,
+		baseline: 16,
 	},
 	{
 		what: "Font sizes in px: use a --kairos-text-* token or Obsidian's --font-ui-*",
 		pattern: /font-size:\s*\d+px/g,
-		baseline: 92,
+		baseline: 85,
 	},
 	{
 		what: "Corner radii in px: use a --kairos-radius-* token",
 		pattern: /border-radius:\s*\d+px/g,
-		baseline: 58,
+		baseline: 53,
 	},
 	{
 		what: "Inline SVG icons: use IconButton or the icon action (Obsidian's icons)",
 		pattern: /<svg\b/g,
-		baseline: 79,
+		baseline: 71,
 	},
 	{
 		what: "Hand-made frameless buttons (box-shadow: none): use IconButton",

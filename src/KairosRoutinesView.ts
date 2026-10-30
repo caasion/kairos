@@ -3,6 +3,7 @@ import { mount, unmount } from "svelte";
 import { get, writable } from "svelte/store";
 import type { Component } from "svelte";
 import RoutinesView from "./ui/routines/RoutinesView.svelte";
+import { findViewHeader } from "./ui/actions/viewHeader";
 import type Kairos from "./main";
 
 export const KAIROS_ROUTINES_VIEW_TYPE = "kairos-routines-view";
@@ -62,6 +63,7 @@ export class KairosRoutinesView extends ItemView {
 				active$: this.plugin.routinesFeed.active$,
 				mode$: this.mode$,
 				settings$: this.plugin.settings$,
+				viewHeader: findViewHeader(this.containerEl),
 			},
 		});
 	}

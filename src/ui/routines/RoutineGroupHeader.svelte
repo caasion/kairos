@@ -15,6 +15,7 @@
 	import { Menu } from "obsidian";
 	import { actionZone } from "../actions/actionZone";
 	import { tooltip } from "../actions/tooltip";
+	import { icon } from "../actions/icon";
 	import { autogrow, singleLine } from "../actions/autogrow";
 
 	interface Props {
@@ -114,16 +115,16 @@
 		     the corner, then add task, association and repeat. -->
 		<div class="rg-actions kairos-action-bar">
 			<button class="rg-action" aria-label={addLabel} use:tooltip={addLabel} onclick={() => onAdd()}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
+				<span class="rg-icon" use:icon={"list-plus"}></span>
 			</button>
 			<button class="rg-action" aria-label={assocLabel ? "Edit association" : "Add association"} use:tooltip={assocLabel ? "Edit association" : "Add association"} onclick={assoc}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
+				<span class="rg-icon" use:icon={"folder-symlink"}></span>
 			</button>
 			<button class="rg-action" aria-label="Change when it repeats" use:tooltip={"Change when it repeats"} onclick={() => onChangeRule?.()}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+				<span class="rg-icon" use:icon={"repeat"}></span>
 			</button>
 			<button class="rg-action rg-action-danger" aria-label="Delete block" use:tooltip={"Delete block"} onclick={() => onDelete?.()}>
-				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+				<span class="rg-icon" use:icon={"x"}></span>
 			</button>
 		</div>
 	{/if}
@@ -174,7 +175,7 @@
 		<!-- The "+" at the right end of the header line, as on the Grid's
 		     Unscheduled header. A block's is in its action stack. -->
 		<button class="rg-add" aria-label={addLabel} use:tooltip={addLabel} onclick={() => onAdd()}>
-			<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+			<span class="rg-icon" use:icon={"plus"}></span>
 		</button>
 	{/if}
 </div>
@@ -195,7 +196,7 @@
 		   block header does, so times and task text line up down the list. */
 		padding-left: var(--kairos-meta-indent);
 		/* The Grid's block header type: the task text size, muted. */
-		font-size: 12px;
+		font-size: var(--kairos-text-body);
 		line-height: 1.4;
 		font-variant-numeric: tabular-nums;
 		color: var(--text-muted);
@@ -236,7 +237,7 @@
 	.rg-input {
 		flex: 1;
 		min-width: 0;
-		font-size: 12px;
+		font-size: var(--kairos-text-body);
 	}
 	.rg-time-input {
 		flex: 0 0 110px;
@@ -252,8 +253,8 @@
 	.rg-paused {
 		flex-shrink: 0;
 		padding: 0 6px;
-		border-radius: 8px;
-		font-size: 10px;
+		border-radius: var(--kairos-radius-l);
+		font-size: var(--kairos-text-meta);
 		font-style: normal;
 		line-height: 16px;
 		color: var(--text-muted);
@@ -304,6 +305,12 @@
 		}
 	}
 
+	/* Obsidian's icons, at the size of the block action stacks in other views. */
+	.rg-icon {
+		--icon-size: var(--icon-xs);
+		display: flex;
+	}
+
 	.rg-actions {
 		position: absolute;
 		top: 50%;
@@ -313,7 +320,7 @@
 		align-items: center;
 		gap: 2px;
 		padding: 2px;
-		border-radius: 4px;
+		border-radius: var(--kairos-radius-s);
 		background: var(--background-primary);
 	}
 	.rg-action {
@@ -324,7 +331,7 @@
 		height: 22px;
 		padding: 0;
 		border: none;
-		border-radius: 4px;
+		border-radius: var(--kairos-radius-s);
 		box-shadow: none;
 		background: transparent;
 		color: var(--text-muted);
@@ -340,6 +347,6 @@
 		order: -1;
 	}
 	.rg-action-danger:hover {
-		color: var(--text-error, #e05555);
+		color: var(--text-error);
 	}
 </style>
