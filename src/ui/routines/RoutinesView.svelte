@@ -21,6 +21,9 @@
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
 	import { tooltip } from "../actions/tooltip";
+	import { icon } from "../actions/icon";
+	import { intoViewHeader } from "../actions/viewHeader";
+	import IconButton from "../components/IconButton.svelte";
 	import { singleLine } from "../actions/autogrow";
 	import TaskRow from "../task/Task.svelte";
 	import RoutineGroupHeader from "./RoutineGroupHeader.svelte";
@@ -65,9 +68,11 @@
 		mode$: Writable<RoutinesMode>;
 		/** For the Week tab's timeline geometry, shared with the Week view. */
 		settings$: Readable<KairosSettings>;
+		/** The leaf's tab header, which the switch and buttons move into. */
+		viewHeader?: HTMLElement;
 	}
 
-	let { app, index, store, active$, mode$, settings$ }: Props = $props();
+	let { app, index, store, active$, mode$, settings$, viewHeader }: Props = $props();
 
 	// A routine whose project or domain isn't active today is paused (decision
 	// 87): greyed here, and offered nowhere until its owner is active again.
@@ -329,7 +334,7 @@
 				openSchedule(t, groupRoutines, row.getBoundingClientRect());
 			}}
 		>
-			<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+			<span class="schedule-icon" use:icon={"clock"}></span>
 			<span class="kairos-meta-label">Schedule in a block</span>
 		</div>
 	{/snippet}
@@ -361,21 +366,18 @@
 {/snippet}
 
 <div class="routines-view">
-	<div class="routines-header">
+	<!-- Moves into the tab header like the Week, Grid and Timeline bars
+	     (viewHeader.ts); in a sidebar leaf it stays here with the same look,
+	     as the Day view's does. -->
+	<div class="routines-header kairos-header-bar is-native" use:intoViewHeader={viewHeader}>
 		<span class="routines-title">Routines</span>
-		<div class="routines-modes" role="tablist" aria-label="Show routines as">
-			<button class="clickable-icon routines-mode" class:is-active={mode === "list"} role="tab" aria-selected={mode === "list"} onclick={() => setMode("list")}>List</button>
-			<button class="clickable-icon routines-mode" class:is-active={mode === "week"} role="tab" aria-selected={mode === "week"} onclick={() => setMode("week")}>Week</button>
-		</div>
 		<span class="routines-header-spacer"></span>
-		<button class="routines-btn" title="Open {store.filePath} to edit it by hand" onclick={() => void store.openFile()}>
-			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
-			<span>Open file</span>
-		</button>
-		<button class="routines-btn" title="Add a routine" onclick={openNewGroup}>
-			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-			<span>New routine</span>
-		</button>
+		<div class="interval-tabs" role="tablist" aria-label="Show routines as">
+			<button class="interval-tab" class:active={mode === "list"} role="tab" aria-selected={mode === "list"} onclick={() => setMode("list")}>List</button>
+			<button class="interval-tab" class:active={mode === "week"} role="tab" aria-selected={mode === "week"} onclick={() => setMode("week")}>Week</button>
+		</div>
+		<IconButton size="m" icon="file-text" label="Open {store.filePath} to edit it by hand" onclick={() => void store.openFile()} />
+		<IconButton size="m" icon="plus" label="New routine" onclick={openNewGroup} />
 	</div>
 
 	{#if mode === "week"}
@@ -492,66 +494,47 @@
 	.routines-header {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		padding: 10px 12px 8px;
+		padding: var(--size-4-2) var(--size-4-3) var(--size-4-1);
 		flex-shrink: 0;
 	}
+	/* Set like the tab header's title, which the bar hides when it moves in. */
 	.routines-title {
-		font-size: 14px;
-		font-weight: 700;
+		padding: var(--size-2-2) var(--size-2-3);
+		font-size: var(--file-header-font-size, var(--font-ui-small));
+		font-weight: var(--file-header-font-weight, var(--font-normal));
 		color: var(--text-normal);
-	}
-	.routines-modes {
-		display: flex;
-		gap: var(--size-2-1);
-		padding: var(--size-2-1);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: var(--kairos-radius-m);
-	}
-	/* Obsidian's frameless button, holding a word instead of an icon. */
-	.routines-mode {
-		width: auto;
-		padding: var(--size-2-1) var(--size-4-2);
-		font-size: var(--kairos-text-label);
-	}
-	.routines-mode.is-active {
-		color: var(--text-normal);
-		background: var(--background-modifier-hover);
-	}
-	.routines-scroll.is-week {
-		padding: 0;
+		white-space: nowrap;
 	}
 	.routines-header-spacer {
 		flex: 1;
 	}
-	.routines-btn {
+	.interval-tabs {
 		display: flex;
-		align-items: center;
-		gap: 5px;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-muted);
-		background: var(--background-primary-alt);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		padding: 4px 8px;
-		cursor: pointer;
 	}
-	.routines-btn:hover {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
+	.interval-tab {
+		white-space: nowrap;
+		cursor: var(--cursor);
+	}
+	/* The clock beside "Schedule in a block", the size of the text. */
+	.schedule-icon {
+		--icon-size: 1em;
+		display: flex;
+		flex-shrink: 0;
+	}
+	.routines-scroll.is-week {
+		padding: 0;
 	}
 	.routines-scroll {
 		flex: 1;
 		overflow: auto;
-		padding: 0 12px 16px;
+		padding: var(--size-4-2) 12px 16px;
 	}
 	.routines-problems {
 		margin: 0 4px 12px;
 		padding: 8px 10px;
-		border-radius: 6px;
+		border-radius: var(--kairos-radius-m);
 		border: 1px solid var(--background-modifier-error, var(--text-error));
-		font-size: 12px;
+		font-size: var(--kairos-text-body);
 		color: var(--text-muted);
 	}
 	.routines-problems-title {
@@ -564,7 +547,7 @@
 		padding-left: 18px;
 	}
 	.routines-empty {
-		font-size: 13px;
+		font-size: var(--kairos-text-name);
 		color: var(--text-muted);
 		padding: 8px 4px;
 	}
