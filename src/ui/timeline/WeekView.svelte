@@ -898,7 +898,7 @@
 				value={dayNumber(date)}
 				today={isToday(date)}
 				title="Ctrl+click to open the daily note"
-				onclick={(e) => {
+				onclick={(e: MouseEvent) => {
 					e.stopPropagation();
 					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
 				}}
