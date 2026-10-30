@@ -173,8 +173,15 @@ status:
 |---|---|
 | Drag across an empty part of a row | Add an active stretch |
 | Click an empty part of a row | Start an open-ended active stretch |
-| Drag a bar's left or right edge | Move its start or end |
-| Click a bounded bar's right edge without dragging | Remove its end date |
+| Click a bar | Select it; its edge handles appear outside its ends |
+| Drag a bar | Move the stretch, keeping its length; it stops at the next stretch |
+| Drag a bar's left or right edge | Move its start or end; a stretch it grows into gets shorter |
+| Select a bar, then press **←** or **→** | Move it a day |
+| Select a bar, then press **Shift+←** or **Shift+→** | Move its end a day |
+| Select a bar, then press **Alt/Option+←** or **Alt/Option+→** | Move its start a day |
+| Right-click a bar, then **Split on** | Split it on the day you right-clicked |
+| Right-click a bar, then **Merge with next** | Join it with the next stretch |
+| Right-click a bar, then **Remove end date** | Let it run on to the next stretch, or open-ended |
 | Select one of a bar's three intensity lines | Light its intensity up to that line (select the top lit line again to dim it) |
 | Select a bar, then press **0**–**5** | Set its intensity |
 | Right-click a bar, then **Intensity** | Set or clear its intensity |
