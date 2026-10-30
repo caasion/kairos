@@ -32,6 +32,8 @@ export interface PeekOptions {
 	touch?: boolean;
 	/** Hover / hold time before the card opens, in ms. */
 	delay?: number;
+	/** Draw the text into the card instead of setting it (links, formatting). */
+	render?: (el: HTMLElement) => void;
 }
 
 /** Pointer travel (px) past which a hold counts as a drag, not a peek. */
@@ -90,12 +92,18 @@ export function hidePeek(): void {
  * Open the card for `anchor`, below it (flipped above near the bottom edge).
  * Replaces any card already open.
  */
-export function showPeek(anchor: HTMLElement, text: string, detail?: string): void {
+export function showPeek(
+	anchor: HTMLElement,
+	text: string,
+	detail?: string,
+	render?: (el: HTMLElement) => void,
+): void {
 	hidePeek();
 	if (!text && !detail) return;
 
 	const el = document.body.createDiv({ cls: "kairos-peek" });
-	if (text) el.createDiv({ cls: "kairos-peek-text", text });
+	if (text && render) render(el.createDiv({ cls: "kairos-peek-text kairos-inline" }));
+	else if (text) el.createDiv({ cls: "kairos-peek-text", text });
 	if (detail) el.createDiv({ cls: "kairos-peek-detail", text: detail });
 
 	// Measure at its natural size before placing, so the flip/clamp is exact.
@@ -123,7 +131,7 @@ export function peekIfTruncated(node: HTMLElement, opts: PeekOptions = {}): bool
 	const target = opts.measure?.() ?? node;
 	if (!opts.always && !isTruncated(target)) return false;
 	const text = opts.text ?? target.textContent?.trim() ?? "";
-	showPeek(node, text, opts.detail);
+	showPeek(node, text, opts.detail, opts.render);
 	return true;
 }
 

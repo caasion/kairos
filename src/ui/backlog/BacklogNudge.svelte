@@ -137,7 +137,7 @@
 	tag={sourceTag ? { icon: "clock", text: sourceTag, title: "Resurfaced from the backlog" } : undefined}
 	meta={entry.assoc && showAssociation ? assocLine : undefined}
 >
-	<ItemText text={entry.text} />
+	<ItemText text={entry.text} sourcePath={entry.source.path} />
 </ItemRow>
 
 <style>

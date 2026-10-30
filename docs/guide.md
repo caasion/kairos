@@ -36,6 +36,17 @@ A note records what happened in a block, like "Ran late, skipped the review".
 - **Add a note:** point at the block's top-right corner and select **Add note**.
 - **Edit it:** select it. Clear the text to delete it.
 
+**Links and formatting**
+
+Task text, block titles, notes and backlog items show links and formatting as a note does: `[[note]]`, `[[note|alias]]`, `[text](https://…)`, bare `https://` links, `` `code` ``, `**bold**`, `*italic*`, `~~strikethrough~~`, `==highlight==` and `#tags`. Selecting the text to edit it shows the markdown as you wrote it.
+
+- **Open a note link:** select it. Ctrl/Cmd+click opens it in a new tab. A link to a note that doesn't exist yet is dimmed, as in a note, and selecting it creates the note.
+- **Preview a note:** point at the link while holding **Ctrl/Cmd**. To preview without the key, turn it off for **Kairos** under **Settings → Page preview**.
+- **Open a web link:** select it. It opens in your browser.
+- **Search for a tag:** select it.
+
+Selecting anywhere else on the text edits it, as before.
+
 **When a block is too small for its tasks**, its last row says "N more". Point at it or tap it, and the block grows to show everything.
 
 Above the timeline, a row of pills holds what isn't on it yet: **Unscheduled** (tasks without a time), the **Inbox** (tasks left open on an earlier day, and backlog items resurfacing today) and missing routines. The Inbox pill turns amber while tasks are left open (see [Carry unfinished tasks forward](#carry-unfinished-tasks-forward)). Point at a pill to peek at its list. Select it to open the list above the timeline, and select it again to close it. To schedule a task, drag it from the list onto the timeline. The **Unscheduled** pill also shows whenever you're dragging a task; drop on it to take a task out of its block.

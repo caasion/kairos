@@ -456,6 +456,7 @@
 									     opens straight into its editor. -->
 									<ItemText
 										text={entry.text}
+										sourcePath={entry.source.path}
 										lines={2}
 										onCommit={(text) => finishEdit(entry, text)}
 										bind:editing={

@@ -260,7 +260,7 @@ function stripMetadata(body: string): Metadata {
       continue;
     }
     const p = TRAILING_PAREN.exec(title);
-    if (p && metadata === undefined) {
+    if (p && metadata === undefined && !isLinkParen(title, p)) {
       metadata = (p[1] ?? "").trim();
       title = title.slice(0, p.index).trimEnd();
       continue;
@@ -273,6 +273,20 @@ function stripMetadata(body: string): Metadata {
     ...(assoc ? { assoc } : {}),
     ...(metadata ? { metadata } : {}),
   };
+}
+
+// A trailing "(...)" that's part of a link, not a note: the destination of a
+// markdown link ("[docs](https://…)", "[plan](My%20Plan.md)") or the end of a
+// bare URL ("…/wiki/Foo_(bar)"). Only a paren glued to what's before it can be
+// one; "Write [Kairos](draft)" still reads as an association and a note.
+function isLinkParen(title: string, match: RegExpExecArray): boolean {
+  const open = title.indexOf("(", match.index);
+  const before = title[open - 1];
+  if (before === undefined || /\s/.test(before)) return false;
+  const inner = match[1] ?? "";
+  if (before === "]") return /:\/\/|%20|\.md(#|$)|^(mailto|obsidian):/i.test(inner);
+  const word = title.slice(0, open).split(/\s/).pop() ?? "";
+  return /^\S*https?:\/\//i.test(word);
 }
 
 /** Classify a bracket tag: `D:Name` → domain, anything else → project. */
