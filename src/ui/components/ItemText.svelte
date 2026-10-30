@@ -11,10 +11,16 @@
 	//   itself (the Backlog's new entries).
 	// • With `onGrab`, a hold that then moves hands the drag to the caller; a
 	//   hold that lifts in place peeks instead.
+	// • Links, tags and formatting in the text are drawn (InlineText); a click
+	//   on a link follows it instead of editing, and the editor shows the
+	//   markdown as written.
 
 	import { autogrow, singleLine } from "../actions/autogrow";
 	import { longpress } from "../actions/longpress";
-	import { movedPastSlop, peek, peekIfTruncated } from "../actions/peek";
+	import { movedPastSlop, peek, peekIfTruncated, type PeekOptions } from "../actions/peek";
+	import { parseInline } from "../../inline";
+	import InlineText from "../inline/InlineText.svelte";
+	import { renderInline } from "../inline/links";
 
 	interface Props {
 		text: string;
@@ -29,11 +35,28 @@
 		// A hold on the text that then moves began a drag. Omit where dragging
 		// isn't supported.
 		onGrab?: (event: PointerEvent) => void;
+		// The note the text lives in, which its links resolve from.
+		sourcePath?: string;
 	}
 
-	let { text, lines = 1, mark, onCommit, editing = $bindable(false), onGrab }: Props = $props();
+	let {
+		text,
+		lines = 1,
+		mark,
+		onCommit,
+		editing = $bindable(false),
+		onGrab,
+		sourcePath = "",
+	}: Props = $props();
 
 	const wrapped = $derived(lines > 1);
+
+	// The peek card draws the text as the row does.
+	const peekOptions = $derived<PeekOptions>({
+		text,
+		touch: false,
+		render: (el: HTMLElement) => renderInline(el, parseInline(text), sourcePath),
+	});
 
 	// ── Editing ──
 
@@ -102,7 +125,7 @@
 			const up = (e: PointerEvent) => {
 				if (e.pointerId !== start.pointerId) return;
 				finish();
-				peekIfTruncated(node, { text });
+				peekIfTruncated(node, peekOptions);
 			};
 			const cancel = () => finish();
 			window.addEventListener("pointermove", move);
@@ -151,7 +174,7 @@
 {:else}
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<span
-		class="kairos-item-text"
+		class="kairos-item-text kairos-inline"
 		class:wrapped
 		class:struck={mark === "struck"}
 		class:half={mark === "half"}
@@ -170,9 +193,9 @@
 		}}
 		use:longpress={400}
 		use:hold
-		use:peek={{ text, touch: false }}
+		use:peek={peekOptions}
 	>
-		{text}
+		<InlineText {text} {sourcePath} />
 	</span>
 {/if}
 

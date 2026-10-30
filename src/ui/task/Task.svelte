@@ -381,6 +381,7 @@
 >
 	<ItemText
 		text={task.text}
+		sourcePath={task.source.path}
 		{lines}
 		mark={done || cancelled ? "struck" : half ? "half" : undefined}
 		onCommit={commitText}

@@ -16,7 +16,10 @@
     type HoverTarget,
   } from "../../viewLinks";
   import type { Resolver } from "../../index";
-  import { peek } from "../actions/peek";
+  import { peek, type PeekOptions } from "../actions/peek";
+  import { parseInline } from "../../inline";
+  import InlineText from "../inline/InlineText.svelte";
+  import { renderInline } from "../inline/links";
   import { Menu, Notice } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
   import DraftTask from "../task/DraftTask.svelte";
@@ -303,6 +306,11 @@
   // ── Title editing (single click, in place) ──────────────────────
 
   let editingTitle = $state(false);
+  // The peek card draws a title or note with its links, as the block does.
+  function inlinePeek(text: string): PeekOptions {
+    return { text, render: (el) => renderInline(el, parseInline(text), block.source.path) };
+  }
+
   let titleDraft = $state("");
   let titleInputEl = $state<HTMLInputElement>();
 
@@ -746,13 +754,13 @@
       {:else}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <span
-          class="tl-title"
+          class="tl-title kairos-inline"
           role="textbox"
           tabindex="0"
           onpointerdown={(e) => e.stopPropagation()}
           onclick={beginTitleEdit}
-          use:peek={{ text: block.title }}
-        >{block.title}</span>
+          use:peek={inlinePeek(block.title)}
+        ><InlineText text={block.title} sourcePath={block.source.path} /></span>
       {/if}
       {#if compactLayout && hiddenCount > 0}
         {@render moreButton("pill")}
@@ -888,12 +896,12 @@
               {:else}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <span
-                  class="tl-note-text"
+                  class="tl-note-text kairos-inline"
                   role="textbox"
                   tabindex="0"
                   onclick={() => beginNoteEdit(n)}
-                  use:peek={{ text: note.text }}
-                >{note.text}</span>
+                  use:peek={inlinePeek(note.text)}
+                ><InlineText text={note.text} sourcePath={block.source.path} /></span>
               {/if}
             </div>
           {/each}

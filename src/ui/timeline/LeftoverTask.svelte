@@ -92,7 +92,7 @@
 	tag={sourceTag ? { icon: "undo-2", text: sourceTag, title: `Left open on ${fromLabel}` } : undefined}
 	meta={association ? assocLine : undefined}
 >
-	<ItemText text={task.text} />
+	<ItemText text={task.text} sourcePath={task.source.path} />
 </ItemRow>
 
 <style>

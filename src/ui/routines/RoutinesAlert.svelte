@@ -15,6 +15,7 @@
 	// presentational: the parent owns the writes.
 
 	import type { Routine } from "../../routines/routinesFile";
+	import InlineText from "../inline/InlineText.svelte";
 	import type { RoutineItem, RoutineList } from "../../routines/preview";
 	import { formatTimeRange } from "../../parser";
 	import Pill from "../components/Pill.svelte";
@@ -235,10 +236,10 @@
 						<div class="ra-row">
 							{@render arrow(item, block.title)}
 							<span class="ra-time">{formatTimeRange(block.time)}</span>
-							<span class="ra-text">{block.title}</span>
+							<span class="ra-text kairos-inline"><InlineText text={block.title} /></span>
 						</div>
 						{#each item.tasks as task (task.line)}
-							<div class="ra-task">{task.text}</div>
+							<div class="ra-task kairos-inline"><InlineText text={task.text} /></div>
 						{/each}
 					</div>
 				{:else}
@@ -246,7 +247,7 @@
 					<div class="ra-item">
 						<div class="ra-row">
 							{@render arrow(item, task.text)}
-							<span class="ra-text">{task.text}</span>
+							<span class="ra-text kairos-inline"><InlineText text={task.text} /></span>
 						</div>
 						{#if task.home}
 							<div class="ra-task ra-home">in {task.home}</div>
@@ -260,7 +261,7 @@
 					<div class="ra-item ra-loose">
 						<div class="ra-row">
 							{@render arrow(item, item.tasks[0]!.text)}
-							<span class="ra-text">{item.tasks[0]!.text}</span>
+							<span class="ra-text kairos-inline"><InlineText text={item.tasks[0]!.text} /></span>
 						</div>
 					</div>
 				{/each}
