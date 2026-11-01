@@ -7,9 +7,12 @@
 	// Cards sit edge to edge, square, in a row; only the last one rounds its
 	// top-right corner (the row's gutter spacer rounds the top-left). With
 	// `onclick` it's a button that brightens on hover; without, a plain card.
-	// `oncontextmenu` opens the day's menu on either.
+	// `onmenu` opens the day's menu, from a right-click or from the ⋯ button in
+	// the top-right corner, which shows on hover (always on touch) so the menu
+	// can be found.
 
 	import type { Snippet } from "svelte";
+	import IconButton from "./IconButton.svelte";
 
 	interface Props {
 		/** The small uppercase line: "Mon". */
@@ -20,12 +23,13 @@
 		today?: boolean;
 		title?: string;
 		onclick?: (event: MouseEvent) => void;
-		oncontextmenu?: (event: MouseEvent) => void;
+		/** Open the day's menu: from a right-click, or the ⋯ button. */
+		onmenu?: (event: MouseEvent) => void;
 		/** Badges over the card's bottom-right corner. */
 		badges?: Snippet;
 	}
 
-	let { label, value, today = false, title, onclick, oncontextmenu, badges }: Props = $props();
+	let { label, value, today = false, title, onclick, onmenu, badges }: Props = $props();
 </script>
 
 {#snippet face()}
@@ -38,10 +42,15 @@
 
 <div class="date-card-wrap">
 	{#if onclick}
-		<button class="date-card is-button" class:today {title} {onclick} {oncontextmenu}>{@render face()}</button>
+		<button class="date-card is-button" class:today {title} {onclick} oncontextmenu={onmenu}>{@render face()}</button>
 	{:else}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="date-card" class:today {title} {oncontextmenu}>{@render face()}</div>
+		<div class="date-card" class:today {title} oncontextmenu={onmenu}>{@render face()}</div>
+	{/if}
+	{#if onmenu}
+		<div class="date-card-menu">
+			<IconButton label="Day actions" icon="more-horizontal" onclick={onmenu} />
+		</div>
 	{/if}
 	{#if badges}
 		<div class="date-card-badges">{@render badges()}</div>
@@ -116,6 +125,25 @@
 		height: 2px;
 		background: var(--interactive-accent);
 		border-radius: 1px;
+	}
+	/* The ⋯ for the day's menu: top-right, out of the way of the label and
+	   the badges, shown while the card is pointed at or the menu button has
+	   focus, and always where there's no hover. */
+	.date-card-menu {
+		position: absolute;
+		top: var(--size-2-1);
+		right: var(--size-2-1);
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+	.date-card-wrap:hover .date-card-menu,
+	.date-card-menu:focus-within {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.date-card-menu {
+			opacity: 1;
+		}
 	}
 	.date-card-badges {
 		position: absolute;

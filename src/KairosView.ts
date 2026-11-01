@@ -5,7 +5,7 @@ import DayView from "./ui/timeline/DayView.svelte";
 import type Kairos from "./main";
 import type { KairosSettings } from "./settings";
 import type { ISODate } from "./types";
-import { todayISO } from "./dayNote";
+import { addDayMenuItems } from "./ui/dayMenu";
 
 export const KAIROS_VIEW_TYPE = "kairos-day-view";
 
@@ -39,15 +39,7 @@ export class KairosView extends ItemView {
 		super.onPaneMenu(menu, source);
 		const date = this.date;
 		if (!date) return;
-		const past = date < todayISO();
-		menu.addItem((item) =>
-			item
-				.setTitle(past ? "Regenerate routines (past day)" : "Regenerate routines…")
-				.setIcon("refresh-cw")
-				.setSection("action")
-				.setDisabled(past)
-				.onClick(() => void this.plugin.dayPreparer.regenerate(date)),
-		);
+		addDayMenuItems(menu, date, this.plugin.routinesFeed.actions());
 	}
 
 	async onOpen() {
