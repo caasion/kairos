@@ -125,7 +125,7 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 - Right-click a task or a block in any view and select **Repeat…**. Choose when it repeats. The one you right-clicked stays where it is as the first occurrence.
 - Or open the **Routines** view from the hourglass menu and select **New routine**.
-- To keep a day you planned well, open the Day view's **⋯** menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task, and choose when the rest repeat (that weekday at first). Blocks and tasks that are already routines are shown but can't be checked. Unscheduled tasks aren't listed; use **Repeat…** for those.
+- To keep a day you planned well, open the day's menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. The day's menu opens from the **⋯** on a day's header (the date in the Day view, a date in the Week and Grid views), or by right-clicking it. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task, and choose when the rest repeat (that weekday at first). Blocks and tasks that are already routines are shown but can't be checked. Unscheduled tasks aren't listed; use **Repeat…** for those.
 - Or write `Routines.md` yourself, or have an AI assistant write it. [Routines.md](reference.md#routinesmd) in the reference describes the whole format, so you can point the assistant there.
 
 **Add routines to a day**
@@ -141,7 +141,7 @@ You can also run **Apply routines to this day** from the command palette. To add
 
 **Update a day after changing routines**
 
-Adding routines only adds what's missing. A block that's already in the day keeps its project or domain and its time when you change the routine. To bring a day in line with `Routines.md` again, right-click the day's header in the Week view and select **Regenerate routines…**. In the Day view, open the **⋯** menu and select **Regenerate routines…**, or run **Regenerate routines for this day** from the command palette.
+Adding routines only adds what's missing. A block that's already in the day keeps its project or domain and its time when you change the routine. To bring a day in line with `Routines.md` again, open the day's menu (the **⋯** on its header in the Day, Week or Grid view, or right-click the header) and select **Regenerate routines…**, or run **Regenerate routines for this day** from the command palette.
 
 It shows the day as it would be, beside a list of what differs. Checking or unchecking a change updates the day, with what changes outlined. Nothing changes until you select **Apply**:
 

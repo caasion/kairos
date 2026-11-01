@@ -59,6 +59,8 @@
 	import { commitNumber } from "./numberField";
 	import { requestRepeat } from "../../routines/repeat";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
+	import IconButton from "../components/IconButton.svelte";
+	import { showDayMenu } from "../dayMenu";
 	import { routinesToOffer } from "../../routines/preview";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
 	import { dayLabel } from "../../routines/plan";
@@ -1306,6 +1308,7 @@
 						e.stopPropagation();
 						void openDayNote(e);
 					}}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
 				>
 					{dateLabel}
 				</button>
@@ -1333,6 +1336,14 @@
 				</div>
 			{/if}
 		</div>
+		<!-- The day's menu, also on the date's right-click; the same one the
+		     Week and Grid date headers open. -->
+		<IconButton
+			label="Day actions"
+			icon="more-horizontal"
+			size="m"
+			onclick={(e) => showDayMenu(e, date, routineActions)}
+		/>
 
 		<span class="day-header-spacer"></span>
 		<span class="day-range-label">
