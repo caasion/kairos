@@ -24,7 +24,7 @@
 		date,
 		intention,
 		intensity,
-		width = $bindable(0),
+		width = $bindable(),
 	}: {
 		/** The row's project or domain. */
 		name: string;
