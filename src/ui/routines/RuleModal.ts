@@ -27,6 +27,7 @@ export class RuleModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl, options } = this;
 		titleEl.setText(options.title);
 		if (options.description) {
