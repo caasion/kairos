@@ -39,6 +39,7 @@ export class RegenerateModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl, modalEl, options } = this;
 		modalEl.addClass("kairos-regen-modal");
 		titleEl.setText(`Regenerate routines for ${options.label}`);

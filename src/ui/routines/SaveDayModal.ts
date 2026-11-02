@@ -30,6 +30,7 @@ export class SaveDayModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl, options } = this;
 		titleEl.setText(`Save ${options.label} as routines`);
 		contentEl.createEl("p", {
