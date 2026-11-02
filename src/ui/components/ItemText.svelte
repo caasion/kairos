@@ -29,9 +29,20 @@
 		// A hold on the text that then moves began a drag. Omit where dragging
 		// isn't supported.
 		onGrab?: (event: PointerEvent) => void;
+		// Shown faint and italic while the text is empty, and in the empty
+		// editor, so an empty field can still be found and clicked.
+		placeholder?: string;
 	}
 
-	let { text, lines = 1, mark, onCommit, editing = $bindable(false), onGrab }: Props = $props();
+	let {
+		text,
+		lines = 1,
+		mark,
+		onCommit,
+		editing = $bindable(false),
+		onGrab,
+		placeholder,
+	}: Props = $props();
 
 	const wrapped = $derived(lines > 1);
 
@@ -133,6 +144,7 @@
 	<textarea
 		class="kairos-item-input kairos-inline-input"
 		rows="1"
+		{placeholder}
 		bind:value={draft}
 		onkeydown={onKeydown}
 		onblur={commit}
@@ -143,6 +155,7 @@
 	<input
 		class="kairos-item-input kairos-inline-input"
 		type="text"
+		{placeholder}
 		bind:value={draft}
 		onkeydown={onKeydown}
 		onblur={commit}
@@ -158,6 +171,7 @@
 		class:editable={onCommit !== undefined}
 		class:grabbable={onGrab !== undefined}
 		class:held
+		class:is-placeholder={!text && placeholder !== undefined}
 		role={onCommit ? "textbox" : undefined}
 		tabindex={onCommit ? 0 : undefined}
 		style:--kairos-item-lines={wrapped ? lines : undefined}
@@ -172,7 +186,7 @@
 		use:hold
 		use:peek={{ text, touch: false }}
 	>
-		{text}
+		{#if !text && placeholder !== undefined}{placeholder}{:else}{text}{/if}
 	</span>
 {/if}
 
@@ -224,6 +238,11 @@
 	.kairos-item-text.struck {
 		text-decoration: line-through;
 		opacity: 0.5;
+	}
+
+	.kairos-item-text.is-placeholder {
+		color: var(--text-faint);
+		font-style: italic;
 	}
 
 	.kairos-item-text.half {

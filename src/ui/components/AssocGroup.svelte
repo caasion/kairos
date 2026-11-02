@@ -34,6 +34,10 @@
 		onOpen?: (event: MouseEvent) => void;
 		/** The "No project" group's name, where a list calls it something else. */
 		noneLabel?: string;
+		/** Clicking the heading selects the group, to show its details elsewhere. */
+		onSelect?: () => void;
+		/** The selected group: the heading shows Obsidian's active fill. */
+		selected?: boolean;
 		/** Clicking the name asks to rename it; the parent sets `editing`. */
 		onStartRename?: () => void;
 		editing?: boolean;
@@ -66,6 +70,8 @@
 		onNavigate,
 		onOpen,
 		noneLabel = "No project",
+		onSelect,
+		selected = false,
 		onStartRename,
 		editing = false,
 		onRename,
@@ -88,6 +94,7 @@
 	const canNavigate = $derived(!!onOpen || !!(assoc && resolved?.resolved && onNavigate));
 	const hint = $derived(
 		[
+			onSelect && "Click for details",
 			onStartRename && "Click to rename",
 			canNavigate && "Ctrl/Cmd+click to open",
 			oncontextmenu && "Right-click for more",
@@ -98,7 +105,13 @@
 	let drafting = $state(false);
 
 	function click(event: MouseEvent) {
-		if (!(event.ctrlKey || event.metaKey)) return;
+		if (!(event.ctrlKey || event.metaKey)) {
+			if (onSelect && !editing) {
+				event.stopPropagation();
+				onSelect();
+			}
+			return;
+		}
 		if (onOpen) {
 			event.stopPropagation();
 			onOpen(event);
@@ -135,6 +148,8 @@
 	<div
 		class="ag-head"
 		class:is-linked={canNavigate}
+		class:is-selectable={!!onSelect}
+		class:is-selected={selected}
 		title={hint}
 		onclick={click}
 		{oncontextmenu}
@@ -225,6 +240,19 @@
 		top: 0;
 		z-index: 1;
 		background: var(--background-primary);
+	}
+
+	/* Obsidian's selected-item fill, laid over the sticky heading's opaque one. */
+	.ag-head.is-selectable {
+		cursor: pointer;
+	}
+
+	.ag-head.is-selected {
+		border-radius: var(--radius-s);
+		background-image: linear-gradient(
+			var(--background-modifier-active-hover),
+			var(--background-modifier-active-hover)
+		);
 	}
 
 	.ag-name {
