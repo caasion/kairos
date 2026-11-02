@@ -27,6 +27,7 @@ export class StatusHistoryModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl, modalEl } = this;
 		modalEl.addClass("kairos-history-modal");
 		titleEl.setText(this.opts.name);

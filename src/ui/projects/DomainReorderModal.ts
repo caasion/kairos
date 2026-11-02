@@ -35,6 +35,7 @@ export class DomainReorderModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl } = this;
 		titleEl.setText("Reorder domains");
 

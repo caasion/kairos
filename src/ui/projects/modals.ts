@@ -47,6 +47,7 @@ export class PromptModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl } = this;
 		titleEl.setText(this.title);
 
@@ -126,6 +127,7 @@ export class ConfirmModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl } = this;
 		titleEl.setText(this.title);
 
@@ -177,6 +179,7 @@ export class WhyModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl } = this;
 		titleEl.setText(this.title);
 

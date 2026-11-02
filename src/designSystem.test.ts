@@ -18,13 +18,14 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-function svelteFiles(dir: string): string[] {
+function filesEnding(dir: string, ext: string): string[] {
 	return readdirSync(dir).flatMap((name) => {
 		const path = join(dir, name);
-		if (statSync(path).isDirectory()) return svelteFiles(path);
-		return name.endsWith(".svelte") ? [path] : [];
+		if (statSync(path).isDirectory()) return filesEnding(path, ext);
+		return name.endsWith(ext) ? [path] : [];
 	});
 }
+const svelteFiles = (dir: string) => filesEnding(dir, ".svelte");
 
 const sources = svelteFiles(join(ROOT, "src")).map((path) => ({
 	file: relative(ROOT, path),
@@ -101,6 +102,18 @@ describe("design system drift only goes down", () => {
 });
 
 describe("design system components", () => {
+	it("every dialog adds kairos-modal (DESIGN.md, rule 8)", () => {
+		const missing = filesEnding(join(ROOT, "src"), ".ts")
+			.map((path) => ({ file: relative(ROOT, path), text: readFileSync(path, "utf8") }))
+			.filter(({ text }) => {
+				const dialogs = text.match(/\bextends Modal\b/g)?.length ?? 0;
+				const marked = text.match(/addClass\("kairos-modal"\)/g)?.length ?? 0;
+				return marked < dialogs;
+			})
+			.map(({ file }) => file);
+		expect(missing, `Add this.modalEl.addClass("kairos-modal") to onOpen in:\n${missing.join("\n")}`).toEqual([]);
+	});
+
 	it("styles.css defines every token DESIGN.md lists", () => {
 		const css = readFileSync(join(ROOT, "styles.css"), "utf8");
 		const design = readFileSync(join(ROOT, "DESIGN.md"), "utf8");
