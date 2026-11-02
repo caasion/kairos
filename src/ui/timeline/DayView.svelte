@@ -1023,6 +1023,15 @@
 		if (committedPreview.size > 0) await commitRetime(committedPreview);
 	}
 
+	// The browser took the pointer (a touch that turned into a scroll, a system
+	// gesture) or the window lost focus: drop the gesture without writing. Left
+	// live, the next pointerup anywhere would commit its stale preview.
+	function cancelGesture() {
+		gesture = null;
+		preview = new Map();
+		draft = null;
+	}
+
 	async function commitRetime(ranges: Map<Block, TimeRange>) {
 		// Apply each new range in place on the live block. `ranges` is keyed by the
 		// preview's block objects; match back to the live array by source line.
@@ -1248,8 +1257,14 @@
 			if (taskDrag) onTaskDragUp();
 			else void onPointerUp();
 		};
+		const cancel = () => {
+			cancelTaskDrag();
+			cancelGesture();
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", cancel);
+		window.addEventListener("blur", cancel);
 
 		return () => {
 			unsubscribeDay?.();
@@ -1263,6 +1278,8 @@
 			window.clearInterval(tick);
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", cancel);
+			window.removeEventListener("blur", cancel);
 		};
 	});
 </script>
