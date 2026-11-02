@@ -19,6 +19,7 @@
   import { peek } from "../actions/peek";
   import { Menu, Notice } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
+  import DraftTask from "../task/DraftTask.svelte";
   import { requestRepeat, requestRepeatBlock } from "../../routines/repeat";
   import { addBlockMenuItems } from "../blockMenu";
   import { actionZone } from "../actions/actionZone";
@@ -78,8 +79,8 @@
 		// Block field write-back.
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
-		// Create a new child task inside this block.
-		onAddTask: (block: Block) => void;
+		// Create a new child task inside this block, once it's been typed in.
+		onAddTask: (block: Block, text: string) => void;
 		// Notes (decision 96): add one at the end, or set note `index`'s text
 		// (blank deletes it).
 		onAddNote: (block: Block, text: string) => void;
@@ -191,6 +192,9 @@
   // new note starts as an empty row and is only written once it has text.
   let editingNote = $state<number | null>(null);
   let addingNote = $state(false);
+  // A new task is typed in first (DraftTask), after the block's tasks, like a
+  // note: nothing is written until it has a name.
+  let addingTask = $state(false);
   let noteDraft = $state("");
 
   function focusOnMount(node: HTMLInputElement) {
@@ -206,8 +210,16 @@
   function beginNoteAdd() {
     noteDraft = "";
     editingNote = null;
+    addingTask = false;
     addingNote = true;
     // Grow the block so the new row is in view.
+    expand();
+  }
+
+  function beginTaskAdd() {
+    addingNote = false;
+    editingNote = null;
+    addingTask = true;
     expand();
   }
 
@@ -398,11 +410,13 @@
   });
 
   // How many rows the block has room for (none when compact). Rows are its
-  // tasks, then its notes, then a note being added.
+  // tasks, a task being added, then its notes, then a note being added.
   const capacity = $derived(
     compact ? 0 : Math.max(0, Math.floor((taskAreaHeight + 0.5) / rowHeight)),
   );
-  const rowCount = $derived(chips.length + notes.length + (addingNote ? 1 : 0));
+  const rowCount = $derived(
+    chips.length + notes.length + (addingNote ? 1 : 0) + (addingTask ? 1 : 0),
+  );
   // During a drag every block shows all its rows: they are the drop slots.
   const overflowing = $derived(!dragActive && rowCount > capacity);
   const room = $derived(overflowing && !expanded ? Math.max(0, capacity - 1) : rowCount);
@@ -509,7 +523,7 @@
     event.preventDefault();
     const menu = new Menu();
     addBlockMenuItems(menu, block, {
-      onAddTask: () => onAddTask(block),
+      onAddTask: () => beginTaskAdd(),
       onAddNote: () => beginNoteAdd(),
       onEditAssoc: () => requestEditAssoc(),
       onDelete: () => onDelete(block),
@@ -617,7 +631,7 @@
 			onpointerdown={(e) => e.stopPropagation()}
 			onclick={(e) => {
 				e.stopPropagation();
-				onAddTask(block);
+				beginTaskAdd();
 			}}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
@@ -816,6 +830,14 @@
               {@render chip(task, tr)}
             </div>
           {/each}
+          {#if addingTask && (!overflowing || expanded)}
+            <DraftTask
+              color={accentColor}
+              placeholder="New task"
+              onSubmit={(text) => onAddTask(block, text)}
+              onClose={() => (addingTask = false)}
+            />
+          {/if}
           {#each shownNotes as note, n (n)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="tl-note" oncontextmenu={(e) => openNoteMenu(e, n)}>
