@@ -109,6 +109,9 @@ export function touchSelect(host: HTMLElement, opts: TouchSelectOptions) {
 		button.className = `clickable-icon kairos-icon-button ${TOUCH_MENU_CLASS}`;
 		button.setAttribute("aria-label", "More actions");
 		setIcon(button, "more-horizontal");
+		// Like the bar's other buttons: a press here is the button's, never the
+		// start of the row's own gesture (a block's move).
+		button.addEventListener("pointerdown", (event) => event.stopPropagation());
 		button.addEventListener("click", (event) => {
 			event.stopPropagation();
 			const rect = button.getBoundingClientRect();
