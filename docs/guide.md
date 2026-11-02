@@ -10,11 +10,11 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 
 **Move through dates**
 
-Every view's date navigator has two pairs of arrows around the date. The outer pair (« ») takes a big step and the inner pair (‹ ›) a small one. Point at an arrow to see how far it goes.
+The date navigators in the Week, Grid and Timeline views have two pairs of arrows around the date. The outer pair (« ») takes a big step and the inner pair (‹ ›) a small one. The Day view has only ‹ ›. Point at an arrow to see how far it goes.
 
 | View | « » | ‹ › |
 |---|---|---|
-| Day | A week | A day |
+| Day | – | A day |
 | Week, Grid | The whole window (all the days shown) | A day |
 | Timeline, Week | A week | A day |
 | Timeline, Month | A month | A week |

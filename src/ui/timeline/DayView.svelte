@@ -1298,7 +1298,7 @@
 	     Obsidian's header look in place (kairos-header-bar is-native). -->
 	<div class="day-header kairos-header-bar is-native">
 		<div class="day-nav" bind:this={dateNavRef}>
-			<StepArrows big="a week" small="a day" onstep={(dir, big) => stepDay(dir * (big ? 7 : 1))}>
+			<StepArrows small="a day" onstep={(dir) => stepDay(dir)}>
 				<button
 					class="day-date"
 					class:today={isToday}
