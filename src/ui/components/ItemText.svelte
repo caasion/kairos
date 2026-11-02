@@ -37,6 +37,9 @@
 		onGrab?: (event: PointerEvent) => void;
 		// The note the text lives in, which its links resolve from.
 		sourcePath?: string;
+		// Shown faint and italic while the text is empty, and in the empty
+		// editor, so an empty field can still be found and clicked.
+		placeholder?: string;
 	}
 
 	let {
@@ -47,6 +50,7 @@
 		editing = $bindable(false),
 		onGrab,
 		sourcePath = "",
+		placeholder,
 	}: Props = $props();
 
 	const wrapped = $derived(lines > 1);
@@ -156,6 +160,7 @@
 	<textarea
 		class="kairos-item-input kairos-inline-input"
 		rows="1"
+		{placeholder}
 		bind:value={draft}
 		onkeydown={onKeydown}
 		onblur={commit}
@@ -166,6 +171,7 @@
 	<input
 		class="kairos-item-input kairos-inline-input"
 		type="text"
+		{placeholder}
 		bind:value={draft}
 		onkeydown={onKeydown}
 		onblur={commit}
@@ -181,6 +187,7 @@
 		class:editable={onCommit !== undefined}
 		class:grabbable={onGrab !== undefined}
 		class:held
+		class:is-placeholder={!text && placeholder !== undefined}
 		role={onCommit ? "textbox" : undefined}
 		tabindex={onCommit ? 0 : undefined}
 		style:--kairos-item-lines={wrapped ? lines : undefined}
@@ -195,7 +202,7 @@
 		use:hold
 		use:peek={peekOptions}
 	>
-		<InlineText {text} {sourcePath} />
+		{#if !text && placeholder !== undefined}{placeholder}{:else}<InlineText {text} {sourcePath} />{/if}
 	</span>
 {/if}
 
@@ -247,6 +254,11 @@
 	.kairos-item-text.struck {
 		text-decoration: line-through;
 		opacity: 0.5;
+	}
+
+	.kairos-item-text.is-placeholder {
+		color: var(--text-faint);
+		font-style: italic;
 	}
 
 	.kairos-item-text.half {

@@ -478,6 +478,18 @@ body .kairos-action-stack:focus-within > * {
 }
 
 
+/* ── Calendar for a status change's date (StatusHistory.svelte) ──
+   Portaled to <body>: a clear scrim that closes it, and the calendar placed
+   under the date that opened it. */
+.kairos-date-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: var(--layer-menu);
+}
+.kairos-date-anchor {
+	position: fixed;
+}
+
 /* ── Task & block metadata (the "icon + muted label" line) ── */
 /* One family for the small metadata line that sits under a task, a timeline
    block, a backlog nudge and a backlog item. Five components used to hand-copy
