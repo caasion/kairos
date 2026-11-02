@@ -282,10 +282,16 @@
   ) {
     // Only the primary button drives gestures; ignore right/middle clicks.
     if (event.button !== 0) return;
-    // A move or resize works on the block's real size.
-    collapse();
+    // A move or resize works on the block's real size. A touch move waits for
+    // a hold, and shrinking at the press would shift the block under the
+    // finger, so the tap's click landed on whatever moved there: it shrinks
+    // once the drag starts (the effect below).
+    if (event.pointerType === "mouse" || mode !== "move") collapse();
     onGestureStart?.(mode, block, event);
   }
+  $effect(() => {
+    if (dragging) collapse();
+  });
 
   // ── Title editing (single click, in place) ──────────────────────
 
