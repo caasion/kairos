@@ -232,6 +232,10 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		if (!isStack()) return;
 		const bar = findBar();
 		if (!bar || !bar.contains(event.target as Node)) return;
+		// Keyboard focus only. A tap focuses the button it lands on (Android),
+		// and turning the bar into a stack then moved that button away before
+		// the tap's click arrived, so the click missed it.
+		if (!(event.target as Partial<Element>).matches?.(":focus-visible")) return;
 		if (!stack?.portaled) stackFor(bar).place(false, opts.anchor);
 		syncViewportListeners();
 	}
