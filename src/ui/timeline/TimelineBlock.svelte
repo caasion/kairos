@@ -1193,7 +1193,8 @@
     box-shadow: inset 0 0 0 1px var(--interactive-accent);
   }
   /* On the time line: one more item after the association, styled like it
-     (same size, muted, no fill) and separated by the same dot. */
+     (same size, no fill, but in the accent colour) and separated by the same
+     dot. */
   .tl-more.meta {
     flex-shrink: 0;
     color: var(--text-accent);
