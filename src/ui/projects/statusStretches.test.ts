@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { StatusRecord } from "../../types";
-import { formatSpan, stretchesOf, stripOf } from "./statusStretches";
+import {
+	changeBounds,
+	clampChange,
+	formatSpan,
+	stretchesOf,
+	stripOf,
+	stripSpan,
+	withChangeMoved,
+} from "./statusStretches";
 
 const history: StatusRecord[] = [
 	{ date: "2026-08-04", status: "active", why: "New semester", intensity: 3 },
@@ -54,5 +62,44 @@ describe("stripOf", () => {
 
 	it("is empty with no history", () => {
 		expect(stripOf([], "2026-11-01")).toEqual([]);
+	});
+});
+
+describe("moving a change", () => {
+	it("stays between its neighbours", () => {
+		expect(changeBounds(history, "2026-06-01", "2026-11-01")).toEqual({
+			min: "2026-01-11",
+			max: "2026-08-03",
+		});
+	});
+
+	it("is open before the first change, and runs to today after the last", () => {
+		expect(changeBounds(history, "2026-01-10", "2026-11-01").min).toBeUndefined();
+		expect(changeBounds(history, "2026-08-04", "2026-11-01").max).toBe("2026-11-01");
+	});
+
+	it("lets a scheduled last change stay where it is", () => {
+		const later = [...history, { date: "2026-12-01", status: "inactive" as const }];
+		expect(changeBounds(later, "2026-12-01", "2026-11-01").max).toBe("2026-12-01");
+	});
+
+	it("clamps a drag into the bounds", () => {
+		const b = { min: "2026-01-11", max: "2026-08-03" };
+		expect(clampChange("2026-01-01", b)).toBe("2026-01-11");
+		expect(clampChange("2026-09-01", b)).toBe("2026-08-03");
+		expect(clampChange("2026-05-05", b)).toBe("2026-05-05");
+	});
+
+	it("previews the move without touching the others", () => {
+		const moved = withChangeMoved(history, "2026-06-01", "2026-05-20");
+		expect(moved.map((r) => r.date).sort()).toEqual(["2026-01-10", "2026-05-20", "2026-08-04"]);
+		expect(moved.find((r) => r.date === "2026-05-20")?.note).toBe("Summer job");
+	});
+
+	it("measures the strip from the first change to today", () => {
+		expect(stripSpan(stretchesOf(history, "2026-11-01"), "2026-11-01")).toEqual({
+			start: "2026-01-10",
+			days: 296,
+		});
 	});
 });
