@@ -99,7 +99,13 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 - Right-click a task or a block in any view and select **Repeat…**. Choose when it repeats. The one you right-clicked stays where it is as the first occurrence.
 - Or open the **Routines** view from the hourglass menu and select **New routine**.
-- To keep a day you planned well, open the day's menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. The day's menu opens from the **⋯** on a day's header (the date in the Day view, a date in the Week and Grid views), or by right-clicking it. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task, and choose when the rest repeat (that weekday at first). Blocks and tasks that are already routines are shown but can't be checked. Unscheduled tasks aren't listed; use **Repeat…** for those.
+- To keep a day you planned well, open the day's menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. The day's menu opens from the **⋯** on a day's header (the date in the Day view, a date in the Week and Grid views), or by right-clicking it. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task. Each block has its own repeat, which starts on that weekday: select it to pick other days, for example gym on Mon, Wed, Fri and lectures on Tue, Thu. A block's tasks repeat with it. **Repeat all on** at the top sets every block at once. Unscheduled tasks aren't listed; use **Repeat…** for those.
+- Saving reads the routines you already have, so nothing is written twice:
+    - A block or task a routine put on that day is shown as a routine and isn't saved again. If you moved that block to another time, you can check it to move the routine to the new time.
+    - A block with the same title and time as a routine on other days adds this day to that routine instead of making a second one. **Repeat all** only adds days to these, never removes them.
+    - A block in the time of a routine that's missing from the day (say you renamed Gym to "Gym – legs" today) is saved as a new routine, unless you check **Replace … instead**, which renames that routine.
+    - A block that would overlap another routine on the days you picked says so.
+    - The **Save** button says what it will do, like **Save 2, update 1**. If the day's routines were up to date before you saved, it stays that way, so routines you deleted from it aren't offered back.
 - Or write `Routines.md` yourself, or have an AI assistant write it. [Routines.md](reference.md#routinesmd) in the reference describes the whole format, so you can point the assistant there.
 
 **Add routines to a day**

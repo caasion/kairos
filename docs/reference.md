@@ -96,6 +96,7 @@ To have an AI assistant write or change this file, point it at this section. A f
 - Kairos finds a routine in a day by name: a block by its title, a task by its text. Renaming a routine makes it a new one, so a day already set up is offered it again.
 - An association is `[Project]` or `[D:Domain]`, naming a project or domain you already have. A task without one takes its block's.
 - Kairos only ever adds routines to a day, never removes them, so a routine left out of the file just stops being offered.
+- When Kairos writes this file itself (**Repeat…**, **Save this day as routines**, the Routines view), a new routine goes under the heading for its rule, which is added at the end if there isn't one. Changing a routine's rule moves its line, with the tasks under it, to that rule's heading. Every other line is left as it was.
 
 Check the result in the Routines view: lines it can't read are listed at the top, and **Week** shows overlaps and how full each day is.
 
