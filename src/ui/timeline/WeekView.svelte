@@ -60,13 +60,20 @@
 		visibleHours,
 	} from "./layout";
 	import {
-		anchorFor,
+		fitWindow,
+		WEEK_MIN_COLUMN_PX,
 		clampSpan,
 		stepAnchor,
 		windowDates,
 		windowWidth,
 	} from "./weekWindow";
 	import { intoViewHeader } from "../actions/viewHeader";
+	import { swipeDays } from "../actions/swipeDays";
+	import { holdingDrag } from "../actions/touchHold";
+	import { shiftDays } from "../../gantt/ganttUtils";
+
+	/** The hour gutter's width (`.week-gutter-spacer`), left of the days. */
+	const GUTTER_PX = 46;
 
 	interface Props {
 		app: App;
@@ -127,9 +134,15 @@
 	// snaps back to the settings-defined window around today. All of the day
 	// arithmetic lives in weekWindow.ts so it can be unit-tested at every span.
 
-	const before = $derived(clampSpan(settings.weekDaysBefore));
-	const after = $derived(clampSpan(settings.weekDaysAfter));
-	const windowSize = $derived(windowWidth(before, after)); // inclusive of today
+	// With "Fit days to the width" on, the window is as many days as fit the
+	// columns' width (weekWindow.ts, spec decision 139); off, the settings' span.
+	let scrollWidth = $state(0);
+	const fit = $derived(
+		settings.fitDaysToWidth ? fitWindow(scrollWidth - GUTTER_PX, WEEK_MIN_COLUMN_PX) : null,
+	);
+	const before = $derived(fit ? fit.before : clampSpan(settings.weekDaysBefore));
+	const after = $derived(fit ? fit.size - 1 - fit.before : clampSpan(settings.weekDaysAfter));
+	const windowSize = $derived(fit ? fit.size : windowWidth(before, after)); // inclusive of today
 
 	// The window's first day, pinned only once the user navigates. While it's
 	// null we're on the settings-defined default, which is *derived* from today
@@ -137,7 +150,7 @@
 	// window computed from a span it no longer has.
 	let pinnedAnchor = $state<ISODate | null>(null);
 	const atDefault = $derived(pinnedAnchor === null);
-	const anchor = $derived(pinnedAnchor ?? anchorFor(todayISO(), before));
+	const anchor = $derived(pinnedAnchor ?? shiftDays(todayISO(), -before));
 
 	const dates = $derived(windowDates(anchor, windowSize));
 
@@ -182,6 +195,13 @@
 		closeBlockPicker();
 	}
 
+	// A sideways swipe on the days (actions/swipeDays.ts): one day at a time.
+	function swipeBy(days: number) {
+		pinnedAnchor = shiftDays(anchor, days);
+		closeAssocPicker();
+		closeBlockPicker();
+	}
+
 	function goToday() {
 		pinnedAnchor = null;
 		closeAssocPicker();
@@ -203,14 +223,14 @@
 		lastFocusNonce = req.nonce;
 		if (initial || !settings.followGrid || dragFromDate !== null) return;
 		if (dates.includes(req.date)) return;
-		pinnedAnchor = anchorFor(req.date, before);
+		pinnedAnchor = shiftDays(req.date, -before);
 		closeAssocPicker();
 		closeBlockPicker();
 	}
 
 	function jumpTo(date: ISODate) {
 		// Place the jumped-to date where today sits in the default window.
-		pinnedAnchor = anchorFor(date, before);
+		pinnedAnchor = shiftDays(date, -before);
 		showCalendar = false;
 		closeAssocPicker();
 		closeBlockPicker();
@@ -281,8 +301,10 @@
 	function setDaysBefore(value: number): number {
 		if (Number.isNaN(value)) return before;
 		const v = clampSpan(value);
+		// Choosing a span means not fitting to the width.
 		updateSettings((s) => {
 			s.weekDaysBefore = v;
+			s.fitDaysToWidth = false;
 		});
 		return v;
 	}
@@ -291,6 +313,7 @@
 		const v = clampSpan(value);
 		updateSettings((s) => {
 			s.weekDaysAfter = v;
+			s.fitDaysToWidth = false;
 		});
 		return v;
 	}
@@ -1027,7 +1050,12 @@
 		</div>
 	{/if}
 
-	<div class="week-scroll" data-drag-scroll>
+	<div
+		class="week-scroll"
+		data-drag-scroll
+		bind:clientWidth={scrollWidth}
+		use:swipeDays={{ onSwipe: swipeBy, busy: () => dragBlock !== null || dragPreview !== null || holdingDrag() }}
+	>
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
 			<div class="week-gutter" style={`height: ${bodyHeight}px;`}>

@@ -67,13 +67,23 @@ export function startAfterHold(press: PointerEvent, begin: () => void): boolean 
 	return false;
 }
 
+/** Fingers whose hold matured and haven't lifted: a drag of ours is live. */
+let held = 0;
+
+/** Whether a hold-started drag is live (a swipe then isn't one). */
+export function holdingDrag(): boolean {
+	return held > 0;
+}
+
 /** Cancel touch scrolling until every finger has lifted. */
 function holdScrollUntilLift(win: Window) {
+	held++;
 	const noScroll = (e: TouchEvent) => {
 		if (e.cancelable) e.preventDefault();
 	};
 	const done = (e: TouchEvent) => {
 		if (e.touches.length > 0) return;
+		held = Math.max(0, held - 1);
 		win.removeEventListener("touchmove", noScroll);
 		win.removeEventListener("touchend", done);
 		win.removeEventListener("touchcancel", done);

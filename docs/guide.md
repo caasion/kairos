@@ -6,7 +6,7 @@ Tasks and blocks keep their actions in their top-right corner. Point at a task o
 
 ## Plan a day (Day and Week views)
 
-The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in the tab's header (**Days before today**, **Days after today**). The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
+The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side: as many as fit the view, up to seven. To choose the number yourself, set **Days before today** and **Days after today** with the gear in the tab's header. The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
 
 **Blocks**
 
@@ -175,6 +175,7 @@ Kairos is desktop-first. On a phone or tablet:
 - Press and hold, then move, to drag a task or a block.
 - Press and hold empty time in the Day or Week view, then drag, to make a block.
 - To resize a block, tap it, then drag the handle at its top or bottom edge.
+- Swipe sideways on the Week view or the Grid to move a day earlier or later.
 - To copy a task instead of moving it, tap **⋯** → **Duplicate**, then drag the copy.
 - To open a task's or block's project or domain note, tap **⋯** → **Open note**.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
