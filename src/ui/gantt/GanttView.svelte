@@ -58,6 +58,7 @@
 	import { historyToSpans, type Span } from "../../gantt/spans";
 	import {
 		applyStretchEdit,
+		archiveStop,
 		canRemoveEnd,
 		canSplitAt,
 		clampStretchEdit,
@@ -298,6 +299,7 @@
 		upperDate: ISODate | null; // create: exclusive upper clamp (record after)
 		preview: ISODate; // current snapped date under the pointer
 		moved: boolean; // a drag, not a click
+		stoppedAt: ISODate | null; // the archive date holding a bar drag back, if any
 	}
 	const MOVE_SLOP = 4;
 	let drag = $state<Drag | null>(null);
@@ -386,6 +388,7 @@
 			upperDate: null,
 			preview: anchorDate,
 			moved: false,
+			stoppedAt: null,
 		};
 		// Capture on the plot (stable across re-renders), not the pressed child —
 		// child bars/zones re-render mid-drag, which would drop a child capture and
@@ -416,6 +419,7 @@
 			upperDate: upper,
 			preview: date,
 			moved: false,
+			stoppedAt: null,
 		};
 		plotEl?.setPointerCapture?.(e.pointerId);
 	}
@@ -436,7 +440,8 @@
 			? shiftDays(d.spanStart, Math.round(dx / pxPerDay))
 			: pointerDate(e);
 		const next = clampStretchEdit(d.history, d.spanStart, d.kind, raw, today);
-		drag = { ...d, preview: next, moved: true };
+		const stoppedAt = archiveStop(d.history, d.spanStart, d.kind, raw, today);
+		drag = { ...d, preview: next, moved: true, stoppedAt };
 	}
 
 	function endDrag() {
@@ -996,13 +1001,19 @@
 
 				<!-- Drag boundary marker: the snapped day-boundary under the pointer. A
 				     create-drag marks the ghost's edge on the pointer's side instead, so
-				     a rightward drag's marker sits after the column it's over. -->
+				     a rightward drag's marker sits after the column it's over. When an
+				     archive record holds the bar back, a line marks the archive date and
+				     the label says why the bar stopped short of the pointer. It shows
+				     only while dragging, so it reads the same under a finger. -->
+				{#if drag?.stoppedAt}
+					<div class="gantt-archive-stop" style:left={`${dateToX(drag.stoppedAt, viewport.start, pxPerDay)}px`} style:height={`${contentHeight}px`}></div>
+				{/if}
 				{#if drag}
 					{@const markerDate = drag.kind === "create" && drag.preview > drag.anchorDate
 						? shiftDays(drag.preview, 1)
 						: drag.preview}
 					<div class="gantt-drag-marker" style:left={`${dateToX(markerDate, viewport.start, pxPerDay)}px`} style:height={`${contentHeight}px`}>
-						<span class="gantt-drag-date">{formatDate(drag.preview)}</span>
+						<span class="gantt-drag-date">{formatDate(drag.preview)}{#if drag.stoppedAt} · Stops at archive date{/if}</span>
 					</div>
 				{/if}
 			</div>
@@ -1469,6 +1480,14 @@
 		top: 0;
 		width: 2px;
 		background: var(--interactive-accent);
+		z-index: 3;
+		pointer-events: none;
+	}
+	.gantt-archive-stop {
+		position: absolute;
+		top: 0;
+		width: 0;
+		border-left: 2px dashed var(--text-muted);
 		z-index: 3;
 		pointer-events: none;
 	}

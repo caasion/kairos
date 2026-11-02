@@ -3,6 +3,7 @@ import type { StatusRecord } from "../types";
 import { normalizeHistory } from "../projectFile";
 import {
 	applyStretchEdit,
+	archiveStop,
 	canRemoveEnd,
 	canSplitAt,
 	deleteStretch,
@@ -242,5 +243,41 @@ describe("delete", () => {
 			"2026-06-10 active:B",
 			"2026-06-20 inactive",
 		]);
+	});
+});
+
+describe("archive stop", () => {
+	// A: 1–10 June, archived on 10 June; B: 15–20 June after an archived spell.
+	const archivedAfter = h(["2026-06-01", "active", "A"], ["2026-06-10", "archived"]);
+	const gapThenArchive = h(
+		["2026-06-01", "active", "A"],
+		["2026-06-05", "inactive"],
+		["2026-06-10", "archived"],
+	);
+	const reopened = h(["2026-06-01", "archived"], ["2026-06-15", "active", "B"], ["2026-06-20", "inactive"]);
+
+	it("names the archive date when an end edge pushes past it", () => {
+		expect(archiveStop(archivedAfter, "2026-06-01", "end", "2026-06-14", TODAY)).toBe("2026-06-10");
+		expect(archiveStop(gapThenArchive, "2026-06-01", "end", "2026-06-12", TODAY)).toBe("2026-06-10");
+	});
+
+	it("says nothing until the edge actually reaches past it", () => {
+		expect(archiveStop(archivedAfter, "2026-06-01", "end", "2026-06-10", TODAY)).toBeNull();
+		expect(archiveStop(archivedAfter, "2026-06-01", "end", "2026-06-08", TODAY)).toBeNull();
+	});
+
+	it("names it for a move held back on either side", () => {
+		expect(archiveStop(archivedAfter, "2026-06-01", "move", "2026-06-03", TODAY)).toBe("2026-06-10");
+		expect(archiveStop(reopened, "2026-06-15", "move", "2026-06-12", TODAY)).toBe("2026-06-01");
+	});
+
+	it("names it for a start edge pulled back into an archived spell", () => {
+		expect(archiveStop(reopened, "2026-06-15", "start", "2026-05-20", TODAY)).toBe("2026-06-01");
+	});
+
+	it("stays quiet when a neighbour or the bar's own end is the limit", () => {
+		expect(archiveStop(touching, "2026-06-01", "end", "2026-06-30", TODAY)).toBeNull();
+		expect(archiveStop(touching, "2026-06-01", "move", "2026-06-05", TODAY)).toBeNull();
+		expect(archiveStop(archivedAfter, "2026-06-01", "start", "2026-06-20", TODAY)).toBeNull();
 	});
 });
