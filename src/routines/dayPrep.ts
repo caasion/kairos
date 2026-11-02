@@ -179,6 +179,24 @@ export class DayPreparer {
 		return activeRoutines(routinesFor(routines, date), date, this.ownerActive());
 	}
 
+	/** True when `date`'s note records the hash of the routines due on it now: set up and current. */
+	async isCurrent(date: ISODate): Promise<boolean> {
+		const path = this.plugin.indexAdapter.index.snapshot().days.get(date)?.path ?? "";
+		const note = this.plugin.app.vault.getAbstractFileByPath(path);
+		if (!(note instanceof TFile)) return false;
+		const recorded = readKey(this.plugin.app.metadataCache.getFileCache(note)?.frontmatter?.[ROUTINES_KEY]);
+		return recorded !== undefined && recorded !== "" && recorded === routinesHash(await this.dueOn(date), date);
+	}
+
+	/**
+	 * Record the hash of the routines due on `date` now. After "Save this day as
+	 * routines" the day is what its routines make, so a day that was current
+	 * stays current instead of offering back routines deleted from it.
+	 */
+	async restamp(date: ISODate): Promise<void> {
+		await this.recordHash(date, await this.dueOn(date));
+	}
+
 	/** Record `due`'s hash on `date`'s note, as applying does (removed when none are due). */
 	private async recordHash(date: ISODate, due: Routine[], file?: TFile): Promise<void> {
 		const note = file ?? this.plugin.app.vault.getAbstractFileByPath(
