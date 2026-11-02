@@ -2002,6 +2002,17 @@
 			gap: 2px;
 			padding-inline: 4px;
 		}
+		/* The date navigator gives way (and scrolls sideways if it must), so
+		   the gear stays in view when "Today" joins the header. */
+		.day-header .day-nav {
+			flex: 0 1 auto;
+			min-width: 0;
+			overflow-x: auto;
+			scrollbar-width: none;
+		}
+		.day-header .controls-wrap {
+			flex-shrink: 0;
+		}
 	}
 	.select-bar {
 		display: flex;
