@@ -51,10 +51,14 @@
 		shape-rendering: crispEdges;
 		overflow: visible;
 	}
+	/* No stroke, whatever the host passes down: a theme's `.today` rule
+	   (Blue Topaz's Gantt "today line") strokes everything in today's Grid
+	   column, which outlined the bars into a solid red square. */
 	.intensity-bar,
 	.intensity-bar-hit {
 		x: 0;
 		width: 100%;
+		stroke: none;
 	}
 	.intensity-bar {
 		y: calc(
