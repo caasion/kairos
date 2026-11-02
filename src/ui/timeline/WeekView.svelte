@@ -1352,6 +1352,10 @@
 		.day-range-label {
 			display: none;
 		}
+		.week-header {
+			gap: 2px;
+			padding-inline: 4px;
+		}
 	}
 	.select-bar {
 		display: flex;

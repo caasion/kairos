@@ -1998,6 +1998,10 @@
 		.day-range-label {
 			display: none;
 		}
+		.day-header {
+			gap: 2px;
+			padding-inline: 4px;
+		}
 	}
 	.select-bar {
 		display: flex;
