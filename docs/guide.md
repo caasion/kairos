@@ -162,6 +162,7 @@ The Timeline view draws each project's active stretches as bars. Switch between 
 - **Set its intensity:** three small lines on the bar show the level, lighting from the bottom: 1 lights the bottom line, 2 adds a dim one above it, and 5 lights all three. Select a line to light up to it (select the top lit line again to dim it), select the bar and press **0** to **5**, or right-click it and choose **Intensity**.
 - **Edit its intention:** double-click the bar.
 - **More:** right-click the bar for exact dates and **Delete**.
+- **Rolled-up projects:** a project you chose to show on its domain's row in the Grid keeps its own row here, marked with a small icon beside its name. Right-click its label to switch between **Show on domain's row** and **Give its own row**.
 
 In the Grid, each row's label shows its current intensity, and a small marker shows on days where it changes.
 

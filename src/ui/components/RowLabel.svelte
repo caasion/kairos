@@ -13,6 +13,7 @@
 	import type { RowLabelInfo } from "./rowLabel";
 	import Portal from "./Portal.svelte";
 	import IntensityBars from "./IntensityBars.svelte";
+	import { icon } from "../actions/icon";
 
 	let { info }: { info: RowLabelInfo } = $props();
 
@@ -86,6 +87,14 @@
 	<div class="row-label-text">
 		<span class="row-label-line">
 			<span class="row-label-name" title={info.name}>{info.name}</span>
+			{#if info.rolledUpOnto}
+				<!-- Shown on its domain's Grid row instead of its own (#11). -->
+				<span
+					class="row-label-rollup-mark"
+					use:icon={"fold-vertical"}
+					aria-label="Shown on {info.rolledUpOnto}'s row in the Grid"
+				></span>
+			{/if}
 			{#if info.intensity}
 				<span
 					class="row-label-pips"
@@ -224,6 +233,13 @@
 		--intensity-bar-width: 12px;
 		--intensity-bar-height: 3px;
 		--intensity-bar-row: 5px;
+	}
+
+	.row-label-rollup-mark {
+		display: inline-flex;
+		flex-shrink: 0;
+		--icon-size: var(--icon-xs);
+		color: var(--text-faint);
 	}
 
 	.row-label-name {

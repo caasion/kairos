@@ -60,6 +60,7 @@
 	import { visibleEntities } from "../../gantt/rows";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
+	import { addRollupItem } from "../projects/projectMenu";
 	import RowLabel from "../components/RowLabel.svelte";
 	import IntensityBars from "../components/IntensityBars.svelte";
 	import { peek } from "../actions/peek";
@@ -177,6 +178,17 @@
 		const row = rows[i]!;
 		const next = rows[i + 1];
 		return { start: !row.indent, end: !(next?.indent) };
+	}
+
+	// Right-click a project's label: the Grid's rollup toggle (#11).
+	function openLabelMenu(e: MouseEvent, row: GanttRow) {
+		if (row.isDomain) return;
+		const project = row.entity as Project;
+		if (!project.domain) return;
+		e.preventDefault();
+		const menu = new Menu();
+		addRollupItem(menu, index, project);
+		menu.showAtMouseEvent(e);
 	}
 
 	function pan(dir: 1 | -1) {
@@ -780,6 +792,7 @@
 						style:height={`${rowHeight(i)}px`}
 						style:margin-bottom={`${ROW_GAP}px`}
 						style={row.color ? `--row-accent: ${row.color};` : undefined}
+						oncontextmenu={(e) => openLabelMenu(e, row)}
 					>
 						<!-- The accent runs through the row gap, so the stripe is unbroken
 						     down the column like the Grid's left border. -->
