@@ -19,6 +19,7 @@ export interface DayColumnHandle {
 	applyBlockAssoc(block: Block, assoc: Association | null): void;
 	applyTaskAssoc(owner: Block, task: Task, assoc: Association | null): void;
 	cancelTaskDrag(): void;
+	cancelPointer(): void;
 	handlePointerMove(event: PointerEvent): boolean;
 	handlePointerUp(): { block: Block; time: TimeRange } | null;
 	commitLocalMove(block: Block, time: TimeRange): void;
