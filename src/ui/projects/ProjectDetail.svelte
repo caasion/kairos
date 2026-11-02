@@ -1,17 +1,16 @@
 <script lang="ts">
 	// The right-hand pane of the Projects & domains view: everything about the
-	// selected project or domain, laid out as Obsidian's own settings page (a
-	// `setting-group` of rows under a heading). Its name, description, domain
-	// and Grid rollup (projects) or colour (domains), its status, and its status
-	// history.
+	// selected project or domain. The name at the top is edited in place, with
+	// the description as a line under it. Below, Obsidian's own settings rows
+	// (a `setting-group`) hold its domain and Grid rollup (projects) or color
+	// (domains) and its status, one click each. Then the status history.
 	//
-	// The history lists every change, newest first. Selecting one opens it in
-	// its own dialog (StatusRecordModal) to edit or delete; **Add change** opens
-	// the same dialog empty. Every write goes through projectActions, whose pure
+	// The history lists every change, newest first. Selecting one opens it for
+	// editing right in its row (StatusRecordEditor), and **Add change** opens an
+	// empty one at the top. Every write goes through projectActions, whose pure
 	// edit functions own the history's invariants; the view re-resolves the
 	// entity from the live feed, so this pane refreshes after each one.
 
-	import type { App } from "obsidian";
 	import type { Domain, ISODate, LifecycleState, Project, StatusRecord } from "../../types";
 	import type { KairosIndex } from "../../index";
 	import {
@@ -31,12 +30,14 @@
 	import { effectiveStatus, INTENSITY_MAX } from "../../projectFile";
 	import IconButton from "../components/IconButton.svelte";
 	import IntensityBars from "../components/IntensityBars.svelte";
+	import SegmentedControl from "../components/SegmentedControl.svelte";
 	import Tag from "../components/Tag.svelte";
 	import { icon } from "../actions/icon";
-	import { StatusRecordModal, type RecordDraft } from "./StatusRecordModal";
+	import { autogrow, singleLine } from "../actions/autogrow";
+	import StatusRecordEditor from "./StatusRecordEditor.svelte";
+	import type { RecordDraft } from "./recordDraft";
 
 	interface Props {
-		app: App;
 		index: KairosIndex;
 		entity: Project | Domain;
 		isDomain: boolean;
@@ -56,7 +57,6 @@
 	}
 
 	let {
-		app,
 		index,
 		entity,
 		isDomain,
@@ -95,83 +95,117 @@
 		});
 	}
 
-	// Text fields write when they lose focus or on Enter, not on every key.
-	function commitOnEnter(e: KeyboardEvent & { currentTarget: HTMLInputElement }) {
-		if (e.key === "Enter") e.currentTarget.blur();
+	// The name and description write when they lose focus or on Enter, not on
+	// every key. Escape puts back what's stored.
+	function textKeys(
+		e: KeyboardEvent & { currentTarget: HTMLInputElement | HTMLTextAreaElement },
+		stored: string,
+	) {
+		if (e.key === "Enter") {
+			e.preventDefault();
+			e.currentTarget.blur();
+		} else if (e.key === "Escape") {
+			e.currentTarget.value = stored;
+			e.currentTarget.blur();
+		}
 	}
-	function commitName(value: string) {
-		const next = value.trim();
+	function commitName(field: HTMLInputElement) {
+		const next = field.value.trim();
 		if (next !== "" && next !== entity.name) onRename(next);
+		// A refused or empty name shows the stored one again.
+		field.value = entity.name;
 	}
 	function commitDescription(value: string) {
-		const next = value.trim();
+		const next = singleLine(value).trim();
 		if (next === entity.description) return;
 		if (domain) setDomainDescription(index, domain, next);
 		else if (project) setProjectDescription(index, project, next);
 	}
 
 	// ── Status history ──
-	function addChange() {
-		new StatusRecordModal(app, {
-			name: entity.name,
-			states,
-			onSave: (d: RecordDraft) => {
-				if (domain) setDomainStatus(index, domain, d.date, d.status, d.note, d.why, d.intensity);
-				else if (project)
-					setProjectStatus(index, project, d.date, d.status, d.note, d.why, d.intensity);
-			},
-		}).open();
+	// The change open for editing (by its date), and whether one is being added.
+	// One at a time: opening either closes the other.
+	let editing = $state<ISODate | null>(null);
+	let adding = $state(false);
+
+	function addChange(d: RecordDraft) {
+		adding = false;
+		if (domain) setDomainStatus(index, domain, d.date, d.status, d.note, d.why, d.intensity);
+		else if (project) setProjectStatus(index, project, d.date, d.status, d.note, d.why, d.intensity);
 	}
 
-	function editChange(rec: StatusRecord) {
+	function saveChange(rec: StatusRecord, d: RecordDraft) {
+		editing = null;
+		// Note and why are always written, so an emptied field clears them.
+		// Intensity is only the editor's while the record is active, so an
+		// inactive edit leaves what's stored alone.
+		const next = {
+			date: d.date,
+			status: d.status,
+			note: d.note,
+			why: d.why,
+			...(d.status === "active" ? { intensity: d.intensity } : {}),
+		};
+		if (domain) editDomainStatusRecord(index, domain, rec.date, next);
+		else if (project) editProjectStatusRecord(index, project, rec.date, next);
+	}
+
+	function deleteChange(rec: StatusRecord) {
+		editing = null;
+		if (domain) removeDomainStatusRecord(index, domain, rec.date);
+		else if (project) removeProjectStatusRecord(index, project, rec.date);
+	}
+
+	function openChange(rec: StatusRecord) {
 		if (readonly) return;
-		new StatusRecordModal(app, {
-			name: entity.name,
-			states,
-			initial: rec,
-			onSave: (d: RecordDraft) => {
-				// Note and why are always written, so an emptied field clears them.
-				// Intensity is only the form's while the record is active, so an
-				// inactive edit leaves what's stored alone.
-				const next = {
-					date: d.date,
-					status: d.status,
-					note: d.note,
-					why: d.why,
-					...(d.status === "active" ? { intensity: d.intensity } : {}),
-				};
-				if (domain) editDomainStatusRecord(index, domain, rec.date, next);
-				else if (project) editProjectStatusRecord(index, project, rec.date, next);
-			},
-			onDelete: () => {
-				if (domain) removeDomainStatusRecord(index, domain, rec.date);
-				else if (project) removeProjectStatusRecord(index, project, rec.date);
-			},
-		}).open();
+		adding = false;
+		editing = rec.date;
 	}
 </script>
 
 <div class="kairos-detail" style:--ag-color={color}>
 	<div class="kairos-detail-head">
-		<span class="kairos-detail-back">
-			<IconButton label="Back to the list" icon="arrow-left" size="m" onclick={onBack} />
-		</span>
-		<span
-			class="kairos-detail-icon"
-			use:icon={isDomain ? "presentation" : "folder-symlink"}
-		></span>
-		<span class="kairos-detail-name">{entity.name}</span>
-		{#if status !== "active"}<Tag>{STATUS_LABEL[status]}</Tag>{/if}
-		<span class="kairos-detail-spacer"></span>
-		<IconButton label="Open note" icon="file-text" size="m" onclick={onOpenFile} />
-		<IconButton label="View backlog" icon="inbox" size="m" onclick={onBacklog} />
-		<IconButton
-			label="More actions"
-			icon="more-horizontal"
-			size="m"
-			disabled={readonly}
-			onclick={onMenu}
-		/>
+		<div class="kairos-detail-title">
+			<span class="kairos-detail-back">
+				<IconButton label="Back to the list" icon="arrow-left" size="m" onclick={onBack} />
+			</span>
+			<span
+				class="kairos-detail-icon"
+				use:icon={isDomain ? "presentation" : "folder-symlink"}
+			></span>
+			<input
+				class="kairos-inline-input kairos-detail-name"
+				type="text"
+				aria-label="Name"
+				value={entity.name}
+				disabled={readonly}
+				onblur={(e) => commitName(e.currentTarget)}
+				onkeydown={(e) => textKeys(e, entity.name)}
+			/>
+			{#if status !== "active"}<Tag>{STATUS_LABEL[status]}</Tag>{/if}
+			<IconButton label="Open note" icon="file-text" size="m" onclick={onOpenFile} />
+			<IconButton label="View backlog" icon="inbox" size="m" onclick={onBacklog} />
+			<IconButton
+				label="More actions"
+				icon="more-horizontal"
+				size="m"
+				disabled={readonly}
+				onclick={onMenu}
+			/>
+		</div>
+		{#key entity.description}
+			<textarea
+				class="kairos-inline-input kairos-detail-desc"
+				rows="1"
+				aria-label="Description"
+				placeholder="Add a description"
+				value={entity.description}
+				disabled={readonly}
+				use:autogrow
+				onblur={(e) => commitDescription(e.currentTarget.value)}
+				onkeydown={(e) => textKeys(e, entity.description)}
+			></textarea>
+		{/key}
 	</div>
 
 	{#if readonly}
@@ -182,33 +216,18 @@
 		<div class="setting-group">
 			<div class="setting-items">
 				<div class="setting-item">
-					<div class="setting-item-info"><div class="setting-item-name">Name</div></div>
-					<div class="setting-item-control">
-						{#key entity.name}
-							<input
-								type="text"
-								value={entity.name}
-								onblur={(e) => commitName(e.currentTarget.value)}
-								onkeydown={commitOnEnter}
-							/>
-						{/key}
-					</div>
-				</div>
-				<div class="setting-item">
 					<div class="setting-item-info">
-						<div class="setting-item-name">Description</div>
-						<div class="setting-item-description">A short line shown beside the name.</div>
+						<div class="setting-item-name">Status</div>
+						<div class="setting-item-description">A change takes effect today.</div>
 					</div>
 					<div class="setting-item-control">
-						{#key entity.description}
-							<input
-								type="text"
-								placeholder="Optional"
-								value={entity.description}
-								onblur={(e) => commitDescription(e.currentTarget.value)}
-								onkeydown={commitOnEnter}
-							/>
-						{/key}
+						<SegmentedControl
+							label="Status"
+							options={states.map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
+							isOn={(s) => s === status}
+							onSelect={(s) => onSetStatus(s as LifecycleState)}
+							disabled={readonly}
+						/>
 					</div>
 				</div>
 				{#if project}
@@ -264,23 +283,6 @@
 						</div>
 					</div>
 				{/if}
-				<div class="setting-item">
-					<div class="setting-item-info">
-						<div class="setting-item-name">Status</div>
-						<div class="setting-item-description">Changing it adds a change dated today.</div>
-					</div>
-					<div class="setting-item-control">
-						<select
-							class="dropdown"
-							value={status}
-							onchange={(e) => onSetStatus(e.currentTarget.value as LifecycleState)}
-						>
-							{#each states as s (s)}
-								<option value={s}>{STATUS_LABEL[s]}</option>
-							{/each}
-						</select>
-					</div>
-				</div>
 			</div>
 		</div>
 
@@ -288,11 +290,26 @@
 			<div class="setting-item setting-item-heading">
 				<div class="setting-item-info"><div class="setting-item-name">Status history</div></div>
 				<div class="setting-item-control">
-					<button onclick={addChange}>Add change</button>
+					<button
+						disabled={adding}
+						onclick={() => {
+							editing = null;
+							adding = true;
+						}}>Add change</button
+					>
 				</div>
 			</div>
 			<div class="setting-items">
-				{#if entity.history.length === 0}
+				{#if adding}
+					<div class="setting-item">
+						<StatusRecordEditor
+							{states}
+							onSave={addChange}
+							onCancel={() => (adding = false)}
+						/>
+					</div>
+				{/if}
+				{#if entity.history.length === 0 && !adding}
 					<div class="setting-item">
 						<div class="setting-item-info">
 							<div class="setting-item-description">
@@ -304,41 +321,56 @@
 					{@const today = todayISO()}
 					{@const effective = entity.history.filter((r) => r.date <= today).at(-1)}
 					{#each [...entity.history].reverse() as rec (rec.date)}
-						<div
-							class="setting-item kairos-change"
-							role="button"
-							tabindex="0"
-							aria-label="Edit this change"
-							onclick={() => editChange(rec)}
-							onkeydown={(e) => {
-								if (e.key === "Enter" || e.key === " ") {
-									e.preventDefault();
-									editChange(rec);
-								}
-							}}
-						>
-							<div class="setting-item-info">
-								<div class="setting-item-name kairos-change-line">
-									<span class="kairos-change-dot" data-status={rec.status}></span>
-									{STATUS_LABEL[rec.status]}
-									{#if rec.status === "active" && rec.intensity !== undefined}
-										<span
-											class="kairos-change-intensity"
-											title={`Intensity ${rec.intensity} of ${INTENSITY_MAX}`}
-										>
-											<IntensityBars level={rec.intensity} />
-										</span>
-									{/if}
-									{#if rec === effective}<Tag tone="accent">Now</Tag>
-									{:else if rec.date > today}<Tag>Scheduled</Tag>{/if}
+						{#if editing === rec.date}
+							<div class="setting-item">
+								<StatusRecordEditor
+									initial={rec}
+									{states}
+									onSave={(d) => saveChange(rec, d)}
+									onDelete={() => deleteChange(rec)}
+									onCancel={() => (editing = null)}
+								/>
+							</div>
+						{:else}
+							<div
+								class="setting-item kairos-change"
+								role="button"
+								tabindex="0"
+								aria-label="Edit this change"
+								onclick={() => openChange(rec)}
+								onkeydown={(e) => {
+									if (e.key === "Enter" || e.key === " ") {
+										e.preventDefault();
+										openChange(rec);
+									}
+								}}
+							>
+								<div class="setting-item-info">
+									<div class="setting-item-name kairos-change-line">
+										<span class="kairos-change-dot" data-status={rec.status}></span>
+										{STATUS_LABEL[rec.status]}
+										{#if rec.status === "active" && rec.intensity !== undefined}
+											<span
+												class="kairos-change-intensity"
+												title={`Intensity ${rec.intensity} of ${INTENSITY_MAX}`}
+											>
+												<IntensityBars level={rec.intensity} />
+											</span>
+										{/if}
+										{#if rec === effective}<Tag tone="accent">Now</Tag>
+										{:else if rec.date > today}<Tag>Scheduled</Tag>{/if}
+									</div>
+									<div class="setting-item-description">
+										{#if rec.note}<div class="kairos-change-note">{rec.note}</div>{/if}
+										<div class:kairos-change-none={!rec.why}>{rec.why || "No reason recorded"}</div>
+									</div>
 								</div>
-								<div class="setting-item-description">
-									{#if rec.note}<div class="kairos-change-note">{rec.note}</div>{/if}
-									<div class:kairos-change-none={!rec.why}>{rec.why || "No reason recorded"}</div>
+								<div class="setting-item-control kairos-change-date">
+									{formatDate(rec.date)}
+									{#if !readonly}<span class="kairos-change-edit" use:icon={"pencil"}></span>{/if}
 								</div>
 							</div>
-							<div class="setting-item-control kairos-change-date">{formatDate(rec.date)}</div>
-						</div>
+						{/if}
 					{/each}
 				{/if}
 			</div>
@@ -356,11 +388,17 @@
 	}
 	.kairos-detail-head {
 		display: flex;
-		align-items: center;
-		gap: var(--size-4-2);
+		flex-direction: column;
+		gap: var(--size-2-2);
 		min-width: 0;
 		padding-left: var(--size-4-3);
 		border-left: var(--kairos-accent-width) solid var(--ag-color, var(--background-modifier-border));
+	}
+	.kairos-detail-title {
+		display: flex;
+		align-items: center;
+		gap: var(--size-4-2);
+		min-width: 0;
 	}
 	/* Only when the view is too narrow for both panes (ProjectsView). */
 	.kairos-detail-back {
@@ -377,17 +415,34 @@
 		flex-shrink: 0;
 		color: var(--ag-color, var(--text-muted));
 	}
-	.kairos-detail-name {
+	/* The name and description read as text until you edit them; a faint fill
+	   on hover says they can be. */
+	.kairos-detail-name,
+	.kairos-detail-desc {
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-family: var(--kairos-font-serif);
-		font-size: var(--font-ui-large);
+		padding: 0 var(--size-2-2);
+		margin-inline: calc(-1 * var(--size-2-2));
+		border-radius: var(--radius-s);
 		color: var(--text-normal);
 	}
-	.kairos-detail-spacer {
+	.kairos-detail-name:hover:not(:disabled, :focus),
+	.kairos-detail-desc:hover:not(:disabled, :focus) {
+		background: var(--background-modifier-hover);
+	}
+	.kairos-detail-name {
 		flex: 1;
+		height: auto;
+		font-family: var(--kairos-font-serif);
+		font-size: var(--font-ui-large);
+	}
+	.kairos-detail-desc {
+		width: 100%;
+		font-size: var(--font-ui-small);
+		line-height: var(--line-height-normal);
+		color: var(--text-muted);
+	}
+	.kairos-detail-desc::placeholder {
+		color: var(--text-faint);
 	}
 	.kairos-detail-note {
 		margin: 0;
@@ -401,7 +456,7 @@
 		min-width: 0;
 	}
 
-	/* A change in the history: a setting row you select to edit. */
+	/* A change in the history: a setting row you select to edit in place. */
 	.kairos-change {
 		cursor: pointer;
 	}
@@ -440,9 +495,20 @@
 		color: var(--text-faint);
 	}
 	.kairos-change-date {
+		gap: var(--size-4-2);
 		color: var(--text-muted);
 		font-size: var(--font-ui-small);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+	}
+	/* The pencil shows on hover or focus, saying the row opens for editing. */
+	.kairos-change-edit {
+		--icon-size: var(--icon-xs);
+		display: flex;
+		opacity: 0;
+		color: var(--text-faint);
+	}
+	.kairos-change:is(:hover, :focus-visible) .kairos-change-edit {
+		opacity: 1;
 	}
 </style>

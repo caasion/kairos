@@ -43,6 +43,7 @@
 	import { DomainReorderModal } from "./DomainReorderModal";
 	import { addChangeDomainItem, addRollupItem } from "./projectMenu";
 	import ProjectDetail from "./ProjectDetail.svelte";
+	import SegmentedControl from "../components/SegmentedControl.svelte";
 	import { ConfirmModal, PromptModal, WhyModal } from "./modals";
 	import Tag from "../components/Tag.svelte";
 	import AssocGroup from "../components/AssocGroup.svelte";
@@ -497,18 +498,12 @@
 		<span class="pv-title">Projects &amp; domains</span>
 		<span class="pv-spacer"></span>
 
-		<div class="filter-group">
-			{#each ["active", "inactive", "archived"] as const as f}
-				<button
-					class="filter-btn"
-					class:on={filter.has(f)}
-					onclick={(e) => {
-						e.stopPropagation();
-						toggleFilter(f);
-					}}>{STATUS_LABEL[f]}</button
-				>
-			{/each}
-		</div>
+		<SegmentedControl
+			label="Show"
+			options={(["active", "inactive", "archived"] as const).map((f) => ({ value: f, label: STATUS_LABEL[f] }))}
+			isOn={(f) => filter.has(f as Filter)}
+			onSelect={(f) => toggleFilter(f as Filter)}
+		/>
 
 		<!-- Reorder domains — global order, so it opens a modal for the whole list
 		     (there are no per-row up/down arrows; projects aren't reorderable). -->
@@ -623,8 +618,9 @@
 		{#if selectedEntity && selected}
 			{@const e = selectedEntity}
 			{@const isDomain = selected.isDomain}
+			<!-- Keyed by the selection, so switching rows drops a half-edited change. -->
+			{#key selected.path}
 			<ProjectDetail
-				{app}
 				{index}
 				entity={e}
 				{isDomain}
@@ -638,6 +634,7 @@
 					isDomain ? openDomainMenu(e as Domain, ev) : openProjectMenu(e as Project, ev)}
 				onBack={() => (selected = null)}
 			/>
+			{/key}
 		{:else}
 			<div class="empty-state">Select a project or domain to see its details.</div>
 		{/if}
@@ -747,31 +744,6 @@
 	}
 	.pv-spacer {
 		flex: 1;
-	}
-	.filter-group {
-		display: flex;
-		gap: 3px;
-		background: var(--background-primary-alt);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		padding: 2px;
-	}
-	.filter-btn {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-faint);
-		background: transparent;
-		border: none;
-		border-radius: 6px;
-		padding: 3px 9px;
-		cursor: pointer;
-	}
-	.filter-btn:hover {
-		color: var(--text-muted);
-	}
-	.filter-btn.on {
-		color: var(--text-on-accent);
-		background: var(--interactive-accent);
 	}
 	.add-btn {
 		display: flex;
