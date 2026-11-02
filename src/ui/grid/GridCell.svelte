@@ -393,7 +393,7 @@
 					onpointerenter={() => onBlockHover?.(block, true)}
 					onpointerleave={() => onBlockHover?.(block, false)}
 					use:leaveOnRemove={() => onBlockHover?.(block, false)}
-					use:actionZone={{ layout: "stack" }}
+					use:actionZone={{ layout: "stack", menu: true }}
 					use:grabOnHold={onBlockGrab ? (e) => onBlockGrab(block, e) : undefined}
 				>
 					<!-- Action stack, woken from the header's top-right corner, the

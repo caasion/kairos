@@ -87,6 +87,7 @@
 	<!-- The arrow replaces the checkbox: it schedules the entry into the day. -->
 	<button
 		class="nudge-insert"
+		data-kairos-tap-through
 		title="Schedule into this day"
 		aria-label="Schedule into this day"
 		onclick={(e) => {

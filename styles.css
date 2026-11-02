@@ -130,12 +130,21 @@ textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
 	opacity: var(--kairos-action-bar-opacity, 0.96);
 	pointer-events: auto;
 }
-/* Touch has no pointer to track: show the bar on the row's (sticky) hover
-   after a tap. */
-@media (hover: none) {
-	:hover > .kairos-action-bar {
-		opacity: var(--kairos-action-bar-opacity, 0.96);
-		pointer-events: auto;
+/* Touch has no pointer to track: a first tap selects the row
+   (src/ui/actions/touchSelect.ts), which wakes its bar through the awake class
+   and outlines the row. The bar's buttons, and the ⋯ that opens the row's
+   menu, grow to a finger's size. */
+.kairos-touch-selected {
+	outline: 1px solid var(--interactive-accent);
+	outline-offset: -1px;
+}
+.kairos-touch-menu {
+	order: 99;
+}
+@media (pointer: coarse) {
+	body .kairos-action-bar > button {
+		min-width: 32px;
+		min-height: 32px;
 	}
 }
 

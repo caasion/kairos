@@ -529,6 +529,7 @@
     class:meta={variant === "meta"}
     style={variant === "row" ? `height: ${rowHeight}px;` : undefined}
     bind:this={moreEl}
+    data-kairos-tap-through
     aria-label={`Show all ${rowCount} rows`}
     aria-expanded={expanded}
     onpointerdown={(e) => e.stopPropagation()}
@@ -592,7 +593,7 @@
     onHoverLeave?.(blockTarget);
     onBlockLeave(e);
   }}
-  use:actionZone={{ layout: "stack" }}
+  use:actionZone={{ layout: "stack", menu: true }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
   <div

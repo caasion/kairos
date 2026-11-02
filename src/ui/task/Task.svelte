@@ -370,7 +370,7 @@
 	lit={highlight}
 	{color}
 	{trailing}
-	zone={{ layout: "stack" }}
+	zone={{ layout: "stack", menu: true }}
 	bind:el={rowEl}
 	oncontextmenu={openContextMenu}
 	onpointerenter={() => setHovering(true)}

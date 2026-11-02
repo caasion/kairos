@@ -170,6 +170,8 @@ In the Grid, each row's label shows its current intensity, and a small marker sh
 Kairos is desktop-first. On a phone or tablet:
 
 - Tap a checkbox to change it; press and hold it to cancel the task.
-- Tap text to edit it; press and hold, then move, to drag a task.
+- Tap a task or block to select it and show its actions. Tap it again to edit its text.
+- Tap **⋯** at the end of a selected task's or block's actions for everything its right-click menu has, such as **Move to backlog**.
+- Press and hold, then move, to drag a task.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
-- Some actions are only in right-click menus, so they aren't available on touch yet: **Move to backlog** and the Grid's row menus.
+- The Grid's row menus are still right-click only.
