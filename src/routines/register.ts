@@ -11,7 +11,7 @@ import { KAIROS_ROUTINES_VIEW_TYPE, KairosRoutinesView } from "../KairosRoutines
 import { RuleModal } from "../ui/routines/RuleModal";
 import { SaveDayModal } from "../ui/routines/SaveDayModal";
 import { dayLabel } from "./plan";
-import { saveDayItems } from "./saveDay";
+import { applySaveDayPlan, planCounts, saveDayItems } from "./saveDay";
 import { blockRepeatDraft, repeatDraft, setRepeatHandler } from "./repeat";
 import { addRoutine, type RoutineDraft } from "./routinesWriter";
 import { parseRule, ruleSentence, type Rule } from "./rules";
@@ -51,25 +51,36 @@ export async function activateRoutinesView(plugin: Kairos): Promise<void> {
 
 /**
  * "Save this day as routines": offer `date`'s timed blocks and their tasks as
- * routines, repeating on that weekday unless the user picks another rule.
+ * routines, each repeating on that weekday unless the user picks another rule,
+ * and read against the routines already in the file (saveDay.ts). A day that
+ * was set up and current is stamped again afterwards, since it is now what its
+ * routines make.
  */
 export function openSaveDay(plugin: Kairos, date: ISODate): void {
 	const blocks = plugin.indexAdapter.index.snapshot().days.get(date)?.blocks ?? [];
-	const items = saveDayItems(blocks, get(plugin.routines.parsed$).routines, date);
+	const routines = get(plugin.routines.parsed$).routines;
+	const items = saveDayItems(blocks, routines, date);
 	const [y, m, d] = date.split("-").map(Number);
 	const weekday = new Date(y ?? 0, (m ?? 1) - 1, d ?? 1).getDay();
 	new SaveDayModal(plugin.app, {
 		label: dayLabel(date),
 		items,
+		routines,
 		initialRule: { kind: "weekly", days: [weekday] },
-		onSave: (drafts, rule) => {
-			void plugin.routines
-				.edit((md) => drafts.reduce(addRoutine, md))
-				.then((ok) => {
-					if (!ok) return;
-					const n = drafts.length;
-					new Notice(`Saved ${n} routine${n === 1 ? "" : "s"} that repeat ${ruleSentence(rule)}.`);
-				});
+		onSave: (plan) => {
+			void (async () => {
+				const current = await plugin.dayPreparer.isCurrent(date);
+				const ok = await plugin.routines.edit((md) => applySaveDayPlan(md, plan));
+				if (!ok) return;
+				if (current) await plugin.dayPreparer.restamp(date);
+				const { added, updated } = planCounts(plan);
+				const parts = [
+					added > 0 ? `saved ${added} routine${added === 1 ? "" : "s"}` : "",
+					updated > 0 ? `updated ${updated}` : "",
+				].filter(Boolean);
+				const text = parts.join(", ");
+				new Notice(`${text.charAt(0).toUpperCase()}${text.slice(1)}.`);
+			})();
 		},
 	}).open();
 }

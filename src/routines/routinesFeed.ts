@@ -18,6 +18,7 @@
 import { TFile, moment } from "obsidian";
 import type { TAbstractFile } from "obsidian";
 import { derived, writable } from "svelte/store";
+import { openSaveDay } from "./register";
 import type { Readable } from "svelte/store";
 import { getAllDailyNotes, getDailyNote, getDateFromPath } from "obsidian-daily-notes-interface";
 import type Kairos from "../main";
@@ -40,6 +41,10 @@ export interface RoutineActions {
 	insert: (date: ISODate, routines: Routine[]) => void;
 	/** Add everything missing and record the day as set up. */
 	addAll: (date: ISODate) => void;
+	/** Preview how the day differs from its routines, and apply what's picked. */
+	regenerate: (date: ISODate) => void;
+	/** Offer the day's blocks and tasks to save as routines. */
+	saveDay: (date: ISODate) => void;
 }
 
 /** What the Day view needs to offer the previous day's leftovers and act on them. */
@@ -88,6 +93,8 @@ export class RoutinesFeed {
 			active$: this.active$,
 			insert: (date, routines) => void preparer().insertRoutines(date, routines),
 			addAll: (date) => void preparer().applyToDate(date),
+			regenerate: (date) => void preparer().regenerate(date),
+			saveDay: (date) => openSaveDay(this.plugin, date),
 		};
 	}
 

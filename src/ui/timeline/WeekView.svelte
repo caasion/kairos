@@ -3,6 +3,7 @@
 	import { onMount } from "svelte";
 	import type { Readable } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
+	import { showDayMenu } from "../dayMenu";
 	import type {
 		Association,
 		BacklogEntry,
@@ -902,6 +903,7 @@
 					e.stopPropagation();
 					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
 				}}
+				onmenu={(e: MouseEvent) => showDayMenu(e, date, routineActions)}
 			>
 				{#snippet badges()}
 				<!-- The day's lists as badges on its header — Unscheduled,

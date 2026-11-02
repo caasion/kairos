@@ -5,7 +5,7 @@ import DayView from "./ui/timeline/DayView.svelte";
 import type Kairos from "./main";
 import type { KairosSettings } from "./settings";
 import type { ISODate } from "./types";
-import { openSaveDay } from "./routines/register";
+import { addDayMenuItems } from "./ui/dayMenu";
 
 export const KAIROS_VIEW_TYPE = "kairos-day-view";
 
@@ -39,13 +39,7 @@ export class KairosView extends ItemView {
 		super.onPaneMenu(menu, source);
 		const date = this.date;
 		if (!date) return;
-		menu.addItem((item) =>
-			item
-				.setTitle("Save this day as routines…")
-				.setIcon("repeat")
-				.setSection("action")
-				.onClick(() => openSaveDay(this.plugin, date)),
-		);
+		addDayMenuItems(menu, date, this.plugin.routinesFeed.actions());
 	}
 
 	async onOpen() {

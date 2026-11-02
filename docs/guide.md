@@ -99,7 +99,13 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 - Right-click a task or a block in any view and select **Repeat…**. Choose when it repeats. The one you right-clicked stays where it is as the first occurrence.
 - Or open the **Routines** view from the hourglass menu and select **New routine**.
-- To keep a day you planned well, open the Day view's **⋯** menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task, and choose when the rest repeat (that weekday at first). Blocks and tasks that are already routines are shown but can't be checked. Unscheduled tasks aren't listed; use **Repeat…** for those.
+- To keep a day you planned well, open the day's menu and select **Save this day as routines…**, or run **Save this day as routines** from the command palette. The day's menu opens from the **⋯** on a day's header (the date in the Day view, a date in the Week and Grid views), or by right-clicking it. It lists the day's blocks with a time, each with its tasks. Uncheck what shouldn't repeat, like a one-off task. Each block has its own repeat, which starts on that weekday: select it to pick other days, for example gym on Mon, Wed, Fri and lectures on Tue, Thu. A block's tasks repeat with it. **Repeat all on** at the top sets every block at once. Unscheduled tasks aren't listed; use **Repeat…** for those.
+- Saving reads the routines you already have, so nothing is written twice:
+    - A block or task a routine put on that day is shown as a routine and isn't saved again. If you moved that block to another time, you can check it to move the routine to the new time.
+    - A block with the same title and time as a routine on other days adds this day to that routine instead of making a second one. **Repeat all** only adds days to these, never removes them.
+    - A block in the time of a routine that's missing from the day (say you renamed Gym to "Gym – legs" today) is saved as a new routine, unless you check **Replace … instead**, which renames that routine.
+    - A block that would overlap another routine on the days you picked says so.
+    - The **Save** button says what it will do, like **Save 2, update 1**. If the day's routines were up to date before you saved, it stays that way, so routines you deleted from it aren't offered back.
 - Or write `Routines.md` yourself, or have an AI assistant write it. [Routines.md](reference.md#routinesmd) in the reference describes the whole format, so you can point the assistant there.
 
 **Add routines to a day**
@@ -112,6 +118,18 @@ Kairos doesn't fill your days by itself. When a day is missing routines, it tell
 Point at the pill to see the list. Select a routine's arrow to add it, or **Add all**. If you delete a routine from a day after that, Kairos won't offer it again for that day.
 
 You can also run **Apply routines to this day** from the command palette. To add routines automatically whenever a daily note is created, turn on **Settings → Kairos → Add routines to new daily notes**.
+
+**Update a day after changing routines**
+
+Adding routines only adds what's missing. A block that's already in the day keeps its project or domain and its time when you change the routine. To bring a day in line with `Routines.md` again, open the day's menu (the **⋯** on its header in the Day, Week or Grid view, or right-click the header) and select **Regenerate routines…**, or run **Regenerate routines for this day** from the command palette.
+
+It shows the day as it would be, beside a list of what differs. Checking or unchecking a change updates the day, with what changes outlined. Nothing changes until you select **Apply**:
+
+- A block or task whose project or domain is different from its routine.
+- Routine tasks missing from a block, and routines missing from the day.
+- A block at a different time from its routine. These start unchecked, since you may have moved the block on purpose.
+
+Uncheck what you want to keep as it is. Nothing is removed: tasks you added to a routine block stay, and done tasks stay done. Past days can't be regenerated, so they keep the record of what happened.
 
 **Edit routines**
 

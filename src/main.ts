@@ -218,6 +218,12 @@ export default class Kairos extends Plugin {
 			callback: () => void preparer.applyToCurrentDay(),
 		});
 
+		this.addCommand({
+			id: 'regenerate-routines-for-day',
+			name: 'Regenerate routines for this day',
+			callback: () => void preparer.regenerateCurrentDay(),
+		});
+
 		this.addSettingTab(new KairosSettingTab(this.app, this));
 	}
 

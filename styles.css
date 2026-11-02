@@ -262,6 +262,16 @@ body .kairos-action-stack:focus-within > * {
 	margin-bottom: 0;
 }
 
+/* ── Regenerate routines (ui/routines/RegenerateModal.ts) ── */
+.kairos-regen-desc {
+	margin-top: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.kairos-regen-modal {
+	width: min(760px, 92vw);
+}
+
 /* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
 .kairos-peek {
 	position: fixed;
