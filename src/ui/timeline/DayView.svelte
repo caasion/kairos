@@ -1487,6 +1487,7 @@
 				<RoutinesAlert
 					list={offeredRoutines}
 					variant="pill"
+					size="m"
 					label={dayLabel(date)}
 					showAddAll={!settings.autoApplyRoutines}
 					onAdd={(rs) => routineActions.insert(date, rs)}
@@ -2042,11 +2043,6 @@
 		gap: 4px;
 		padding: 4px 8px;
 		border-bottom: 1px solid var(--background-modifier-border);
-	}
-	/* The routines pill sits among the tray's pills, so it takes their shape. */
-	.day-tray :global(.ra-pill-trigger) {
-		height: 22px;
-		border-radius: var(--radius-s);
 	}
 	/* Toggled-on lists push the timeline down, up to a little under half the
 	   view; past that they scroll on their own. */

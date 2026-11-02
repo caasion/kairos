@@ -19,6 +19,7 @@
 		offersCreate,
 		type AssociationOption,
 	} from "../../associationOptions";
+	import Tag from "../components/Tag.svelte";
 
 	// Render the panel under document.body. Obsidian leaf containers often have a
 	// CSS transform, which makes `position: fixed` resolve against that ancestor
@@ -225,7 +226,7 @@
 					{/if}
 					<span class="assoc-name">{option.name}</span>
 					{#if option.status === "inactive"}
-						<span class="assoc-badge">inactive</span>
+						<Tag>inactive</Tag>
 					{/if}
 				</div>
 			{/each}
@@ -321,16 +322,6 @@
 		text-overflow: ellipsis;
 	}
 
-	.assoc-badge {
-		flex-shrink: 0;
-		font-size: 9px;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--text-faint);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 4px;
-		padding: 0 4px;
-	}
 
 	.assoc-clear {
 		color: var(--text-muted);

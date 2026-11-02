@@ -35,6 +35,8 @@
 	import AssocGroup from "../timeline/AssocGroup.svelte";
 	import { createAssociation } from "../association/createAssociation";
 	import Datepicker from "../components/Datepicker.svelte";
+	import Pill from "../components/Pill.svelte";
+	import { icon } from "../actions/icon";
 	import { autogrow, singleLine } from "../actions/autogrow";
 
 	interface BacklogFilter {
@@ -296,14 +298,15 @@
 	<div class="backlog-header">
 		<span class="backlog-title">Backlog</span>
 		{#if filter}
-			<button
-				class="filter-pill"
+			<Pill
+				size="m"
+				tone="accent"
+				label={filter.label}
 				title="Filtered to {filter.label} — click to clear"
 				onclick={(e) => { e.stopPropagation(); filter = null; }}
 			>
-				<span>{filter.label}</span>
-				<span class="filter-x">×</span>
-			</button>
+				<span class="filter-x" use:icon={"x"}></span>
+			</Pill>
 		{/if}
 		<span class="backlog-header-spacer"></span>
 		<button
@@ -528,28 +531,8 @@
 	.backlog-header-spacer {
 		flex: 1;
 	}
-	.filter-pill {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		height: 22px;
-		padding: 0 8px;
-		margin-left: 8px;
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-on-accent);
-		background: var(--interactive-accent);
-		border: none;
-		border-radius: 11px;
-		cursor: pointer;
-	}
 	.filter-x {
-		font-size: 14px;
-		line-height: 1;
-		opacity: 0.85;
-	}
-	.filter-pill:hover .filter-x {
-		opacity: 1;
+		display: flex;
 	}
 	/* Frameless, like Obsidian's header buttons: a fill only on hover. */
 	.sort-btn {

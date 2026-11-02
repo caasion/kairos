@@ -10,6 +10,7 @@
 	// these replace pushed every column down.
 
 	import type { Snippet } from "svelte";
+	import Pill from "../components/Pill.svelte";
 
 	interface Props {
 		/** The list's heading, in serif ("Unscheduled"). */
@@ -163,27 +164,26 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="hb"
-	class:warn={tone === "warn"}
-	class:open
-	class:drop-target={dropTarget}
 	data-unscheduled-date={dropDate}
 	bind:this={rootEl}
 	onpointerenter={onEnter}
 	onpointerleave={onLeave}
 >
-	<button
+	<!-- Named by hidden text, not aria-label: Obsidian shows every
+	     aria-label as a tooltip, which would cover the panel that opens on
+	     the same hover and says the same thing. -->
+	<Pill
 		class="hb-trigger"
-		bind:this={triggerEl}
+		{icon}
+		{count}
+		{tone}
+		open={!!open}
+		{dropTarget}
+		hiddenLabel={`${title}${dateLabel ? ` · ${dateLabel}` : ""}:`}
 		aria-expanded={!!open}
+		bind:el={triggerEl}
 		onclick={onClick}
-	>
-		<!-- The name is hidden text, not aria-label: Obsidian shows every
-		     aria-label as a tooltip, which would cover the panel that opens
-		     on the same hover and says the same thing. -->
-		<span class="hb-hidden">{title}{dateLabel ? ` · ${dateLabel}` : ""}: </span>
-		{@render icon()}
-		<span class="hb-count">{count}</span>
-	</button>
+	/>
 	{#if open}
 		<div
 			class="hb-panel"
@@ -214,56 +214,8 @@
 </div>
 
 <style>
-	.hb-hidden {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip-path: inset(50%);
-		white-space: nowrap;
-	}
 	.hb {
 		display: inline-flex;
-	}
-
-	.hb-trigger {
-		display: inline-flex;
-		align-items: center;
-		gap: 3px;
-		height: 18px;
-		padding: 0 6px;
-		border-radius: 9px;
-		border: 1px solid var(--background-modifier-border);
-		background: var(--background-primary);
-		box-shadow: none;
-		color: var(--text-muted);
-		font-size: var(--font-ui-smaller);
-		cursor: pointer;
-	}
-
-	.hb-trigger:hover,
-	.hb.open .hb-trigger {
-		color: var(--text-normal);
-		background: var(--background-modifier-hover);
-	}
-
-	.hb.warn .hb-trigger {
-		color: var(--color-orange);
-		border-color: color-mix(in srgb, var(--color-orange) 45%, transparent);
-		background: color-mix(in srgb, var(--color-orange) 12%, var(--background-primary));
-	}
-
-	.hb.drop-target .hb-trigger {
-		border-color: var(--interactive-accent);
-		color: var(--interactive-accent);
-	}
-
-	.hb-trigger :global(svg) {
-		flex-shrink: 0;
-	}
-
-	.hb-count {
-		font-variant-numeric: tabular-nums;
 	}
 
 	.hb-panel {
