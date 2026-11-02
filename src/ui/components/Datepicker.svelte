@@ -9,6 +9,7 @@
   import { onMount, tick } from "svelte";
   import { fade } from "svelte/transition";
   import { parse, isValid, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isWithinInterval } from "date-fns";
+  import Popover from "./Popover.svelte";
   import Portal from "./Portal.svelte";
 
   let {
@@ -76,7 +77,7 @@
     currentMonth = value || defaultDate || new Date();
   });
   let focusedDate: Date | null = null;
-  let calendarRef: HTMLDivElement | null = $state(null);
+  let calendarRef = $state<HTMLDivElement>();
   let portalStyle: string = $state("");
 
   let daysInMonth = $derived(getDaysInMonth(currentMonth));
@@ -112,7 +113,7 @@
     if (left + panelWidth > viewportWidth - 8) {
       left = rect.right - panelWidth;
     }
-    portalStyle = `position:fixed;top:${rect.bottom + 4}px;left:${left}px;z-index:var(--layer-popover, 100);`;
+    portalStyle = `position:fixed;top:${rect.bottom + 10}px;left:${left}px;z-index:var(--layer-popover, 100);`;
   }
 
   function getDaysInMonth(date: Date): Date[] {
@@ -623,34 +624,35 @@
     {/if}
   {/snippet}
 
+  <!-- The calendar is a Popover drawn in place: inline, or in a fixed wrapper
+       portaled to the body (a view's leaf is a transformed, clipping
+       ancestor). The wrapper places it and fades it in and out. -->
+  {#snippet panel()}
+    <Popover
+      placement="inline"
+      padding="m"
+      class={cx("holos-datepicker-panel", inline && "holos-datepicker-inline", className)}
+      style="width: 280px;"
+      bind:el={calendarRef}
+      id="datepicker-dropdown"
+      role="dialog"
+      aria-label="Calendar"
+      tabindex={-1}
+      onkeydown={handlePanelKeydown}
+    >
+      {@render calendarContent()}
+    </Popover>
+  {/snippet}
+
   {#if isOpen || inline}
     {#if inline}
-      <div
-        bind:this={calendarRef}
-        id="datepicker-dropdown"
-        class={cx("holos-datepicker-panel", "holos-datepicker-inline", className)}
-        transition:fade={{ duration: 100 }}
-        role="dialog"
-        aria-label="Calendar"
-        tabindex="-1"
-        onkeydown={handlePanelKeydown}
-      >
-        {@render calendarContent()}
+      <div transition:fade={{ duration: 100 }}>
+        {@render panel()}
       </div>
     {:else}
       <Portal>
-        <div
-          bind:this={calendarRef}
-          id="datepicker-dropdown"
-          class={cx("holos-datepicker-panel", className)}
-          style={portalStyle}
-          transition:fade={{ duration: 100 }}
-          role="dialog"
-          aria-label="Calendar"
-          tabindex="-1"
-          onkeydown={handlePanelKeydown}
-        >
-          {@render calendarContent()}
+        <div style={portalStyle} transition:fade={{ duration: 100 }}>
+          {@render panel()}
         </div>
       </Portal>
     {/if}
@@ -688,21 +690,6 @@
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
-  }
-
-  .holos-datepicker-panel {
-    width: 280px;
-    margin-top: 6px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 8px;
-    background: var(--background-primary);
-    box-shadow: var(--shadow-s);
-    padding: 8px;
-    z-index: 10;
-  }
-
-  .holos-datepicker-inline {
-    margin-top: 0;
   }
 
   .holos-datepicker-title {
