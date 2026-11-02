@@ -55,6 +55,7 @@
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
 	import Popover from "../components/Popover.svelte";
+	import StepArrows from "../components/StepArrows.svelte";
 	import {
 		geometryFromSettings,
 		gridHeight,
@@ -176,10 +177,14 @@
 		return out;
 	});
 
-	// `steps` counts whole windows, so the next window starts the day after this
-	// one ends: nothing is skipped and nothing is shown twice.
-	function stepWindow(steps: number) {
-		pinnedAnchor = stepAnchor(anchor, windowSize, steps);
+	// The big arrows walk whole windows, so the next window starts the day after
+	// this one ends: nothing is skipped and nothing is shown twice. The small
+	// arrows move it a day. Walking back onto the default window is the same as
+	// "Today", so the button goes away again.
+	const windowStepLabel = $derived(`${windowSize} days`);
+	function stepWindow(dir: 1 | -1, big: boolean) {
+		const next = stepAnchor(anchor, big ? windowSize : 1, dir);
+		pinnedAnchor = next === anchorFor(todayISO(), before) ? null : next;
 		closeAssocPicker();
 		closeBlockPicker();
 	}
@@ -806,38 +811,18 @@
 <div class="week-view" tabindex="-1" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown}>
 	<div class="week-header" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepWindow(-1);
-				}}
-				aria-label="Previous window"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-			</button>
-
-			<button
-				class="day-date"
-				title="Click to pick a date"
-				onclick={(e) => {
-					e.stopPropagation();
-					showCalendar = !showCalendar;
-				}}
-			>
-				{rangeLabel}
-			</button>
-
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepWindow(1);
-				}}
-				aria-label="Next window"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-			</button>
+			<StepArrows big={windowStepLabel} small="a day" onstep={stepWindow}>
+				<button
+					class="day-date"
+					title="Click to pick a date"
+					onclick={(e) => {
+						e.stopPropagation();
+						showCalendar = !showCalendar;
+					}}
+				>
+					{rangeLabel}
+				</button>
+			</StepArrows>
 
 			{#if !atDefault}
 				<button class="today-btn" onclick={(e) => { e.stopPropagation(); goToday(); }}>
@@ -1132,11 +1117,6 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-	}
-
-	.nav-btn {
-		height: 24px;
-		width: 24px;
 	}
 
 	.day-date {

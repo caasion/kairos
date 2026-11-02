@@ -8,6 +8,21 @@ Tasks and blocks keep their actions in their top-right corner. Point at a task o
 
 The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in the tab's header (**Days before today**, **Days after today**). The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
 
+**Move through dates**
+
+Every view's date navigator has two pairs of arrows around the date. The outer pair (« ») takes a big step and the inner pair (‹ ›) a small one. Point at an arrow to see how far it goes.
+
+| View | « » | ‹ › |
+|---|---|---|
+| Day | A week | A day |
+| Week, Grid | The whole window (all the days shown) | A day |
+| Timeline, Week | A week | A day |
+| Timeline, Month | A month | A week |
+| Timeline, Quarter | A quarter | A month |
+| Timeline, Year | A year | A quarter |
+
+Select the date to pick one from a calendar. Once you've moved away, **Today** takes you back.
+
 **Blocks**
 
 - **Make a block:** drag down on empty time. It snaps to 5 minutes. A plain click doesn't make one.
@@ -156,6 +171,8 @@ Edit these in **Status history…**, or in the Timeline view.
 ## See your focus over time (Timeline view)
 
 The Timeline view draws each project's active stretches as bars. Switch between **Week**, **Month**, **Quarter** and **Year** in the header.
+
+The view always spans one week, month, quarter or year. The small arrows can start it partway through one: in **Month**, select › once to see 8 Oct – 7 Nov. **Today**, the calendar and switching interval line it up with whole units again.
 
 - **Add an active stretch:** drag across an empty part of a row. It covers every day you drag over, including the one you let go on. A single click starts an open-ended one.
 - **Move its start or end:** drag the bar's left or right edge.
