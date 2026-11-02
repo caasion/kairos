@@ -268,6 +268,14 @@
   // A short block can't show its task chips; collapse to a compact look.
   const compact = $derived(height < 44);
 
+  // The title, time and association take a mouse press for themselves, so a
+  // click edits or opens them instead of starting a move. A touch press goes on
+  // to the block: it selects it, and a move there waits for a hold
+  // (touchHold.ts), so a tap still reaches the text.
+  function keepPressForTouch(event: PointerEvent) {
+    if (event.pointerType === "mouse") event.stopPropagation();
+  }
+
   function start(
     mode: "move" | "resize-top" | "resize-bottom",
     event: PointerEvent,
@@ -707,7 +715,7 @@
           class="tl-title"
           role="textbox"
           tabindex="0"
-          onpointerdown={(e) => e.stopPropagation()}
+          onpointerdown={keepPressForTouch}
           onclick={beginTitleEdit}
           use:peek={{ text: block.title }}
         >{block.title}</span>
@@ -743,7 +751,7 @@
             class="tl-time kairos-meta kairos-meta-label"
             role="button"
             tabindex="0"
-            onpointerdown={(e) => e.stopPropagation()}
+            onpointerdown={keepPressForTouch}
             onclick={beginTimeEdit}
           >{timeLabel}</span>
         {/if}
@@ -764,7 +772,7 @@
             class="kairos-meta"
             class:is-linked={r.resolved}
             title={r.resolved ? "Ctrl+click to open" : undefined}
-            onpointerdown={(e) => e.stopPropagation()}
+            onpointerdown={keepPressForTouch}
             onclick={(e) => {
               if (e.ctrlKey || e.metaKey) {
                 e.stopPropagation();
