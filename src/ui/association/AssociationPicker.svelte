@@ -11,6 +11,7 @@
 	// or domain after the matches, so a task can be filed under something that
 	// doesn't exist yet without leaving the picker.
 
+	import { coarsePointer, placePanel, visibleArea } from "../actions/pickerPlace";
 	import { onMount, tick } from "svelte";
 	import type { Association } from "../../types";
 	import {
@@ -132,27 +133,26 @@
 	}
 
 	// Position the panel just under the anchor, flipping above if it would
-	// overflow the viewport bottom. Uses fixed positioning (anchor is a screen
-	// rect), so it isn't clipped by scrolling ancestors.
+	// overflow the visible screen (above an iOS keyboard; pickerPlace.ts). Uses
+	// fixed positioning (anchor is a screen rect), so it isn't clipped by
+	// scrolling ancestors.
 	let style = $state("");
 	function place() {
 		const width = 240;
-		const margin = 6;
-		const left = Math.min(
-			anchor.left,
-			window.innerWidth - width - margin,
+		const at = placePanel(
+			anchor,
+			{ width, height: panelEl?.offsetHeight ?? 260 },
+			visibleArea(window),
 		);
-		const below = anchor.bottom + margin;
-		const panelH = panelEl?.offsetHeight ?? 260;
-		const flipUp = below + panelH > window.innerHeight && anchor.top > panelH;
-		const top = flipUp ? anchor.top - margin - panelH : below;
-		style = `left:${Math.max(margin, left)}px; top:${Math.max(margin, top)}px; width:${width}px;`;
+		style = `left:${at.left}px; top:${at.top}px; width:${width}px;`;
 	}
 
 	onMount(() => {
 		void tick().then(() => {
 			place();
-			inputEl?.focus();
+			// On touch, focusing would raise the keyboard over the list; tap
+			// the search to type (pickerPlace.ts).
+			if (!coarsePointer(window)) inputEl?.focus();
 		});
 
 		// Dismiss on any outside pointer press.
@@ -166,11 +166,16 @@
 		);
 		const onResize = () => place();
 		window.addEventListener("resize", onResize);
+		// The iOS keyboard resizes only the visual viewport.
+		window.visualViewport?.addEventListener("resize", onResize);
+		window.visualViewport?.addEventListener("scroll", onResize);
 
 		return () => {
 			window.clearTimeout(id);
 			document.removeEventListener("pointerdown", onDocPointer, true);
 			window.removeEventListener("resize", onResize);
+			window.visualViewport?.removeEventListener("resize", onResize);
+			window.visualViewport?.removeEventListener("scroll", onResize);
 		};
 	});
 </script>
