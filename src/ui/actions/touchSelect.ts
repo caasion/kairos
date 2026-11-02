@@ -13,6 +13,8 @@
 // - Mouse is untouched: only a click that follows a touch or pen press is
 //   held back. Press and hold (drag, peek) starts on pointerdown, so it never
 //   waits for selection.
+// - A touch long-press never opens the row's menu (Android and Chrome send it
+//   as a right-click): press and hold means drag, and ⋯ is the menu.
 
 import { setIcon } from "obsidian";
 
@@ -122,13 +124,25 @@ export function touchSelect(host: HTMLElement, opts: TouchSelectOptions) {
 		menuButton = button;
 	}
 
+	// The long-press's right-click is a touch PointerEvent; the ⋯ button's own
+	// is a plain MouseEvent with no pointer type, and goes through.
+	function onContextMenu(event: MouseEvent) {
+		const type = (event as Partial<PointerEvent>).pointerType;
+		if (type && isTouch(type)) {
+			event.preventDefault();
+			event.stopPropagation();
+		}
+	}
+
 	host.addEventListener("pointerdown", onPointerDown, true);
 	host.addEventListener("click", onClick, true);
+	host.addEventListener("contextmenu", onContextMenu, true);
 
 	return {
 		destroy() {
 			host.removeEventListener("pointerdown", onPointerDown, true);
 			host.removeEventListener("click", onClick, true);
+			host.removeEventListener("contextmenu", onContextMenu, true);
 			if (current?.host === host) deselect();
 		},
 	};
