@@ -18,13 +18,14 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
-function svelteFiles(dir: string): string[] {
+function filesEnding(dir: string, ext: string): string[] {
 	return readdirSync(dir).flatMap((name) => {
 		const path = join(dir, name);
-		if (statSync(path).isDirectory()) return svelteFiles(path);
-		return name.endsWith(".svelte") ? [path] : [];
+		if (statSync(path).isDirectory()) return filesEnding(path, ext);
+		return name.endsWith(ext) ? [path] : [];
 	});
 }
+const svelteFiles = (dir: string) => filesEnding(dir, ".svelte");
 
 const sources = svelteFiles(join(ROOT, "src")).map((path) => ({
 	file: relative(ROOT, path),
@@ -48,22 +49,22 @@ const DRIFT: Drift[] = [
 	{
 		what: "Font sizes in px: use a --kairos-text-* token or Obsidian's --font-ui-*",
 		pattern: /font-size:\s*\d+px/g,
-		baseline: 116,
+		baseline: 90,
 	},
 	{
 		what: "Corner radii in px: use a --kairos-radius-* token",
 		pattern: /border-radius:\s*\d+px/g,
-		baseline: 74,
+		baseline: 58,
 	},
 	{
 		what: "Inline SVG icons: use IconButton or the icon action (Obsidian's icons)",
 		pattern: /<svg\b/g,
-		baseline: 96,
+		baseline: 78,
 	},
 	{
 		what: "Hand-made frameless buttons (box-shadow: none): use IconButton",
 		pattern: /box-shadow:\s*none/g,
-		baseline: 49,
+		baseline: 45,
 	},
 	{
 		what: "Serif font stack typed out: use --kairos-font-serif",
@@ -73,7 +74,7 @@ const DRIFT: Drift[] = [
 	{
 		what: ":global() in a component: global CSS belongs in styles.css",
 		pattern: /:global\(/g,
-		baseline: 34,
+		baseline: 30,
 	},
 ];
 
@@ -101,6 +102,18 @@ describe("design system drift only goes down", () => {
 });
 
 describe("design system components", () => {
+	it("every dialog adds kairos-modal (DESIGN.md, rule 8)", () => {
+		const missing = filesEnding(join(ROOT, "src"), ".ts")
+			.map((path) => ({ file: relative(ROOT, path), text: readFileSync(path, "utf8") }))
+			.filter(({ text }) => {
+				const dialogs = text.match(/\bextends Modal\b/g)?.length ?? 0;
+				const marked = text.match(/addClass\("kairos-modal"\)/g)?.length ?? 0;
+				return marked < dialogs;
+			})
+			.map(({ file }) => file);
+		expect(missing, `Add this.modalEl.addClass("kairos-modal") to onOpen in:\n${missing.join("\n")}`).toEqual([]);
+	});
+
 	it("styles.css defines every token DESIGN.md lists", () => {
 		const css = readFileSync(join(ROOT, "styles.css"), "utf8");
 		const design = readFileSync(join(ROOT, "DESIGN.md"), "utf8");

@@ -165,7 +165,7 @@
 		{:else}
 			<span class="ag-name">{name}</span>
 		{/if}
-		<span class="ag-count">{count}</span>
+		<span class="kairos-count">{count}</span>
 		{@render meta?.()}
 		<span class="ag-spacer"></span>
 		{@render actions?.()}
@@ -261,15 +261,6 @@
 		display: flex;
 		flex-shrink: 0;
 		color: var(--ag-color, var(--text-muted));
-	}
-
-	.ag-count {
-		flex-shrink: 0;
-		min-width: 1ch;
-		text-align: right;
-		font-size: var(--font-ui-smaller);
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
 	}
 
 	/* The button keeps the heading's height. */
