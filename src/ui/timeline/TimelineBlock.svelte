@@ -985,6 +985,36 @@
     bottom: 0;
   }
 
+  /* Touch (spec decision 136): an unselected block has no resize edge, so a
+     swipe that starts on it scrolls. A selected one gets handles a finger
+     can hold, 24px tall, centred on its edges, with the grip always shown. */
+  @media (pointer: coarse) {
+    .tl-resize {
+      pointer-events: none;
+    }
+    .tl-block.selected .tl-resize {
+      pointer-events: auto;
+      height: 24px;
+    }
+    .tl-block.selected .tl-resize-top {
+      top: -12px;
+    }
+    .tl-block.selected .tl-resize-bottom {
+      bottom: -12px;
+    }
+    .tl-block.selected .tl-resize::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 32px;
+      height: 4px;
+      border-radius: var(--kairos-radius-s);
+      background: var(--interactive-accent);
+    }
+  }
+
   /* A faint grab affordance on the edge when hovering the block. */
   .tl-block:hover .tl-resize::after {
     content: "";

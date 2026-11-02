@@ -73,6 +73,7 @@
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
+	import { pressOnBlockChild, startAfterHold } from "../actions/touchHold";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		type Gesture,
@@ -959,27 +960,48 @@
 		const targets =
 			mode === "move" && selection.size > 0 ? [...selection] : [block];
 
-		gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
-		capturePointer(event);
-	}
- 
-	// Pressed on empty canvas: begin a create gesture and clear any selection.
-	function onCanvasPointerDown(event: PointerEvent) {
-		if (event.button !== 0) return;
-		// Ignore presses that landed on a block (those bubble here after their own
-		// handler ran); a block press sets `gesture` already.
-		if (gesture) return;
-		selection = new Set();
-		gesture = beginCreateGesture(canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
-		capturePointer(event);
+		// The canvas sees this press next (it bubbles); it isn't empty time.
+		blockPressed = true;
+		const el = event.currentTarget as Element | null;
+		const begin = () => {
+			gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
+			capturePointer(el, event);
+		};
+		// A resize handle shows only on a selected block and starts at once; a
+		// move on touch waits for a hold, so a swipe over a block scrolls.
+		if (mode !== "move") begin();
+		else if (event.pointerType === "mouse" || !pressOnBlockChild(event.target)) {
+			startAfterHold(event, () => {
+				// A task's own hold may have matured first and started its drag.
+				if (!taskDrag) begin();
+			});
+		}
 	}
 
-	function capturePointer(event: PointerEvent) {
-		(event.currentTarget as Element | null)?.setPointerCapture?.(event.pointerId);
+	// Set by a block press, so the canvas leaves that press alone.
+	let blockPressed = false;
+
+	// Pressed on empty canvas: begin a create gesture and clear any selection.
+	// On touch the create waits for a hold (startAfterHold).
+	function onCanvasPointerDown(event: PointerEvent) {
+		const onBlock = blockPressed;
+		blockPressed = false;
+		if (event.button !== 0) return;
+		if (onBlock || gesture) return;
+		selection = new Set();
+		const el = event.currentTarget as Element | null;
+		startAfterHold(event, () => {
+			gesture = beginCreateGesture(canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
+			capturePointer(el, event);
+		});
+	}
+
+	function capturePointer(el: Element | null, event: PointerEvent) {
+		el?.setPointerCapture?.(event.pointerId);
 	}
 
 	function onPointerMove(event: PointerEvent) {

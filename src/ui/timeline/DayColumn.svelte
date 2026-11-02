@@ -26,6 +26,7 @@
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
+	import { pressOnBlockChild, startAfterHold } from "../actions/touchHold";
 	import type { DragPreview, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		dateFromISO,
@@ -528,24 +529,45 @@
 
 		const targets =
 			mode === "move" && selection.size > 0 ? [...selection] : [block];
-		gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
+		// The canvas sees this press next (it bubbles); it isn't empty time.
+		blockPressed = true;
+		const begin = () => {
+			gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
 
-		// A single-block move is the only gesture that can leave the column, so
-		// only then do we hand the parent a chance to track a cross-day drop.
-		if (mode === "move" && targets.length === 1) {
-			onCrossDayGrab?.(date, block, event);
+			// A single-block move is the only gesture that can leave the column, so
+			// only then do we hand the parent a chance to track a cross-day drop.
+			if (mode === "move" && targets.length === 1) {
+				onCrossDayGrab?.(date, block, event);
+			}
+		};
+		// A resize handle shows only on a selected block and starts at once; a
+		// move on touch waits for a hold, so a swipe over a block scrolls.
+		if (mode !== "move") begin();
+		else if (event.pointerType === "mouse" || !pressOnBlockChild(event.target)) {
+			startAfterHold(event, () => {
+				// A task's own hold may have matured first and started its drag.
+				if (!taskDrag) begin();
+			});
 		}
 	}
 
+	// Set by a block press, so the canvas leaves that press alone.
+	let blockPressed = false;
+
+	// On touch the create waits for a hold (startAfterHold).
 	function onCanvasPointerDown(event: PointerEvent) {
+		const onBlock = blockPressed;
+		blockPressed = false;
 		if (event.button !== 0) return;
-		if (gesture) return;
+		if (onBlock || gesture) return;
 		selection = new Set();
-		gesture = beginCreateGesture(canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
+		startAfterHold(event, () => {
+			gesture = beginCreateGesture(canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
+		});
 	}
 
 	// ── Task drag-to-nest ──

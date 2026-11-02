@@ -172,7 +172,9 @@ Kairos is desktop-first. On a phone or tablet:
 - Tap a checkbox to change it; press and hold it to cancel the task.
 - Tap a task or block to select it and show its actions. Tap it again to edit its text.
 - Tap **⋯** at the end of a selected task's or block's actions for everything its right-click menu has, such as **Move to backlog**.
-- Press and hold, then move, to drag a task.
+- Press and hold, then move, to drag a task or a block.
+- Press and hold empty time in the Day or Week view, then drag, to make a block.
+- To resize a block, tap it, then drag the handle at its top or bottom edge.
 - To copy a task instead of moving it, tap **⋯** → **Duplicate**, then drag the copy.
 - To open a task's or block's project or domain note, tap **⋯** → **Open note**.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
