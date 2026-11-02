@@ -1,9 +1,11 @@
 <script lang="ts">
-	// One change in the status history, opened for editing in place (or a new
-	// one being added at the top). Status is one click, the date opens the
-	// calendar under it, intensity shows only while active, and intention and
-	// why take the full width. Enter saves and Escape cancels from any field.
-	// It only collects the record; ProjectDetail writes it.
+	// Edits one part of a status record in place, in the status history
+	// (StatusHistory). A record is a transition (its date and why) and the
+	// stretch it starts (its status, intensity and intention), and `part` picks
+	// which fields show: "transition" or "stretch" to edit one, "all" to add a
+	// change. Status is one click, the date opens the calendar under it, and
+	// intensity shows only while active. Enter saves and Escape cancels from
+	// any field. It only collects the record; StatusHistory writes it.
 
 	import type { LifecycleState, StatusRecord } from "../../types";
 	import type { RecordDraft } from "./recordDraft";
@@ -14,6 +16,7 @@
 	import { icon } from "../actions/icon";
 
 	interface Props {
+		part: "all" | "transition" | "stretch";
 		/** The record being edited, or undefined to add one. */
 		initial?: StatusRecord;
 		states: LifecycleState[];
@@ -22,7 +25,7 @@
 		onCancel: () => void;
 	}
 
-	let { initial, states, onSave, onDelete, onCancel }: Props = $props();
+	let { part, initial, states, onSave, onDelete, onCancel }: Props = $props();
 
 	const STATUS_LABEL: Record<LifecycleState, string> = {
 		active: "Active",
@@ -31,9 +34,13 @@
 	};
 	const LEVELS = Array.from({ length: INTENSITY_MAX + 1 }, (_, i) => i);
 
-	// Each editor is made fresh for one record, so reading `initial` once is right.
+	// Each editor is made fresh for one record, so reading these once is right.
 	// svelte-ignore state_referenced_locally
 	const start = initial;
+	// svelte-ignore state_referenced_locally
+	const showTransition = part !== "stretch";
+	// svelte-ignore state_referenced_locally
+	const showStretch = part !== "transition";
 	let date = $state<Date>(dateFromISO(start?.date ?? todayISO()));
 	let status = $state<LifecycleState>(start?.status ?? "active");
 	let note = $state(start?.note ?? "");
@@ -70,33 +77,39 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="kairos-record-editor" onkeydown={keys} onclick={(e) => e.stopPropagation()}>
-	<div class="kairos-record-line">
-		<SegmentedControl
-			label="Status"
-			options={states.map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
-			isOn={(s) => s === status}
-			onSelect={(s) => (status = s as LifecycleState)}
-		/>
-		<button class="kairos-record-date" onclick={() => (picking = !picking)}>
-			<span class="kairos-record-date-icon" use:icon={"calendar"}></span>
-			{formatDate(date)}
-		</button>
-		{#if status === "active"}
-			<select class="dropdown" aria-label="Intensity" bind:value={intensity}>
-				<option value="">Intensity not set</option>
-				{#each LEVELS as l (l)}
-					<option value={String(l)}>Intensity {l} of {INTENSITY_MAX}</option>
-				{/each}
-			</select>
-		{/if}
-	</div>
-	{#if picking}
-		<div class="kairos-record-picker">
-			<Datepicker inline bind:value={date} onselect={() => (picking = false)} />
+	{#if showTransition}
+		<div class="kairos-record-line">
+			<button class="kairos-record-date" onclick={() => (picking = !picking)}>
+				<span class="kairos-record-date-icon" use:icon={"calendar"}></span>
+				{formatDate(date)}
+			</button>
 		</div>
+		{#if picking}
+			<div class="kairos-record-picker">
+				<Datepicker inline bind:value={date} onselect={() => (picking = false)} />
+			</div>
+		{/if}
+		<input type="text" placeholder="Why: what changed" bind:value={why} />
 	{/if}
-	<input type="text" placeholder="Intention: what you mean to do with it for now" bind:value={note} />
-	<input type="text" placeholder="Why: what changed" bind:value={why} />
+	{#if showStretch}
+		<div class="kairos-record-line">
+			<SegmentedControl
+				label="Status"
+				options={states.map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
+				isOn={(s) => s === status}
+				onSelect={(s) => (status = s as LifecycleState)}
+			/>
+			{#if status === "active"}
+				<select class="dropdown" aria-label="Intensity" bind:value={intensity}>
+					<option value="">Intensity not set</option>
+					{#each LEVELS as l (l)}
+						<option value={String(l)}>Intensity {l} of {INTENSITY_MAX}</option>
+					{/each}
+				</select>
+			{/if}
+		</div>
+		<input type="text" placeholder="Intention: what you mean to do with it for now" bind:value={note} />
+	{/if}
 	<div class="kairos-record-buttons">
 		{#if onDelete}
 			<button class="mod-warning" onclick={onDelete}>Delete</button>
