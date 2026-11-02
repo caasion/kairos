@@ -75,15 +75,25 @@ export function holdingDrag(): boolean {
 	return held > 0;
 }
 
-/** Cancel touch scrolling until every finger has lifted. */
+/**
+ * Cancel touch scrolling until every finger has lifted, and the right-click a
+ * long-press sends on Android and Chrome, which would open a menu mid-drag.
+ */
 function holdScrollUntilLift(win: Window) {
 	held++;
 	const noScroll = (e: TouchEvent) => {
 		if (e.cancelable) e.preventDefault();
 	};
+	const noMenu = (e: MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+	};
+	win.addEventListener("contextmenu", noMenu, true);
 	const done = (e: TouchEvent) => {
 		if (e.touches.length > 0) return;
 		held = Math.max(0, held - 1);
+		// The right-click can trail the lift; drop it a moment longer.
+		win.setTimeout(() => win.removeEventListener("contextmenu", noMenu, true), 300);
 		win.removeEventListener("touchmove", noScroll);
 		win.removeEventListener("touchend", done);
 		win.removeEventListener("touchcancel", done);
