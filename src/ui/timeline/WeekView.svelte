@@ -698,8 +698,18 @@
 		const unsubscribeFocus = links.focus$.subscribe((req) => handleFocus(req));
 		const move = (e: PointerEvent) => onWindowPointerMove(e);
 		const up = (e: PointerEvent) => void onWindowPointerUp(e);
+		// A cancelled pointer (a touch that became a scroll) or a lost window
+		// ends every column's gesture without writing, cross-day intent included.
+		const cancel = () => {
+			for (const date of dates) columns[date]?.cancelPointer();
+			dragFromDate = null;
+			dragBlock = null;
+			hoverDate = null;
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", cancel);
+		window.addEventListener("blur", cancel);
 		return () => {
 			unsubscribeResolver();
 			unsubscribeBacklog();
@@ -708,6 +718,8 @@
 			unsubscribeFocus();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", cancel);
+			window.removeEventListener("blur", cancel);
 		};
 	});
 
