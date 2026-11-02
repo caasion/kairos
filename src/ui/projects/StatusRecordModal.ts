@@ -38,6 +38,7 @@ export class StatusRecordModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl, titleEl } = this;
 		const { name, states, initial, onSave, onDelete } = this.opts;
 		titleEl.setText(name);
