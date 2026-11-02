@@ -63,7 +63,7 @@ const DRIFT: Drift[] = [
 	{
 		what: "Hand-made frameless buttons (box-shadow: none): use IconButton",
 		pattern: /box-shadow:\s*none/g,
-		baseline: 50,
+		baseline: 49,
 	},
 	{
 		what: "Serif font stack typed out: use --kairos-font-serif",

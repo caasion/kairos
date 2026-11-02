@@ -3,9 +3,12 @@
 	// instead of making a "New task" straight away, so nothing is written until
 	// it has a name. Enter adds the task and leaves the row open, empty, for the
 	// next one; Escape, or Enter on an empty row, closes it. Leaving it (a click
-	// elsewhere, or the list around it closing) adds what was typed.
+	// elsewhere, or the list around it closing) adds what was typed. It's the
+	// shared item row, lit as new, with an empty box for the lead.
 
 	import { onMount } from "svelte";
+	import TaskCheckbox from "./TaskCheckbox.svelte";
+	import ItemRow from "../components/ItemRow.svelte";
 
 	interface Props {
 		// The row's domain color, for the empty box and the tint.
@@ -53,10 +56,11 @@
 	});
 </script>
 
-<div class="k-draft" style={color ? `--k-draft-color: ${color};` : undefined}>
-	<svg class="k-draft-box" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
-		<rect x="1" y="1" width="14" height="14" rx="3" ry="3" />
-	</svg>
+{#snippet box()}
+	<TaskCheckbox status=" " {color} inert />
+{/snippet}
+
+<ItemRow square lit="new" {color} lead={box}>
 	<input
 		class="k-draft-input kairos-inline-input"
 		type="text"
@@ -69,33 +73,17 @@
 		onpointerdown={(e) => e.stopPropagation()}
 		onclick={(e) => e.stopPropagation()}
 	/>
-</div>
+</ItemRow>
 
 <style>
-	/* Tinted in the row's color, like a lit task, so it reads as the new one. */
-	.k-draft {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
-		padding: 2px 4px;
-		background: color-mix(in srgb, var(--k-draft-color, var(--interactive-accent)) 12%, transparent);
-		box-shadow: inset 2px 0 0 var(--k-draft-color, var(--interactive-accent));
-	}
-	.k-draft-box {
-		flex-shrink: 0;
-		fill: none;
-		stroke: var(--k-draft-color, var(--interactive-accent));
-		stroke-width: 1.5;
-		opacity: 0.7;
-	}
+	/* Typed in place, like ItemText's editor. */
 	.k-draft-input {
 		flex: 1;
 		min-width: 0;
 		margin: 0;
 		padding: 0;
 		font-family: inherit;
-		font-size: 12px;
+		font-size: var(--kairos-item-text-size, var(--kairos-text-body));
 		line-height: 1.4;
 		color: var(--text-normal);
 	}
