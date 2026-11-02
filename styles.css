@@ -432,8 +432,8 @@ body .kairos-action-stack:focus-within > * {
 	font-variant-numeric: tabular-nums;
 }
 
-/* ── Status history modal (StatusHistoryModal.ts) ── */
-/* A "Status history" caption trailing the entity name in the modal title. */
+/* ── Add / edit a status change (StatusRecordModal.ts) ── */
+/* "Add a change" or "Edit change" trailing the entity name in the modal title. */
 .kairos-history-sub {
 	margin-left: var(--size-4-2);
 	font-size: var(--font-ui-small);
