@@ -3,6 +3,7 @@ import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
 import GanttView from "./ui/gantt/GanttView.svelte";
 import type Kairos from "./main";
+import { findViewHeader } from "./ui/actions/viewHeader";
 
 export const KAIROS_GANTT_VIEW_TYPE = "kairos-gantt-view";
 
@@ -42,6 +43,7 @@ export class KairosGanttView extends ItemView {
 			props: {
 				app: this.app,
 				index: this.plugin.indexAdapter.index,
+				viewHeader: findViewHeader(this.containerEl),
 			},
 		});
 	}

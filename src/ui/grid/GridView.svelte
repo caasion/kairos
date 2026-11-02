@@ -78,7 +78,15 @@
 		type GridRow,
 	} from "../../gridModel";
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
-	import type { RoutineActions } from "../../routines/routinesFeed";
+	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
+	import type { Leftover } from "../../carry";
+	import LeftoverTask from "../timeline/LeftoverTask.svelte";
+	import HeaderBadge from "../timeline/HeaderBadge.svelte";
+	import AssocGroup from "../timeline/AssocGroup.svelte";
+	import { groupByAssoc } from "../timeline/groupByAssoc";
+	import TaskRow from "../task/Task.svelte";
+	import { leftOpenLabel, todayLeftovers } from "../timeline/todayLeftovers";
+	import LeftoverButtons from "../timeline/LeftoverButtons.svelte";
 	import { routinesToOffer, type RoutineList } from "../../routines/preview";
 	import { dayLabel } from "../../routines/plan";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
@@ -99,6 +107,7 @@
 	import { nextDraftLine } from "../../draftLine";
 	import GridCell from "./GridCell.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
+	import IntensityBars from "../components/IntensityBars.svelte";
 	import type { RowLabelInfo } from "../components/rowLabel";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { createAssociation } from "../association/createAssociation";
@@ -106,6 +115,7 @@
 	import Datepicker from "../components/Datepicker.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
+	import { intoViewHeader } from "../actions/viewHeader";
 
 	interface Props {
 		app: App;
@@ -121,6 +131,10 @@
 		showDay: (date: ISODate) => void;
 		// Each day's missing routines, behind a pill on its date header.
 		routineActions: RoutineActions;
+		// Yesterday's open tasks, for today's Inbox badge.
+		leftoverActions: LeftoverActions;
+		// The leaf's tab header, which the header bar moves into.
+		viewHeader?: HTMLElement;
 	}
 
 	let {
@@ -132,6 +146,8 @@
 		links,
 		showDay,
 		routineActions,
+		leftoverActions,
+		viewHeader,
 	}: Props = $props();
 
 	// ── Bridge to the timelines (viewLinks.ts) ──
@@ -298,7 +314,12 @@
 	// row, and each block's tasks in theirs.
 	function cellFor(row: GridRow, day: GridDay): { blocks: BlockGroup[] } {
 		if (!snapshot) return { blocks: [] };
-		return { blocks: blockGroups(row, day.tasks, snapshot, day.blocks) };
+		// With Unscheduled behind each day's header badge instead (the setting
+		// off), a cell drops its Unscheduled group, except during a drag, where
+		// that group is still where a task lands to come out of its block.
+		const groups = blockGroups(row, day.tasks, snapshot, day.blocks);
+		if (settings.gridUnscheduledInCells || taskDrag) return { blocks: groups };
+		return { blocks: groups.filter((g) => !isUnscheduledBlock(g.block)) };
 	}
 
 	// The project chip on a rolled-up task's line (domain rows, when on).
@@ -346,6 +367,11 @@
 			s.highlightAcrossViews = on;
 		});
 	}
+	function setUnscheduledInCells(on: boolean) {
+		updateSettings((s) => {
+			s.gridUnscheduledInCells = on;
+		});
+	}
 	function setShowRollupProjects(on: boolean) {
 		updateSettings((s) => {
 			s.gridShowRollupProjects = on;
@@ -363,7 +389,7 @@
 	// A row's label shows its intensity on the first visible day; a cell where a
 	// record moves the level later in the window carries a small marker, so the
 	// window reads left to right like the Gantt does. The label's intention stays
-	// today's (prose is too long to be a starting point the way five pips are),
+	// today's (prose is too long to be a starting point the way the intensity bars are),
 	// so a new intention anywhere in the window, the first day included, gets a
 	// notebook icon in its cell whose tooltip reads it out.
 	function labelInfo(row: Exclude<GridRow, { kind: "unassigned" }>): RowLabelInfo {
@@ -382,25 +408,37 @@
 	}
 
 	// ── Resurfaced backlog nudges ──
-	// Entries with a resurface date surface as nudges in one day's cell
-	// (max(resurface, today)), under the row matching their association. An
-	// untagged entry surfaces in the Unassociated row.
+	// Entries with a resurface date surface on one day (max(resurface, today)),
+	// behind that day's Inbox badge (they used to sit in its cells).
 	let backlogEntries = $state<BacklogEntry[]>([]);
 
-	// The nudges for a given (row, date): entries surfacing on `date` whose
-	// association matches this row. Association match reuses the same canonical
-	// resolution the row grouping uses, so an aliased tag lands in the right row.
-	function nudgesFor(row: GridRow, date: ISODate): BacklogEntry[] {
-		const due = surfacedOn(backlogEntries, date, todayISO());
-		return due.filter((e) => rowMatchesEntry(row, e));
+	// Each day's header badges — its Unscheduled tasks across every
+	// row, and its Inbox (resurfacing entries, plus yesterday's open tasks on
+	// today), both grouped by association like the rows they came out of.
+	function unscheduledOn(date: ISODate): ResolvedTask[] {
+		return dayOf(date)?.tasks.filter((t) => isUnscheduledBlock(t.block)) ?? [];
 	}
+	function surfacedOnDate(date: ISODate): BacklogEntry[] {
+		return surfacedOn(backlogEntries, date, todayISO());
+	}
+	function leftoversOn(date: ISODate): Leftover[] {
+		return $left$ && $left$.today === date ? $left$.items : [];
+	}
+	// The cell "+" adds to Unscheduled, which no longer shows in the cell: it
+	// opens that day's badge so the new task is in view.
+	let unscheduledOpen = $state<Record<string, boolean>>({});
 
-	// Same routing as tasks (`ownerRowKey`): canonical name, so an alias-tagged
-	// entry matches its row, and a rolled-up project's entry surfaces on its
-	// domain's row.
-	function rowMatchesEntry(row: GridRow, entry: BacklogEntry): boolean {
-		if (!snapshot) return false;
-		return ownerRowKey(entry.assoc, snapshot) === row.key;
+	// Yesterday's open tasks, for today's Inbox badge.
+	// svelte-ignore state_referenced_locally
+	const left$ = todayLeftovers(index, leftoverActions);
+	const leftFrom = $derived($left$ ? dayLabel($left$.from.date) : "");
+	function settleLeftover(l: Leftover, status: "x" | "-") {
+		const day = $left$?.from;
+		if (!day) return;
+		index.applyDayEdit(day.date, day.path, setTaskStatus(day.blocks, l.owner, l.task, status));
+	}
+	function bringLeftover(l: Leftover) {
+		if ($left$) leftoverActions.bring($left$.today, $left$.from.date, [l.task.source]);
 	}
 
 	function onNudgeInsert(entry: BacklogEntry, date: ISODate) {
@@ -555,17 +593,50 @@
 		reveal(task.date, task.block.source.line);
 	}
 
-	async function onCreate(row: GridRow, date: ISODate) {
+	// A "+" opens a field in its cell for the new task instead of making a
+	// "New task" at once (DraftTask), so nothing is made until it has a name.
+	let draft = $state<{ rowKey: GridRow["key"]; date: ISODate } | null>(null);
+	function draftInCell(row: GridRow, date: ISODate): boolean {
+		return draft?.rowKey === row.key && draft.date === date;
+	}
+	// With Unscheduled behind the header badge, the badge pulses when a task
+	// typed in a cell lands in it, to show where it went.
+	let pulsed = $state<ISODate | null>(null);
+	let pulseTimer: number | undefined;
+	function pulse(date: ISODate) {
+		window.clearTimeout(pulseTimer);
+		pulsed = null;
+		requestAnimationFrame(() => {
+			pulsed = date;
+			pulseTimer = window.setTimeout(() => (pulsed = null), 900);
+		});
+	}
+
+	function onCreate(row: GridRow, date: ISODate) {
 		focusDay(date);
+		draft = { rowKey: row.key, date };
+	}
+
+	// A popup group's "+": a typed task in that day's Unscheduled, filed under
+	// the group.
+	async function addUnscheduled(
+		date: ISODate,
+		text: string,
+		assoc: Association | undefined,
+	) {
+		const day = dayOf(date);
+		const path = day?.path ?? (await ensureNoteForDate(date));
+		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
+		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
+		pulse(date);
+	}
+
+	async function addDraft(row: GridRow, date: ISODate, text: string) {
 		const assoc = rowAssociation(row);
 		const day = dayOf(date);
 		const path = day?.path ?? (await ensureNoteForDate(date));
-		const blocks = day?.blocks ?? [];
-		commit(
-			date,
-			path,
-			addTaskToUnscheduled(blocks, path, "New task", assoc, nextDraftLine()),
-		);
+		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
+		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
 	}
 
 	// A group's "+" (grouping on): a new task in that block, filed under the row
@@ -1170,7 +1241,7 @@
 
 	// The grid's fixed template: a label column + one column per day.
 	const gridTemplate = $derived(
-		`180px repeat(${windowSize}, minmax(0, 1fr))`,
+		`var(--kairos-row-label-width) repeat(${windowSize}, minmax(0, 1fr))`,
 	);
 
 	function onKeyDown(event: KeyboardEvent) {
@@ -1235,10 +1306,96 @@
 	});
 </script>
 
+<!-- The lists behind each day's header badges. -->
+{#snippet listIcon()}
+	<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/></svg>
+{/snippet}
+{#snippet inboxIcon()}
+	<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+{/snippet}
+{#snippet unscheduledList(tasks: ResolvedTask[], date: ISODate)}
+	{#each groupByAssoc(tasks, (t) => t.owner, resolve) as group (group.key)}
+		<AssocGroup
+			assoc={group.assoc}
+			resolved={group.resolved}
+			count={group.items.length}
+			{onNavigate}
+			onAddText={(text: string) => addUnscheduled(date, text, group.assoc)}
+			addLabel="Add a task here"
+		>
+		{#each group.items as task (task.source.line)}
+			{@const r = task.owner ? resolve(task.owner) : undefined}
+			<TaskRow
+				{task}
+				color={r?.color}
+				association={task.owner}
+				inherited={task.assoc === undefined && task.owner !== undefined}
+				showAssociation={false}
+				resolved={r}
+				onNavigate={() => task.owner && onNavigate(task.owner)}
+				onEditAssoc={(rect) => openTaskAssoc(task, rect)}
+				onNest={(rect) => openBlockPicker(task, rect)}
+				onMoveToBacklog={() => onMoveToBacklog(task)}
+				onSetStatus={(_t, status) => onSetStatus(task, status)}
+				onSetText={(_t, text) => onSetText(task, text)}
+				onDelete={() => onDelete(task)}
+				onGrab={(e) => onTaskGrab(task, e)}
+				highlight={highlightOf(task)}
+				onHoverChange={(on: boolean) => onTaskHover(task, on)}
+			/>
+		{/each}
+		</AssocGroup>
+	{/each}
+{/snippet}
+{#snippet inboxList(date: ISODate)}
+	{@const lefts = leftoversOn(date)}
+	{#if lefts.length > 0}
+		<div class="inbox-left-head">
+			<span>{$left$ ? leftOpenLabel($left$.from.date, $left$.today) : ""}</span>
+			<span class="inbox-left-spacer"></span>
+			<LeftoverButtons
+				onLeave={() => $left$ && leftoverActions.leave($left$.today, $left$.from.date)}
+				onBringAll={() => $left$ && leftoverActions.bring($left$.today, $left$.from.date)}
+			/>
+		</div>
+		{#each lefts as l (l.task.source.line)}
+			{@const la = l.task.assoc ?? l.owner.assoc}
+			<LeftoverTask
+				task={l.task}
+				resolved={la ? resolve(la) : undefined}
+				fromLabel={leftFrom}
+				onDone={() => settleLeftover(l, "x")}
+				onCancel={() => settleLeftover(l, "-")}
+				onBring={() => bringLeftover(l)}
+			/>
+		{/each}
+	{/if}
+	{#each groupByAssoc(surfacedOnDate(date), (e) => e.assoc, resolve) as group (group.key)}
+		<AssocGroup
+			assoc={group.assoc}
+			resolved={group.resolved}
+			count={group.items.length}
+			{onNavigate}
+		>
+		{#each group.items as entry (entry.source.line)}
+			<BacklogNudge
+				{entry}
+				resolved={entry.assoc ? resolve(entry.assoc) : undefined}
+				showAssociation={false}
+				onInsert={(e) => onNudgeInsert(e, date)}
+				onResurfaceTomorrow={onNudgeResurfaceTomorrow}
+				onResurfaceAt={onNudgeResurfaceAt}
+				{onNavigate}
+			/>
+		{/each}
+		</AssocGroup>
+	{/each}
+{/snippet}
+
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
-	<div class="grid-header">
+	<div class="grid-header" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
 			<button
 				class="icon-btn nav-btn"
@@ -1310,6 +1467,10 @@
 						<input type="number" class="controls-input" min="1" max="7" value={after} oninput={(e) => setDaysAfter(+e.currentTarget.value)} />
 					</label>
 					<label class="controls-field">
+						<span class="controls-label">Show unscheduled tasks in the grid</span>
+						<input type="checkbox" checked={settings.gridUnscheduledInCells} onchange={(e) => setUnscheduledInCells(e.currentTarget.checked)} />
+					</label>
+					<label class="controls-field">
 						<span class="controls-label">Show projects on rolled-up tasks</span>
 						<input type="checkbox" checked={settings.gridShowRollupProjects} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
 					</label>
@@ -1329,6 +1490,9 @@
 		<div class="grid-corner grid-corner-head"></div>
 		{#each dates as date (date)}
 			{@const offered = routinesByDate.get(date)}
+			{@const usTasks = unscheduledOn(date)}
+			{@const usBadge = !settings.gridUnscheduledInCells && usTasks.length > 0}
+			{@const inCount = surfacedOnDate(date).length + leftoversOn(date).length}
 			<div class="grid-colhead-wrap">
 				<button
 					class="grid-colhead date-card"
@@ -1354,24 +1518,52 @@
 						<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
 					{/if}
 				</button>
-				{#if offered && offered.count > 0}
-					<!-- Bottom-right of the date cell: the day's missing routines,
-					     listed on hover, each addable, plus "Add all". -->
-					<div class="grid-routines">
-						<RoutinesAlert
-							list={offered}
-							variant="pill"
-							label={dayLabel(date)}
-							showAddAll={!settings.autoApplyRoutines}
-							onAdd={(rs) => {
-								focusDay(date);
-								routineActions.insert(date, rs);
-							}}
-							onAddAll={() => {
-								focusDay(date);
-								routineActions.addAll(date);
-							}}
-						/>
+				<!-- The day's lists as badges, bottom-right of its date cell:
+				     Unscheduled, Inbox, then routines (listed on hover, each addable). -->
+				{#if usBadge || inCount > 0 || (offered && offered.count > 0)}
+					<div class="grid-badges">
+						{#if usBadge}
+							<span class="grid-badge-pulse" class:pulsed={pulsed === date}>
+								<HeaderBadge
+									title="Unscheduled"
+									dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
+									count={usTasks.length}
+									icon={listIcon}
+									bind:open={unscheduledOpen[date]}
+									dragging={taskDrag !== null}
+								>
+									{@render unscheduledList(usTasks, date)}
+								</HeaderBadge>
+							</span>
+						{/if}
+						{#if inCount > 0}
+							<HeaderBadge
+								title="Inbox"
+								dateLabel={`${dowLabel(date)} ${dayNumber(date)}`}
+								count={inCount}
+								icon={inboxIcon}
+								tone={leftoversOn(date).length > 0 ? "warn" : "neutral"}
+								dragging={taskDrag !== null}
+							>
+								{@render inboxList(date)}
+							</HeaderBadge>
+						{/if}
+						{#if offered && offered.count > 0}
+							<RoutinesAlert
+								list={offered}
+								variant="pill"
+								label={dayLabel(date)}
+								showAddAll={!settings.autoApplyRoutines}
+								onAdd={(rs) => {
+									focusDay(date);
+									routineActions.insert(date, rs);
+								}}
+								onAddAll={() => {
+									focusDay(date);
+									routineActions.addAll(date);
+								}}
+							/>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -1404,7 +1596,6 @@
 
 				{#each dates as date (date)}
 					{@const day = dayOf(date)}
-					{@const nudges = nudgesFor(row, date)}
 					{@const inactive = isCellInactive(row, date)}
 					{@const change = changeOn(row, date, inactive)}
 					{@const intention = intentionOn(row, date, inactive)}
@@ -1432,26 +1623,10 @@
 										title={`Intensity ${change.from ?? "unset"} → ${change.to} from this day`}
 									>
 										<span class="grid-intensity-arrow">{change.from === null || change.to > change.from ? "↑" : "↓"}</span>
-										{#each [1, 2, 3, 4, 5] as l (l)}
-											<span class="grid-intensity-pip" class:on={change.to >= l}></span>
-										{/each}
+										<IntensityBars level={change.to} />
 									</span>
 								{/if}
 							</span>
-						{/if}
-						{#if nudges.length > 0}
-							<div class="grid-nudges">
-								{#each nudges as entry (entry.source.line)}
-									<BacklogNudge
-										{entry}
-										resolved={entry.assoc ? resolve(entry.assoc) : undefined}
-										onInsert={(e) => onNudgeInsert(e, date)}
-										onResurfaceTomorrow={onNudgeResurfaceTomorrow}
-										onResurfaceAt={onNudgeResurfaceAt}
-										{onNavigate}
-									/>
-								{/each}
-							</div>
 						{/if}
 						{#if day}
 							{@const cell = cellFor(row, day)}
@@ -1468,7 +1643,12 @@
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
-								onCreate={() => void onCreate(row, date)}
+								onCreate={() => onCreate(row, date)}
+								draftOpen={draftInCell(row, date)}
+								onDraftSubmit={(text: string) => void addDraft(row, date, text)}
+								onDraftClose={() => (draft = null)}
+								holdLanded={!settings.gridUnscheduledInCells}
+								onLanded={() => pulse(date)}
 								onTaskGrab={onTaskGrab}
 								onBlockGrab={(block: Block, e: PointerEvent) => onBlockGrab(block, date, row.key, e)}
 								onEditBlockAssoc={(block: Block, rect: DOMRect) => openBlockAssoc(date, block, rect)}
@@ -1488,7 +1668,7 @@
 								{isBlockLinked}
 								{onBlockHover}
 							/>
-						{:else if nudges.length === 0}
+						{:else}
 							<div class="grid-datacell-empty"></div>
 						{/if}
 					</div>
@@ -1517,6 +1697,7 @@
 
 {#if blockPickerTask && blockPickerAnchor}
 	<BlockPicker
+		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}
@@ -1759,10 +1940,17 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
 		padding: 8px 8px 12px 12px;
+		/* Square, not Obsidian's button radius: the cards sit edge to edge on
+		   their columns, and only the strip's outer top corners round (the
+		   corner cell's, and the last card's below), like the Week view. */
+		border-radius: 0;
 		cursor: pointer;
 		box-shadow: none;
 		transition: filter 150ms ease;
 		height: 100%;
+	}
+	.grid-colhead-wrap:last-child > .grid-colhead.date-card {
+		border-top-right-radius: 8px;
 	}
 	.grid-colhead.date-card:hover {
 		filter: brightness(1.15);
@@ -1778,11 +1966,30 @@
 		flex: 1;
 		min-width: 0;
 	}
-	.grid-routines {
+	.grid-badges {
 		position: absolute;
 		right: 6px;
 		bottom: 6px;
+		display: flex;
+		align-items: center;
+		gap: 3px;
 	}
+
+	/* The "Left open on …" heading inside a day's Inbox list. */
+	.inbox-left-head {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 4px;
+		font-size: var(--font-ui-smaller);
+		font-weight: var(--font-semibold);
+		color: var(--color-orange);
+	}
+
+	.inbox-left-spacer {
+		flex: 1;
+	}
+
 	.grid-colhead .dow-label {
 		font-size: 11px;
 		font-weight: 600;
@@ -1841,11 +2048,11 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 8px;
-		padding: 8px 10px 8px 8px;
+		padding: 8px var(--kairos-row-label-pad-right) 8px var(--kairos-row-label-pad-left);
 		background: var(--background-secondary);
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-right: 1px solid var(--background-modifier-border);
-		border-left: 3px solid var(--row-accent, var(--text-faint));
+		border-left: var(--kairos-row-label-accent-width) solid var(--row-accent, var(--text-faint));
 		min-width: 0;
 		position: sticky;
 		left: 0;
@@ -1859,7 +2066,7 @@
 	   the divider between a domain and its children is dropped — the group reads as
 	   one block. */
 	.grid-rowlabel.child {
-		padding-left: 16px;
+		padding-left: calc(var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent));
 	}
 	.grid-rowlabel.child:not(.group-end),
 	.grid-rowlabel.domain {
@@ -1886,12 +2093,6 @@
 		text-overflow: ellipsis;
 	}
 
-	.grid-nudges {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		padding: 4px;
-	}
 
 	:global(.resurface-popup) {
 		position: fixed;
@@ -1911,7 +2112,7 @@
 		min-width: 0;
 	}
 	/* Where a row's intention or intensity changes: a notebook icon and/or a small
-	   arrow with five pips, in the row's accent, tucked in the cell's bottom-right
+	   arrow with the intensity bars, in the row's accent, tucked in the cell's bottom-right
 	   corner, under task action bars and the cell's "+" (both sit higher). */
 	.grid-cell-marks {
 		position: absolute;
@@ -1936,15 +2137,6 @@
 	}
 	.grid-intensity-arrow {
 		margin-right: 1px;
-	}
-	.grid-intensity-pip {
-		width: 4px;
-		height: 4px;
-		border-radius: 50%;
-		border: 1px solid currentColor;
-	}
-	.grid-intensity-pip.on {
-		background: currentColor;
 	}
 	/* Faint tint marking the currently active day's column. */
 	.grid-datacell.today {
@@ -1997,5 +2189,26 @@
 		font-size: 11px;
 		font-weight: 700;
 		line-height: 1;
+	}
+
+	/* The Unscheduled badge pulses when a task typed in a cell lands in it. */
+	.grid-badge-pulse {
+		display: contents;
+	}
+	.grid-badge-pulse.pulsed :global(.hb-trigger) {
+		animation: grid-badge-pulse 900ms ease-out;
+	}
+	@keyframes grid-badge-pulse {
+		0% {
+			box-shadow: 0 0 0 0 color-mix(in srgb, var(--interactive-accent) 70%, transparent);
+			transform: scale(1);
+		}
+		25% {
+			transform: scale(1.15);
+		}
+		100% {
+			box-shadow: 0 0 0 8px transparent;
+			transform: scale(1);
+		}
 	}
 </style>

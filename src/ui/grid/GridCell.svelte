@@ -15,9 +15,10 @@
 	//
 	// A block's header carries the block's own actions too, as on the timeline:
 	// its context menu (shared via blockMenu.ts), an action stack in its corner
-	// (add task, association, delete), a click on the title to rename it, and a long-press to
+	// (delete, add task, association, repeat), a click on the title to rename it, and a long-press to
 	// drag it to another row or day.
 
+	import DraftTask from "../task/DraftTask.svelte";
 	import { Menu } from "obsidian";
 	import type { Association, Block, ISODate, ResolvedTask, Task, TaskStatus } from "../../types";
 	import type { Resolver } from "../../index";
@@ -25,7 +26,7 @@
 	import { formatClock } from "../../parser";
 	import type { Highlight } from "../../viewLinks";
 	import Task_ from "../task/Task.svelte";
-	import { requestRepeat } from "../../routines/repeat";
+	import { requestRepeat, requestRepeatBlock } from "../../routines/repeat";
 	import { addBlockMenuItems } from "../blockMenu";
 	import { actionZone } from "../actions/actionZone";
 	import { grabOnHold } from "../actions/grabOnHold";
@@ -47,6 +48,15 @@
 		onEditAssoc: (task: ResolvedTask, anchor: DOMRect) => void;
 		onNavigate: (assoc: Association) => void;
 		onCreate: () => void;
+		// The "+" opened its new-task field in this cell.
+		draftOpen?: boolean;
+		onDraftSubmit?: (text: string) => void;
+		onDraftClose?: () => void;
+		// Unscheduled isn't shown in the cells (it's behind the day header's
+		// badge): hold each typed task here for a moment, then report it landed
+		// so the badge can pulse where it went.
+		holdLanded?: boolean;
+		onLanded?: () => void;
 		// Jump to this task's block in the Day view.
 		onReveal: (task: ResolvedTask) => void;
 		// Jump to a block in the Day view (its header's ctrl+click).
@@ -104,6 +114,11 @@
 		onEditAssoc,
 		onNavigate,
 		onCreate,
+		draftOpen = false,
+		onDraftSubmit,
+		onDraftClose,
+		holdLanded = false,
+		onLanded,
 		onReveal,
 		onRevealBlock,
 		onNest,
@@ -127,6 +142,29 @@
 		onDeleteBlock,
 		onSetBlockTitle,
 	}: Props = $props();
+
+	// The field and the tasks just typed in it.
+	const hasUnscheduledGroup = $derived(blockGroups.some((g) => isUnscheduledBlock(g.block)));
+	const LANDED_MS = 1400;
+	let landed = $state<{ id: number; text: string }[]>([]);
+	let landedId = 0;
+	// Only for clearing on teardown, so not reactive.
+	let landedTimers: number[] = [];
+	function submitDraft(text: string) {
+		onDraftSubmit?.(text);
+		if (!holdLanded) return;
+		const id = ++landedId;
+		landed = [...landed, { id, text }];
+		const timer = window.setTimeout(() => {
+			landedTimers = landedTimers.filter((t) => t !== timer);
+			landed = landed.filter((l) => l.id !== id);
+			onLanded?.();
+		}, LANDED_MS);
+		landedTimers.push(timer);
+	}
+	$effect(() => () => {
+		for (const t of landedTimers) window.clearTimeout(t);
+	});
 
 	const canCreate = $derived(!inactive);
 	// Grouped, each group carries its own "+", and an Unscheduled group's adds
@@ -283,7 +321,7 @@
 				onSetText={textOf}
 				onDelete={deleteOf}
 				onNest={(rect) => onNest(task, rect)}
-				nestLabel="Change parent block"
+				nestLabel={isUnscheduledBlock(task.block) ? "Nest under block" : "Move to another block"}
 				onMoveToBacklog={() => onMoveToBacklog(task)}
 				onRepeat={() => requestRepeat(task, task.block)}
 				trailing={chipFor?.(task)}
@@ -292,6 +330,24 @@
 				onHoverChange={onHover ? (on: boolean) => onHover(task, on) : undefined}
 			/>
 		</div>
+	{/snippet}
+
+	{#snippet draftTail()}
+		<!-- Tasks just typed, held a moment before they
+		     go behind the header badge (the bar runs down the wait), then the
+		     field for the next one. -->
+		{#each landed as l (l.id)}
+			<div class="grid-cell-landed" style:--landed-ms={`${LANDED_MS}ms`}>
+				<svg class="grid-cell-landed-box" width="18" height="18" viewBox="0 0 16 16" aria-hidden="true">
+					<rect x="1" y="1" width="14" height="14" rx="3" ry="3" />
+				</svg>
+				<span class="grid-cell-landed-text">{l.text}</span>
+				<span class="grid-cell-landed-bar"></span>
+			</div>
+		{/each}
+		{#if draftOpen && onDraftSubmit && onDraftClose}
+			<DraftTask {color} placeholder="New task" onSubmit={submitDraft} onClose={onDraftClose} />
+		{/if}
 	{/snippet}
 
 	{#each blockGroups as group, g (group.key)}
@@ -340,8 +396,9 @@
 					use:actionZone={{ layout: "stack" }}
 					use:grabOnHold={onBlockGrab ? (e) => onBlockGrab(block, e) : undefined}
 				>
-					<!-- Action stack, woken from the header's top-right corner: the
-					     block's "+" in the corner, then delete and association. A press
+					<!-- Action stack, woken from the header's top-right corner, the
+					     same as a timeline block's: delete in the corner, then add
+					     task, association and repeat. A press
 					     here never arms the header's drag: grabOnHold skips presses
 					     on the bar and the rename input (a stopPropagation here
 					     can't, as Svelte delegates pointerdown to the root). -->
@@ -351,12 +408,12 @@
 					>
 						{#if canCreate && onCreateInBlock}
 							<button
-								class="grid-cell-block-action grid-cell-block-action-add"
-								aria-label={`Add task to ${block.title}`}
-								use:tooltip={`Add task to ${block.title}`}
+								class="grid-cell-block-action"
+								aria-label="Add task"
+								use:tooltip={"Add task"}
 								onclick={() => onCreateInBlock(block)}
 							>
-								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
 							</button>
 						{/if}
 						<button
@@ -367,6 +424,16 @@
 						>
 							<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.35V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h7"/><path d="m8 16 3-3-3-3"/></svg>
 						</button>
+						{#if block.time}
+							<button
+								class="grid-cell-block-action"
+								aria-label="Repeat…"
+								use:tooltip={"Repeat…"}
+								onclick={() => requestRepeatBlock(block)}
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+							</button>
+						{/if}
 						<button
 							class="grid-cell-block-action grid-cell-block-action-danger"
 							aria-label="Delete block"
@@ -378,7 +445,7 @@
 					</div>
 					{#if renaming === group.key}
 						<div class="grid-cell-block-edit">
-							{#if block.time}<span>{formatClock(block.time.start)}</span>{/if}
+							{#if block.time}<span class="grid-cell-block-time">{formatClock(block.time.start)}</span>{/if}
 							<input
 								class="grid-cell-block-input kairos-inline-input"
 								type="text"
@@ -404,13 +471,16 @@
 			{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
 				{@render taskItem(task, at + j)}
 			{/each}
+			{#if isUnscheduledBlock(group.block)}
+				{@render draftTail()}
+			{/if}
 			{#if canCreate && onCreateInBlock && isUnscheduledBlock(group.block)}
 				<!-- Unscheduled's "+", at the right end of its header line (a
 				     block's own "+" is in its header's action stack). -->
 				<button
 					class="grid-cell-group-add"
-					title={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
-					aria-label={isUnscheduledBlock(group.block) ? "Add task" : `Add task to ${group.block.title}`}
+					aria-label="Add task to Unscheduled"
+					use:tooltip={"Add task to Unscheduled"}
 					onclick={() => onCreateInBlock(group.block)}
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -431,7 +501,17 @@
 		</div>
 	{/if}
 
-	{#if showCellAdd && !unscheduledSlot}
+	{#if !hasUnscheduledGroup && (draftOpen || landed.length > 0)}
+		<!-- The field always sits under an Unscheduled header, so it says where
+		     the task goes: here the cell has no Unscheduled group yet (or it's
+		     behind the header badge), so the field brings one. -->
+		<div class="grid-cell-block-group">
+			<div class="grid-cell-group-header grid-cell-block-header unscheduled">Unscheduled</div>
+			{@render draftTail()}
+		</div>
+	{/if}
+
+	{#if !draftOpen && showCellAdd && !unscheduledSlot}
 		<!-- No Unscheduled group here yet, so the cell's "+" wears the header that
 		     group would have: it says where a new task goes. Shown on hover only.
 		     In an empty cell it sits where the group would; under other groups
@@ -439,8 +519,8 @@
 		<button
 			class="grid-cell-add"
 			class:floating={blockGroups.length > 0}
-			title="Add task to Unscheduled"
 			aria-label="Add task to Unscheduled"
+			use:tooltip={"Add task to Unscheduled"}
 			onclick={onCreate}
 		>
 			<span class="grid-cell-add-label">Unscheduled</span>
@@ -516,9 +596,9 @@
 	/* A block header starts a group; a little air above every one but the first.
 	   Tabular digits keep the times lined up down a column. */
 	.grid-cell-block-header {
-		/* Start the header where task text starts (the row's 4px padding plus the
-		   checkbox and its gap), so its time lines up with the task text under it. */
-		padding-left: calc(4px + var(--kairos-meta-indent));
+		/* Flush left: the header starts where a task row starts (its 4px
+		   padding, the checkbox's left edge), not indented to the task text. */
+		padding-left: 4px;
 		/* Room at the right end for the group's "+", so it never covers the title. */
 		padding-right: 24px;
 		/* The same type as the task text. */
@@ -526,8 +606,11 @@
 		line-height: 1.4;
 		font-variant-numeric: tabular-nums;
 	}
+	/* Dim like a block's start time: it labels where the tasks are, it isn't
+	   one of them. */
 	.grid-cell-block-header.unscheduled {
 		font-style: italic;
+		color: var(--text-faint);
 	}
 	/* A block's own header: it anchors its action stack, and a long-press on
 	   it lifts the block, so no text selection paints under the press. */
@@ -549,7 +632,13 @@
 		overflow-wrap: anywhere;
 		touch-action: none;
 	}
+	/* The start time, smaller and lighter than the title so the title leads.
+	   The rename state wears it too, so the header doesn't jump. */
 	.grid-cell-block-time {
+		font-size: var(--font-ui-smaller);
+		color: var(--text-faint);
+	}
+	.grid-cell-block-label .grid-cell-block-time {
 		margin-right: 0.3em;
 	}
 	/* A click on the title renames the block, as on a task or the timeline. */
@@ -595,11 +684,8 @@
 		background: var(--background-primary);
 		z-index: 2;
 	}
-	/* Stack layout: the "+" takes the corner, then delete; association rises
-	   above them. */
-	.grid-cell-block-actions:global(.kairos-action-stack) .grid-cell-block-action-add {
-		order: -2;
-	}
+	/* Stack layout: delete takes the corner, as on every action stack; the rest
+	   rise above it in DOM order. */
 	.grid-cell-block-actions:global(.kairos-action-stack) .grid-cell-block-action-danger {
 		order: -1;
 	}
@@ -686,7 +772,7 @@
 		height: auto;
 		min-height: 18px;
 		/* Lined up with a real group header (see .grid-cell-block-header). */
-		padding: 0 4px 0 calc(4px + var(--kairos-meta-indent));
+		padding: 0 4px;
 		border: none;
 		border-radius: var(--radius-s);
 		color: var(--text-muted);
@@ -848,5 +934,58 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
+	}
+
+	/* A task just typed, held before it goes behind the
+	   header badge. The bar runs down the wait, then the row lifts away. */
+	.grid-cell-landed {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		padding: 2px 4px;
+		color: var(--text-normal);
+		font-size: 12px;
+		line-height: 1.4;
+		animation: grid-cell-landed-out 300ms ease-in forwards;
+		animation-delay: calc(var(--landed-ms) - 300ms);
+	}
+	.grid-cell-landed-box {
+		flex-shrink: 0;
+		fill: none;
+		stroke: var(--text-faint);
+		stroke-width: 1.5;
+	}
+	.grid-cell-landed-text {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.grid-cell-landed-bar {
+		position: absolute;
+		left: 4px;
+		right: 4px;
+		bottom: 0;
+		height: 2px;
+		border-radius: 1px;
+		background: var(--interactive-accent);
+		transform-origin: left;
+		animation: grid-cell-landed-bar var(--landed-ms) linear forwards;
+	}
+	@keyframes grid-cell-landed-bar {
+		from {
+			transform: scaleX(1);
+		}
+		to {
+			transform: scaleX(0);
+		}
+	}
+	@keyframes grid-cell-landed-out {
+		to {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
 	}
 </style>

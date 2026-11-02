@@ -1,6 +1,6 @@
 <script lang="ts">
 	// A Grid/Gantt row label: the entity name, top-left aligned, with its status
-	// note as a muted subline (hidden when empty), intensity pips beside the name
+	// note as a muted subline (hidden when empty), intensity bars beside the name
 	// when the caller supplies a level, and — for domains — the domain icon on the
 	// right, tinted the domain's color. Hovering the label opens a
 	// portaled info card (description, status + note, active since/until) so the
@@ -9,9 +9,10 @@
 	// Purely presentational: it owns only the hover/popover state. The group
 	// accent stripe is drawn by the parent (it spans multiple rows), not here.
 
-	import type { ISODate } from "../../types";
+	import { formatShortDate } from "../../dayNote";
 	import type { RowLabelInfo } from "./rowLabel";
 	import Portal from "./Portal.svelte";
+	import IntensityBars from "./IntensityBars.svelte";
 
 	let { info }: { info: RowLabelInfo } = $props();
 
@@ -50,14 +51,18 @@
 		if (!hovering) cardStyle = "left: -9999px; top: -9999px;";
 	});
 
-	function fmtDate(iso: ISODate): string {
-		const [y, m, d] = iso.split("-");
-		const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-		return `${Number(d)} ${months[Number(m) - 1]} ${y}`;
-	}
 
 	const statusLabel = $derived(
 		info.status.charAt(0).toUpperCase() + info.status.slice(1),
+	);
+	// The status dot goes before the first line under the name: the note,
+	// else the description, else the name itself.
+	const dotLine = $derived(
+		info.note.trim() !== ""
+			? "note"
+			: info.description.trim() !== ""
+				? "description"
+				: "name",
 	);
 	const rolledUp = $derived(info.rolledUp ?? []);
 	const rolledUpText = $derived(rolledUp.join(", "));
@@ -86,9 +91,7 @@
 					class="row-label-pips"
 					style={info.color ? `color: ${info.color};` : undefined}
 				>
-					{#each [1, 2, 3, 4, 5] as l (l)}
-						<span class="row-label-pip" class:on={info.intensity.level >= l}></span>
-					{/each}
+					<IntensityBars level={info.intensity.level} />
 				</span>
 			{/if}
 		</span>
@@ -99,7 +102,7 @@
 			<!-- Projects shown on this domain's row (#11): they have no row of
 			     their own, so the label keeps them visible. Truncates; the hover
 			     card lists them in full. -->
-			<span class="row-label-note row-label-rollup">+ {rolledUpText}</span>
+			<span class="row-label-note row-label-rollup" title={rolledUpText}>+ {rolledUpText}</span>
 		{/if}
 	</div>
 	{#if info.isDomain}
@@ -122,43 +125,66 @@
 	{/if}
 </div>
 
+{#snippet statusDot()}
+	<span
+		class="rlc-dot"
+		class:active={info.status === "active"}
+		class:archived={info.status === "archived"}
+		role="img"
+		aria-label={statusLabel}
+		title={statusLabel}
+	></span>
+{/snippet}
+
 {#if hovering && hasCardBody}
 	<Portal>
+		<!-- The card in Kairos's own type — a full-height bar in the
+		     entity's color, the name in serif, the status as a dot before the
+		     first line under it, the note and description in the UI font, and the dates as a small
+		     labelled list with intensity drawn as its stacked bars. -->
 		<div class="row-label-card" bind:this={cardEl} style={cardStyle}>
-			<div class="rlc-head">
-				<span
-					class="rlc-accent"
-					style={info.color ? `background: ${info.color};` : undefined}
-				></span>
-				<span class="rlc-name">{info.name}</span>
-			</div>
-			{#if info.description.trim() !== ""}
-				<div class="rlc-desc">{info.description}</div>
-			{/if}
-			<div class="rlc-status">
-				<span class="rlc-status-badge" class:active={info.status === "active"} class:inactive={info.status === "inactive"} class:archived={info.status === "archived"}>
-					{statusLabel}
+			<span
+				class="rlc-accent"
+				style={info.color ? `background: ${info.color};` : undefined}
+			></span>
+			<div class="rlc-body">
+				<span class="rlc-name">
+					{#if dotLine === "name"}{@render statusDot()}{/if}{info.name}
 				</span>
 				{#if info.note.trim() !== ""}
-					<span class="rlc-status-note">{info.note}</span>
+					<div class="rlc-note">{@render statusDot()}{info.note}</div>
+				{/if}
+				{#if info.description.trim() !== ""}
+					<div class="rlc-desc">
+						{#if dotLine === "description"}{@render statusDot()}{/if}{info.description}
+					</div>
+				{/if}
+				{#if info.intensity || info.since !== null || rolledUp.length > 0}
+					<dl class="rlc-facts">
+						{#if info.intensity}
+							<dt>Intensity</dt>
+							<dd>
+								<span
+									class="rlc-bars"
+									style={info.color ? `color: ${info.color};` : undefined}
+								><IntensityBars level={info.intensity.level} /></span>
+								<span class="rlc-dim">({info.intensity.level})</span>
+								<span>on {formatShortDate(info.intensity.on)}</span>
+							</dd>
+						{/if}
+						{#if info.since !== null}
+							<dt>{statusLabel}</dt>
+							<dd>
+								Since {formatShortDate(info.since)}{#if info.until !== null}<span class="rlc-dim">&nbsp;· until {formatShortDate(info.until)}</span>{/if}
+							</dd>
+						{/if}
+						{#if rolledUp.length > 0}
+							<dt>Also here</dt>
+							<dd>{rolledUpText}</dd>
+						{/if}
+					</dl>
 				{/if}
 			</div>
-			{#if info.intensity}
-				<div class="rlc-span">Intensity {info.intensity.level} on {fmtDate(info.intensity.on)}</div>
-			{/if}
-			{#if rolledUp.length > 0}
-				<div class="rlc-rollup">Also shown here: {rolledUpText}</div>
-			{/if}
-			{#if info.since !== null}
-				<div class="rlc-span">
-					{statusLabel} since {fmtDate(info.since)}
-					{#if info.until !== null}
-						· until {fmtDate(info.until)}
-					{:else if info.status === "active"}
-						· ongoing
-					{/if}
-				</div>
-			{/if}
 		</div>
 	</Portal>
 {/if}
@@ -181,7 +207,7 @@
 		flex: 1;
 	}
 
-	/* Name and intensity pips share the first line; the name gives way first. */
+	/* Name and intensity bars share the first line; the name gives way first. */
 	.row-label-line {
 		display: flex;
 		align-items: center;
@@ -191,19 +217,13 @@
 	}
 	.row-label-pips {
 		display: inline-flex;
-		gap: 2px;
 		flex-shrink: 0;
 		/* currentColor is the row's accent, set inline; faint without one. */
 		color: var(--text-faint);
-	}
-	.row-label-pip {
-		width: 5px;
-		height: 5px;
-		border-radius: 50%;
-		border: 1px solid currentColor;
-	}
-	.row-label-pip.on {
-		background: currentColor;
+		/* About the height of the name beside it. */
+		--intensity-bar-width: 12px;
+		--intensity-bar-height: 3px;
+		--intensity-bar-row: 5px;
 	}
 
 	.row-label-name {
@@ -211,6 +231,7 @@
 		font-family: Georgia, "Times New Roman", serif;
 		font-size: 13px;
 		font-weight: 400;
+		line-height: 1.3;
 		color: var(--text-normal);
 		text-align: left;
 		white-space: nowrap;
@@ -222,14 +243,19 @@
 		font-size: 15px;
 	}
 
+	/* Wraps to a second line before it's cut; the full text is on hover. */
 	.row-label-note {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
 		max-width: 100%;
 		font-size: 10px;
+		line-height: 1.3;
 		color: var(--text-muted);
 		text-align: left;
-		white-space: nowrap;
 		overflow: hidden;
-		text-overflow: ellipsis;
+		overflow-wrap: anywhere;
 	}
 
 	.row-label-rollup {
@@ -243,92 +269,95 @@
 		color: var(--text-faint);
 	}
 
-	/* ── Hover card ── */
+	/* ── Hover card (Kairos style) ── */
 	:global(.row-label-card) {
 		position: fixed;
 		z-index: var(--layer-popover);
-		min-width: 160px;
-		max-width: 260px;
+		min-width: 180px;
+		max-width: 270px;
 		height: auto;
-		background: var(--background-primary);
+		display: flex;
+		overflow: hidden;
+		background: var(--background-secondary);
 		border: 1px solid var(--background-modifier-border);
-		border-radius: var(--radius-m);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-		padding: var(--size-4-2) var(--size-4-3);
+		border-radius: var(--radius-s);
+		box-shadow: var(--shadow-s);
 		pointer-events: none;
+	}
+	/* Full-height bar in the entity's color (faint when none is set). */
+	:global(.row-label-card) .rlc-accent {
+		width: 4px;
+		flex-shrink: 0;
+		background: var(--text-faint);
+	}
+	:global(.row-label-card) .rlc-body {
+		flex: 1;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		gap: var(--size-4-2);
+		padding: 12px 14px;
 	}
-	:global(.row-label-card) .rlc-head {
-		display: flex;
-		align-items: stretch;
-		gap: var(--size-4-2);
-	}
-	/* Vertical accent bar in the entity's color (faint when none is set). */
-	:global(.row-label-card) .rlc-accent {
-		width: 3px;
-		border-radius: 2px;
+	:global(.row-label-card) .rlc-dot {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		margin-right: 6px;
+		border-radius: 50%;
+		vertical-align: 0.15em;
 		background: var(--text-faint);
-		flex-shrink: 0;
+	}
+	:global(.row-label-card) .rlc-dot.active {
+		background: var(--color-green);
+	}
+	:global(.row-label-card) .rlc-dot.archived {
+		background: var(--color-red);
 	}
 	:global(.row-label-card) .rlc-name {
+		margin: 1px 0 6px;
 		font-family: Georgia, "Times New Roman", serif;
-		font-size: var(--font-ui-medium);
+		font-size: 18px;
 		font-weight: 400;
+		line-height: 1.2;
 		color: var(--text-normal);
+	}
+	:global(.row-label-card) .rlc-note {
+		font-size: var(--font-ui-small);
+		color: var(--text-normal);
+		line-height: var(--line-height-tight);
 	}
 	:global(.row-label-card) .rlc-desc {
+		margin-top: 2px;
 		font-size: var(--font-ui-smaller);
 		color: var(--text-muted);
 		line-height: var(--line-height-tight);
 	}
-	:global(.row-label-card) .rlc-status {
+	:global(.row-label-card) .rlc-facts {
+		display: grid;
+		grid-template-columns: auto 1fr;
+		gap: 5px 12px;
+		align-items: center;
+		margin: 10px 0 0;
+		padding-top: 8px;
+		border-top: 1px solid var(--background-modifier-border);
+		font-size: var(--font-ui-smaller);
+		font-variant-numeric: tabular-nums;
+	}
+	:global(.row-label-card) .rlc-facts dt {
+		color: var(--text-muted);
+	}
+	:global(.row-label-card) .rlc-facts dd {
+		margin: 0;
 		display: flex;
 		align-items: center;
-		gap: var(--size-4-2);
-		flex-wrap: wrap;
-	}
-	/* Muted "chip": tinted 20% fill behind a full-opacity border and darker,
-	   legible text — never bright-on-bright. */
-	:global(.row-label-card) .rlc-status-badge {
-		font-size: 0.7em;
-		font-weight: var(--font-semibold);
-		text-transform: capitalize;
-		letter-spacing: 0.5px;
-		padding: 1px var(--size-4-2);
-		border-radius: var(--radius-s);
-		color: var(--text-muted);
-		background: color-mix(in srgb, var(--text-faint) 20%, transparent);
-		border: 1px solid var(--text-faint);
-	}
-	:global(.row-label-card) .rlc-status-badge.active {
-		color: color-mix(in srgb, var(--color-green) 75%, var(--text-normal));
-		background: color-mix(in srgb, var(--color-green) 20%, transparent);
-		border-color: var(--color-green);
-	}
-	:global(.row-label-card) .rlc-status-badge.inactive {
-		color: var(--text-muted);
-		background: color-mix(in srgb, var(--text-muted) 20%, transparent);
-		border-color: var(--text-muted);
-	}
-	:global(.row-label-card) .rlc-status-badge.archived {
-		color: color-mix(in srgb, var(--color-red) 75%, var(--text-normal));
-		background: color-mix(in srgb, var(--color-red) 20%, transparent);
-		border-color: var(--color-red);
-	}
-	:global(.row-label-card) .rlc-status-note {
-		font-size: var(--font-ui-smaller);
+		gap: 5px;
+		min-width: 0;
 		color: var(--text-normal);
 	}
-	:global(.row-label-card) .rlc-rollup {
-		font-size: var(--font-ui-smaller);
+	:global(.row-label-card) .rlc-bars {
+		display: inline-flex;
 		color: var(--text-muted);
-		line-height: var(--line-height-tight);
 	}
-	:global(.row-label-card) .rlc-span {
-		font-size: var(--font-ui-smaller);
+	:global(.row-label-card) .rlc-dim {
 		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
 	}
 </style>

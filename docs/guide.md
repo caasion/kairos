@@ -2,9 +2,11 @@
 
 How to do things in Kairos, grouped by what you're trying to do. If you haven't used Kairos before, start with [Getting started](getting-started.md).
 
+Tasks and blocks keep their actions in their top-right corner. Point at a task or block, and a small colored fold appears in that corner, growing as you get closer. Move to the fold to see the actions. You can also right-click any task or block.
+
 ## Plan a day (Day and Week views)
 
-The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in its header (**Days before today**, **Days after today**).
+The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in the tab's header (**Days before today**, **Days after today**). The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
 
 **Blocks**
 
@@ -15,7 +17,7 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 - **Resize it:** drag its top or bottom edge.
 - **Select several:** Shift+click or Ctrl/Cmd+click them, then drag any one to move them all.
 - **Delete it:** point at its top-right corner and select **Delete block**, or select it and press **Delete**. Deleting a block deletes its notes; its tasks move to Unscheduled.
-- **Associate it with a project or domain:** right-click it and select **Add association**. Type a name that doesn't exist yet to create it: select **Create project** or **Create domain**.
+- **Associate it with a project or domain:** point at its top-right corner, or right-click it, and select **Add association**. Type a name that doesn't exist yet to create it: select **Create project** or **Create domain**.
 
 **Tasks**
 
@@ -24,7 +26,7 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 - **Check it off:** select its checkbox. Each click moves it along: open → half-done → done → open.
 - **Cancel it:** press and hold its checkbox, or right-click and select **Mark cancelled**.
 - **Move it:** press and hold its text, then drag it to another block. Drop it on **Unscheduled** to take its time away, or on empty time to make a new 30-minute block around it. Hold **Ctrl/Cmd** to drop a copy instead.
-- **Move it to another block without dragging:** right-click and select **Nest under block**.
+- **Move it to another block without dragging:** point at its top-right corner, or right-click it, and select **Move to another block** (**Nest under block** for an unscheduled task).
 - **Give it its own association:** point at its top-right corner and select **Add association**. Without one, a task belongs to its block's project or domain.
 
 **Notes**
@@ -36,20 +38,25 @@ A note records what happened in a block, like "Ran late, skipped the review".
 
 **When a block is too small for its tasks**, its last row says "N more". Point at it or tap it, and the block grows to show everything.
 
-**Unscheduled** appears above the timeline when a day has tasks without a time, and whenever you're dragging a task.
+Above the timeline, a row of pills holds what isn't on it yet: **Unscheduled** (tasks without a time), the **Inbox** (tasks left open on an earlier day, and backlog items resurfacing today) and missing routines. The Inbox pill turns amber while tasks are left open (see [Carry unfinished tasks forward](#carry-unfinished-tasks-forward)). Point at a pill to peek at its list. Select it to open the list above the timeline, and select it again to close it. To schedule a task, drag it from the list onto the timeline. The **Unscheduled** pill also shows whenever you're dragging a task; drop on it to take a task out of its block.
+
+Lists are grouped by project or domain. To add a task to **Unscheduled**, select the **+** on a group and type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it.
+
+In the Week view, each day's header has the same **Unscheduled** and **Inbox** badges. Point at one to see its list. While you drag a task, an Unscheduled strip shows under the headers; drop on a day's part of it to take the task out of its block.
 
 ## Triage in the Grid
 
 The Grid has one row per project and domain, and one column per day. Use it to see what you're working on and when, and to move things around.
 
 - **Rows:** projects without a domain come first, then each domain followed by its projects. **Unassociated** at the bottom holds tasks with no project or domain.
-- **Cells:** tasks are grouped under their block's time and title. Tasks with no time are under **Unscheduled**, last.
+- **Cells:** tasks are grouped under their block's time and title. Tasks with no time are under **Unscheduled**, last. To keep them out of the cells, turn off **Show unscheduled tasks in the grid** in the Grid's gear menu; they're then listed behind the **Unscheduled** badge on each date.
+- **Inbox:** each date has an **Inbox** badge, the same as in the Week view.
 - **Dimmed cells** are days when that project or domain wasn't active. You can't add to them.
 
 **Adding and moving**
 
-- **Add a task to a block:** point at the top-right corner of the block's header and select **Add task to …**.
-- **Add a task without a time:** select the **+** in the cell's corner, or the **+** on its Unscheduled header.
+- **Add a task to a block:** point at the top-right corner of the block's header and select **Add task**. A block header has the same corner actions as a block in the Day view.
+- **Add a task without a time:** select the **+** in the cell's corner, or the **+** on its Unscheduled header, and type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it.
 - **Move a task:** press and hold its text, then drag.
   - Onto a block in the same cell: it moves into that block.
   - Onto another row: it changes project or domain.
@@ -80,7 +87,7 @@ The backlog holds things you mean to do but haven't given a day. It lives in one
 - **Edit an item:** select its text. Clear the text to delete it.
 - **Bring it back on a date:** point at the item's right edge and select **Set a resurface date**.
 
-On that date the item appears in your day: in the Day view under **Resurfacing**, and in the Grid on its row. Select its **arrow** to schedule it into that day as a task. Point at its corner and select **Resurface later** to push it back.
+On that date the item appears in that day's **Inbox**: under the Inbox pill in the Day view, and behind the date's Inbox badge in the Week and Grid views. Select its **arrow** to schedule it into that day as a task. Point at its corner and select **Resurface later** to push it back.
 
 To send a task back to the backlog, right-click it and select **Move to backlog**.
 
@@ -97,27 +104,28 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 Kairos doesn't fill your days by itself. When a day is missing routines, it tells you:
 
-- In the Day view, a bar at the top says how many are missing.
+- In the Day view, a pill above the timeline shows the count.
 - In the Week and Grid views, a small pill on the day's header shows the count.
 
-Point at the bar or pill to see the list. Select a routine's arrow to add it, or **Add all**. If you delete a routine from a day after that, Kairos won't offer it again for that day.
+Point at the pill to see the list. Select a routine's arrow to add it, or **Add all**. If you delete a routine from a day after that, Kairos won't offer it again for that day.
 
 You can also run **Apply routines to this day** from the command palette. To add routines automatically whenever a daily note is created, turn on **Settings → Kairos → Add routines to new daily notes**.
 
 **Edit routines**
 
-The Routines view groups routines by when they repeat. Select a time or title to edit it, or point at a routine's corner to change when it repeats, its association, or to delete it. Select **Open file** to edit `Routines.md` by hand.
+The Routines view groups routines by when they repeat. Select a time or title to edit it, or point at a block's top-right corner to add a task, change its association or when it repeats, or delete it. Unscheduled has only a **+**, to add a task. Select **Open file** to edit `Routines.md` by hand.
 
 A routine that belongs to an inactive project or domain is paused, and shows as **Paused**. It comes back when the project is active again.
 
 ## Carry unfinished tasks forward
 
-Open and half-done tasks from your most recent earlier note show in today's Day view under **Left from** that day. Nothing moves until you choose:
+Open and half-done tasks from your most recent earlier note wait in today's **Inbox**. In the Day view, a line under the pills says **Left open** and how many, or **Left open on Fri** when they're from before yesterday. Select **Review** to see them. In the Week and Grid views, they're behind today's Inbox badge. Nothing moves until you choose:
 
 - **Mark it done:** select the checkbox. The task is ticked on the day you left it, for something you did but forgot to tick. Long-press to cancel it instead.
+- **Cancel it:** select its **✕**.
 - **Bring it to today:** select the arrow. The task moves into today's **Unscheduled**.
-- **Bring all** moves every task in the list.
-- **Leave the rest** keeps the remaining tasks open where they are and hides the list for today.
+- **Bring all** (the stacked arrows) moves every task in the list.
+- **Leave the rest** (the struck-through list) keeps the remaining tasks open where they are and hides the list for today.
 
 Done and cancelled tasks are never listed. A task that today already has, such as a routine task, isn't listed either.
 
@@ -151,7 +159,7 @@ The Timeline view draws each project's active stretches as bars. Switch between 
 
 - **Add an active stretch:** drag across an empty part of a row. It covers every day you drag over, including the one you let go on. A single click starts an open-ended one.
 - **Move its start or end:** drag the bar's left or right edge.
-- **Set its intensity:** select one of the five dots on the bar, or select the bar and press **0** to **5**. Select the current level again to clear it.
+- **Set its intensity:** three small lines on the bar show the level, lighting from the bottom: 1 lights the bottom line, 2 adds a dim one above it, and 5 lights all three. Select a line to light up to it (select the top lit line again to dim it), select the bar and press **0** to **5**, or right-click it and choose **Intensity**.
 - **Edit its intention:** double-click the bar.
 - **More:** right-click the bar for exact dates and **Delete**.
 
@@ -164,4 +172,4 @@ Kairos is desktop-first. On a phone or tablet:
 - Tap a checkbox to change it; press and hold it to cancel the task.
 - Tap text to edit it; press and hold, then move, to drag a task.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
-- Some actions are only in right-click menus, so they aren't available on touch yet: a block's association, **Repeat…** on a block, **Move to backlog**, and the Grid's row menus.
+- Some actions are only in right-click menus, so they aren't available on touch yet: **Move to backlog** and the Grid's row menus.

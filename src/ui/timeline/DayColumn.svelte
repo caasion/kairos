@@ -14,7 +14,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
-	import { deleteBlock, deleteBlocks, makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
+	import { addTaskToUnscheduled, deleteBlock, deleteBlocks, makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
 	import { moveTaskToBacklog } from "../../backlogActions";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
@@ -259,6 +259,17 @@
 			status: " ",
 		};
 		real.tasks = [...real.tasks, task];
+		writeToDisk();
+	}
+
+	// The Week view's Unscheduled "+" for this column: a new task in the day's
+	// Unscheduled, as the Grid's does. A day with no note gets one first.
+	export async function addUnscheduledTask() {
+		const forDate = date;
+		const path = notePath ?? (await ensureNoteForDate(forDate));
+		if (date !== forDate) return;
+		notePath = path;
+		blocks = addTaskToUnscheduled(blocks, path, "New task", undefined, nextDraftLine());
 		writeToDisk();
 	}
 

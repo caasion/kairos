@@ -55,7 +55,7 @@ Each of these is optional. The [Guide](guide.md) covers them all.
 
 ## Things that are easy to miss
 
-- **Point at a row's top-right corner** to see its actions.
+- **Point at a row's top-right corner** to see its actions. A small colored fold marks the spot when you point at the row.
 - **Right-click** almost anything for more.
 - **Press and hold a task's text, then move,** to drag it. A quick click edits the text.
 - **Hold Ctrl/Cmd while dropping** to copy instead of move.

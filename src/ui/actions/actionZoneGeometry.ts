@@ -66,3 +66,25 @@ export function inActionZone(
 	}
 	return fromRight / leg + fromTop / row.height <= 1;
 }
+
+/**
+ * How close (0 to 1) a pointer at (`clientX`, `clientY`) is to the spot the
+ * zone points at: the top-right corner, or the right edge's middle for a
+ * "right" anchor. 1 is on that spot; 0 is `reach` px away or further, where
+ * `reach` scales with the row (at least 120px) so a wide row's whole right
+ * half counts. Drives the corner hint (the dog-ear), which grows as the
+ * pointer gets closer. 0 outside the row.
+ */
+export function cornerNearness(
+	clientX: number,
+	clientY: number,
+	row: ZoneRect,
+	anchor: ActionZoneAnchor = "top-right",
+): number {
+	const fromRight = row.right - clientX;
+	const fromTop = clientY - row.top;
+	if (fromRight < 0 || fromTop < 0 || fromTop > row.height || fromRight > row.width) return 0;
+	const dy = anchor === "right" ? fromTop - row.height / 2 : fromTop;
+	const reach = Math.max(120, row.width * 0.6);
+	return Math.max(0, 1 - Math.hypot(fromRight, dy) / reach);
+}

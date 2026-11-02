@@ -24,9 +24,12 @@
 		onCancel: () => void;
 		onBring: () => void;
 		onNavigate?: (assoc: Association) => void;
+		/** A short label for where the row came from ("Mon"), shown
+		 *  at the right so Inbox rows from yesterday read apart from backlog ones. */
+		sourceTag?: string;
 	}
 
-	let { task, association, resolved, fromLabel, onDone, onCancel, onBring, onNavigate }: Props =
+	let { task, association, resolved, fromLabel, onDone, onCancel, onBring, onNavigate, sourceTag }: Props =
 		$props();
 
 	const assocLabel = $derived(resolved?.displayName || association?.id || "");
@@ -51,9 +54,21 @@
 			{onCancel}
 		/>
 		<span class="leftover-text" title={task.text}>{task.text}</span>
+		{#if sourceTag}<span class="src-tag" title={`Left open on ${fromLabel}`}><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>{sourceTag}</span>{/if}
+		<!-- Dismiss: cancelled where it was left, as a long-press on the box. -->
+		<button
+			class="leftover-bring leftover-dismiss"
+			aria-label="Cancel it"
+			onclick={(e) => {
+				e.stopPropagation();
+				onCancel();
+			}}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+		</button>
+		<!-- No title: Obsidian already shows the aria-label as the tooltip. -->
 		<button
 			class="leftover-bring"
-			title="Bring to today"
 			aria-label="Bring to today"
 			onclick={(e) => {
 				e.stopPropagation();
@@ -86,6 +101,16 @@
 </div>
 
 <style>
+	/* Where an Inbox row came from, at the row's right. */
+	.src-tag {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex-shrink: 0;
+		font-size: var(--kairos-meta-font-size);
+		color: var(--text-faint);
+		white-space: nowrap;
+	}
 	.leftover {
 		display: flex;
 		flex-direction: column;
@@ -134,5 +159,13 @@
 		background: var(--interactive-accent);
 		color: var(--text-on-accent);
 		box-shadow: none;
+	}
+	/* Dismissing is the quieter answer: faint, and no accent on hover. */
+	.leftover-dismiss {
+		color: var(--text-faint);
+	}
+	.leftover-dismiss:hover {
+		background: var(--background-modifier-hover);
+		color: var(--text-normal);
 	}
 </style>

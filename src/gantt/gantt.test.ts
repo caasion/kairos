@@ -12,6 +12,11 @@ import {
 	getUnitViewport,
 	getViewportWidth,
 	isoWeekNumber,
+	LABEL_PAD_Y,
+	ROW_GAP,
+	ROW_HEIGHT,
+	rowHeightFor,
+	rowTops,
 	shiftDays,
 	startOfQuarter,
 	startOfWeek,
@@ -457,5 +462,18 @@ describe("row visibility", () => {
 		const child = project("Alpha", h(["2026-02-01", "archived"]));
 		const out = visibleEntities(feed([d], [[child]]), AUG.start, AUG.end, TODAY);
 		expect(out.domains).toEqual([]);
+	});
+});
+
+describe("row heights", () => {
+	it("keeps ROW_HEIGHT until the label needs more", () => {
+		expect(rowHeightFor(undefined)).toBe(ROW_HEIGHT);
+		expect(rowHeightFor(ROW_HEIGHT - 2 * LABEL_PAD_Y)).toBe(ROW_HEIGHT);
+		expect(rowHeightFor(47.2)).toBe(48 + 2 * LABEL_PAD_Y);
+	});
+
+	it("stacks rows with a gap between them", () => {
+		expect(rowTops([38, 50, 38], 40)).toEqual([40, 40 + 38 + ROW_GAP, 40 + 38 + 50 + 2 * ROW_GAP]);
+		expect(rowTops([], 40)).toEqual([]);
 	});
 });
