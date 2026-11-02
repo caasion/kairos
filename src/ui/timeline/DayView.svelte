@@ -1411,18 +1411,6 @@
 		<span class="day-range-label">
 			{String(geo.startHour).padStart(2, "0")}:00–{String(geo.endHour).padStart(2, "0")}:00
 		</span>
-		<!-- Touch only (pointer: coarse): select several blocks, and delete them. -->
-		<span class="touch-select-tools">
-			{#if selectMode && selection.size > 0}
-				<IconButton label={`Delete ${selection.size} selected`} icon="trash-2" onclick={() => void deleteSelected()} />
-			{/if}
-			<IconButton
-				label={selectMode ? "Stop selecting" : "Select blocks"}
-				icon="list-checks"
-				pressed={selectMode}
-				onclick={toggleSelectMode}
-			/>
-		</span>
 		<button
 			class="icon-btn follow-btn"
 			class:on={settings.followGrid}
@@ -1452,6 +1440,19 @@
 
 			{#if showControls}
 				<div class="controls-popup">
+					<!-- Touch only (pointer: coarse): select several blocks by tapping
+					     them, where Shift and Ctrl/Cmd don't exist (spec decision 138). -->
+					<label class="controls-field controls-touch-only">
+						<span class="controls-label">Select several blocks</span>
+						<input
+							type="checkbox"
+							checked={selectMode}
+							onchange={() => {
+								toggleSelectMode();
+								showControls = false;
+							}}
+						/>
+					</label>
 					<label class="controls-field">
 						<span class="controls-label">Start hour</span>
 						<input
@@ -1490,6 +1491,15 @@
 			{/if}
 		</div>
 	</div>
+
+	<!-- Select mode's bar, under the header while it's on (touch only). -->
+	{#if selectMode}
+		<div class="select-bar">
+			<span class="select-bar-label">{selection.size === 0 ? "Tap blocks to select them" : `${selection.size} selected`}</span>
+			<IconButton label="Delete selected blocks" icon="trash-2" onclick={() => void deleteSelected()} />
+			<button class="select-bar-done" onclick={toggleSelectMode}>Done</button>
+		</div>
+	{/if}
 
 	<!-- Each tray list, rendered in its pill's hover peek or, toggled on with a
 	     click, in the view under the strip. -->
@@ -1976,14 +1986,31 @@
 	}
 
 	/* "Follow the grid" is on: the link icon takes the accent. */
-	.touch-select-tools {
+	/* Touch only: the select-mode switch in the gear popover. On a phone the
+	   hour range is in that popover too, so the header drops it for room. */
+	.controls-touch-only {
 		display: none;
 	}
 	@media (pointer: coarse) {
-		.touch-select-tools {
+		.controls-touch-only {
 			display: flex;
-			align-items: center;
 		}
+		.day-range-label {
+			display: none;
+		}
+	}
+	.select-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 10px;
+		border-bottom: 1px solid var(--background-modifier-border);
+		background: var(--background-secondary);
+		flex-shrink: 0;
+	}
+	.select-bar-label {
+		flex: 1;
+		color: var(--text-muted);
 	}
 
 	.follow-btn.on {
