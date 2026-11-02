@@ -657,6 +657,7 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <span
           class="tl-title"
+          data-kairos-tour="block-title"
           role="textbox"
           tabindex="0"
           onpointerdown={(e) => e.stopPropagation()}

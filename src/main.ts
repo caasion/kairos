@@ -23,6 +23,8 @@ import { RoutinesStore } from './routines/routinesStore';
 import { registerRoutines } from './routines/register';
 import { RoutinesFeed } from './routines/routinesFeed';
 import { ViewLinks } from './viewLinks';
+import { NEW_TOUR, Tour } from './onboarding/tour';
+import type { TourState } from './onboarding/tour';
 
 /**
  * A request to reveal a specific block in the Day view. Pushed by the Grid view
@@ -101,6 +103,14 @@ export default class Kairos extends Plugin {
 	 * date. Stores again, so the leaves stay decoupled. See viewLinks.ts.
 	 */
 	links = new ViewLinks();
+
+	/**
+	 * The guided tour's progress, saved beside the settings under `tour` but
+	 * kept out of `settings` so it never shows up as a setting. See
+	 * onboarding/tour.ts.
+	 */
+	tourState: TourState = NEW_TOUR;
+	tour = new Tour(this);
 
 	async onload() {
 		await this.loadSettings();
@@ -218,7 +228,14 @@ export default class Kairos extends Plugin {
 			callback: () => void preparer.applyToCurrentDay(),
 		});
 
+		this.addCommand({
+			id: 'start-tour',
+			name: 'Start tour',
+			callback: () => this.tour.start(),
+		});
+
 		this.addSettingTab(new KairosSettingTab(this.app, this));
+		this.tour.load();
 	}
 
 	onunload() {
@@ -378,21 +395,29 @@ export default class Kairos extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<KairosSettings>,
-		);
+		const data = (await this.loadData()) as
+			| (Partial<KairosSettings> & { tour?: TourState })
+			| null;
+		const { tour, ...saved } = data ?? {};
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+		// No data at all is a new install; data without a tour predates it.
+		this.tourState = tour ?? (data ? { status: 'announce', step: 0 } : NEW_TOUR);
 		const store = writable(this.settings);
 		this.settings$ = { subscribe: store.subscribe };
 		this.setSettings = store.set;
 	}
 
 	async saveSettings() {
-		await this.saveData(this.settings);
+		await this.saveData({ ...this.settings, tour: this.tourState });
 		// Republish so subscribed UI re-derives. A fresh object identity guarantees
 		// the store notifies even though `settings` was mutated in place.
 		this.setSettings({ ...this.settings });
+	}
+
+	/** Record the tour's progress. Set before the write, so readers see it at once. */
+	async saveTourState(state: TourState) {
+		this.tourState = state;
+		await this.saveData({ ...this.settings, tour: state });
 	}
 
 	/**

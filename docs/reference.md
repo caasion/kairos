@@ -190,6 +190,7 @@ status:
 - Open timeline view
 - Open routines view
 - Apply routines to this day
+- Start tour: a short guided tour that plans a piece of your day
 
 ## Settings
 
