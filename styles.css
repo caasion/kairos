@@ -141,6 +141,15 @@ textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
 .kairos-touch-menu {
 	order: 99;
 }
+/* A selected row's bar sits just above it, not over it: the row is what a
+   second tap edits and a hold drags, and on a short block an overlaid bar
+   covered its title and its resize handle. `body` outranks a component's
+   own scoped bar position. */
+body .kairos-touch-selected > .kairos-action-bar {
+	top: auto;
+	bottom: calc(100% + 4px);
+	z-index: var(--layer-popover);
+}
 @media (pointer: coarse) {
 	body .kairos-action-bar > button {
 		min-width: 32px;
