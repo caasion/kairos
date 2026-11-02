@@ -82,6 +82,8 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "../timeline/LeftoverTask.svelte";
 	import HeaderBadge from "../timeline/HeaderBadge.svelte";
+	import IconButton from "../components/IconButton.svelte";
+	import { showDayMenu } from "../dayMenu";
 	import AssocGroup from "../components/AssocGroup.svelte";
 	import { groupByAssoc } from "../timeline/groupByAssoc";
 	import TaskRow from "../task/Task.svelte";
@@ -1523,6 +1525,7 @@
 						if (e.ctrlKey || e.metaKey) void openDayNote(date);
 						else showDay(date);
 					}}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
 				>
 					<span class="dow-label">{dowLabel(date)}</span>
 					<span class="date-number">{dayNumber(date)}</span>
@@ -1533,6 +1536,14 @@
 						<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
 					{/if}
 				</button>
+				<!-- The day's menu, also on right-click; the ⋯ shows it's there. -->
+				<div class="grid-colhead-menu">
+					<IconButton
+						label="Day actions"
+						icon="more-horizontal"
+						onclick={(e) => showDayMenu(e, date, routineActions)}
+					/>
+				</div>
 				<!-- The day's lists as badges, bottom-right of its date cell:
 				     Unscheduled, Inbox, then routines (listed on hover, each addable). -->
 				{#if usBadge || inCount > 0 || (offered && offered.count > 0)}
@@ -1968,6 +1979,24 @@
 	.grid-colhead-wrap > .grid-colhead {
 		flex: 1;
 		min-width: 0;
+	}
+	/* The ⋯ for the day's menu, beside the in-day dot; shown while the header
+	   is pointed at, and always where there's no hover (DateCard's rule). */
+	.grid-colhead-menu {
+		position: absolute;
+		top: var(--size-2-1);
+		right: var(--size-4-3);
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+	.grid-colhead-wrap:hover .grid-colhead-menu,
+	.grid-colhead-menu:focus-within {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.grid-colhead-menu {
+			opacity: 1;
+		}
 	}
 	.grid-badges {
 		position: absolute;

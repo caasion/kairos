@@ -325,6 +325,16 @@ body .kairos-action-stack:focus-within > * {
 	overflow-y: auto;
 }
 
+/* ── Regenerate routines (ui/routines/RegenerateModal.ts) ── */
+.kairos-regen-desc {
+	margin-top: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.kairos-regen-modal {
+	width: min(760px, 92vw);
+}
+
 /* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
 /* A popover too (.kairos-popover), made from TypeScript. */
 .kairos-peek {

@@ -59,6 +59,10 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `Datepicker` | The calendar behind a header's date. | View headers |
 | `Popover` | The panel that opens over a view: Obsidian's menu edge (a firmer border, a larger shadow), the `--kairos-radius-l` corner, its children in a column. `placement` is `"portal"` (the default: moved to `<body>` and fixed, placed with `top`/`left` in `style`), `"anchored"` (absolute in its parent) or `"inline"` (in the flow, for a wrapper that places it). `surface="secondary"` is for Kairos's own lists and cards; `padding` and `gap` take `s`/`m`/`l` steps of Obsidian's spacing; `overflow` clips or scrolls; `layer="menu"` lifts pickers over modals. When it opens, closes and where it goes stay with its owner. TypeScript-made panels add the `kairos-popover` class. | Header badge lists, the routines list, tray lists, pickers, hover cards, the calendar, header settings, the full-text peek |
 | `Portal` | Renders its children at `<body>`, for anything else that mustn't be clipped. | The calendar's fixed wrapper, the Gantt date card |
+| `DateCard` | A day column's header card: an uppercase label over a large serif value, badges in its bottom-right corner, `today` tint and underline. A button with `onclick`, a plain card without. | Week view date headers |
+| `HourGutter` | The hour labels down the left of a multi-day timeline; `corner` is the matching empty cell in the header row. | Week view |
+| `HourLines` | The faint hour lines drawn once behind a multi-day timeline's columns. | Week view |
+| `TimelineBlock` (in `src/ui/timeline/`) | A block on a timeline, with its time, association and tasks. `readonly` draws the same block with nothing editable and `onSelect` on click; `muted` greys it. | Day and Week views; the Regenerate routines preview, read-only |
 
 A block's header in a list (the Grid cell's and the Routines view's `HH:MM Title` line) is not a group heading. It names a block, not an association, and it is a block: it drags, holds, renames and carries the block's action stack. Don't put it on `AssocGroup`.
 
@@ -68,3 +72,4 @@ These still exist as several copies and are the next components to make, in this
 
 1. **Row buttons**: the corner action bars of tasks, nudges and backlog entries, and the leftover and nudge arrows, onto `IconButton`.
 2. **Routine suggestions**: the rows in the Routines alert panel (`RoutinesAlert.svelte`) onto `ItemRow`.
+3. **Date card and hour gutter everywhere**: the Grid's date headers are still their own copy of `DateCard` (with a Day-view dot and a spring highlight to add as props), and the Day view still draws its own hour gutter and lines.
