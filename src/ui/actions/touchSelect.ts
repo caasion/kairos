@@ -98,7 +98,9 @@ export function touchSelect(host: HTMLElement, opts: TouchSelectOptions) {
 
 	function onOutsidePress(event: PointerEvent) {
 		const target = event.target as Node | null;
-		if (target && host.contains(target)) return;
+		// The bar counts as the row's even when it isn't its child (a stack
+		// moved to the body), so a press on ⋯ doesn't drop the selection.
+		if (target && (host.contains(target) || opts.findBar()?.contains(target))) return;
 		deselect();
 	}
 
