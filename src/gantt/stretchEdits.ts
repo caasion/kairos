@@ -120,6 +120,38 @@ export function clampStretchEdit(
 }
 
 /**
+ * The archive date that holds a gesture back, when `to` pushes past the
+ * gesture's bound and an `archived` record is what sets that bound. The
+ * Timeline shows it while dragging, since a bar that stops short of the pointer
+ * otherwise gives no reason. Null when nothing holds the gesture back, or
+ * something other than an archive does (a neighbour, a gap, the bar's own end).
+ */
+export function archiveStop(
+	history: readonly StatusRecord[],
+	start: ISODate,
+	kind: StretchEditKind,
+	to: ISODate,
+	today: ISODate,
+): ISODate | null {
+	const at = locate(history, start);
+	const b = stretchBounds(history, start, kind, today);
+	if (!at || !b) return null;
+	const { h, i, closer, gapAfter } = at;
+	const archived = (r: StatusRecord | undefined) => (r?.status === "archived" ? r.date : null);
+
+	if (b.max && to > b.max && kind !== "start") {
+		// Rightward, the bound comes from the record after the stretch's own end.
+		return archived(gapAfter ? h[i + 2] : closer);
+	}
+	if (b.min && to < b.min && kind !== "end") {
+		// Leftward, from the record before the stretch, or before its gap.
+		const p = h[i - 1];
+		return archived(p?.status === "inactive" ? h[i - 2] : p);
+	}
+	return null;
+}
+
+/**
  * Apply a gesture to the stretch opening at `start` and return the new
  * history (sorted; the write path normalizes it). `to` is clamped first. The
  * same history comes back when nothing changes or the stretch is unknown.
