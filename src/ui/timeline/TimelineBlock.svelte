@@ -61,6 +61,8 @@
 		// travels along so the parent can locate the task and lift its inherited
 		// association before dropping it.
 		onMoveTaskToBacklog: (owner: Block, task: Task) => void;
+		/** Put a copy of a task right after it (the task menu's Duplicate). */
+		onDuplicateTask?: (owner: Block, task: Task) => void;
 		// A long-press on a task body began a drag-to-nest gesture. The parent (the
 		// canvas owner) takes over window pointer tracking, previews a drop slot,
 		// and commits the nest on release. Reports the source block + task + press.
@@ -113,6 +115,7 @@
 		onEditTaskAssoc,
 		onNestTask,
 		onMoveTaskToBacklog,
+		onDuplicateTask,
 		onTaskGrab,
 		dragTaskLine,
 		dropSlot,
@@ -513,6 +516,7 @@
       onAddNote: () => beginNoteAdd(),
       onEditAssoc: () => requestEditAssoc(),
       onDelete: () => onDelete(block),
+      onOpenNote: block.assoc ? () => onNavigate(block.assoc!) : undefined,
     });
     menu.showAtMouseEvent(event);
   }
@@ -559,6 +563,7 @@
     onNest={(rect) => onNestTask(block, task, rect)}
     nestLabel="Move to another block"
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
+    onDuplicate={onDuplicateTask ? () => onDuplicateTask(block, task) : undefined}
     onRepeat={() => requestRepeat(task, block)}
     onGrab={(e) => {
       collapse();

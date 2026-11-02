@@ -25,7 +25,7 @@
 	} from "./taskDrag";
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
-	import { dropTaskOnTimeline } from "./dropTask";
+	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
 	import type { DragPreview, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		dateFromISO,
@@ -952,6 +952,7 @@
 				onNestTask={openBlockPicker}
 				onMoveTaskToBacklog={(owner, task) =>
 					void handleMoveTaskToBacklog(owner, task)}
+				onDuplicateTask={(owner, task) => void duplicateTask(index, date, owner, task)}
 				onTaskGrab={onTaskGrab}
 				{dragTaskLine}
 				{dropSlot}

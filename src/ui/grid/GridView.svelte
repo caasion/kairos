@@ -48,7 +48,7 @@
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { hitTestGridCell, hitTestGridGroup, hitTestTimeline, type BlockDragState, type GridDropSlot, type GridGroupDrop, type TaskDragState } from "../timeline/taskDrag";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
-	import { dropTaskOnTimeline } from "../timeline/dropTask";
+	import { dropTaskOnTimeline, duplicateTask } from "../timeline/dropTask";
 	import {
 		blockLit,
 		hoverBlockTarget,
@@ -1643,6 +1643,7 @@
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
+								onDuplicate={(task) => void duplicateTask(index, task.date, task.block, task)}
 								onCreate={() => onCreate(row, date)}
 								draftOpen={draftInCell(row, date)}
 								onDraftSubmit={(text: string) => void addDraft(row, date, text)}

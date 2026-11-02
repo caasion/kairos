@@ -66,6 +66,8 @@
 		onNest: (task: ResolvedTask, anchor: DOMRect) => void;
 		// Move a task off this day and back into the backlog.
 		onMoveToBacklog: (task: ResolvedTask) => void;
+		/** Put a copy of a task right after it (the task menu's Duplicate). */
+		onDuplicate?: (task: ResolvedTask) => void;
 		// A long-press on a regular task began a grid drag-to-reschedule.
 		onTaskGrab?: (task: ResolvedTask, event: PointerEvent) => void;
 		// A long-press on a block's header began a block drag.
@@ -123,6 +125,7 @@
 		onRevealBlock,
 		onNest,
 		onMoveToBacklog,
+		onDuplicate,
 		onTaskGrab,
 		onBlockGrab,
 		dragTaskKey,
@@ -244,6 +247,7 @@
 			onEditAssoc: () => editBlockAssoc(group),
 			onDelete: () => onDeleteBlock?.(block),
 			onReveal: block.time ? () => onRevealBlock(block) : undefined,
+			onOpenNote: block.assoc ? () => onNavigate(block.assoc!) : undefined,
 		});
 		menu.showAtMouseEvent(e);
 	}
@@ -323,6 +327,7 @@
 				onNest={(rect) => onNest(task, rect)}
 				nestLabel={isUnscheduledBlock(task.block) ? "Nest under block" : "Move to another block"}
 				onMoveToBacklog={() => onMoveToBacklog(task)}
+				onDuplicate={onDuplicate ? () => onDuplicate(task) : undefined}
 				onRepeat={() => requestRepeat(task, task.block)}
 				trailing={chipFor?.(task)}
 				onGrab={onTaskGrab ? (e) => grabOf(task, e) : undefined}

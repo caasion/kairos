@@ -72,7 +72,7 @@
 	} from "./taskDrag";
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
-	import { dropTaskOnTimeline } from "./dropTask";
+	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		type Gesture,
@@ -1638,6 +1638,7 @@
 							onSetNoteText={handleSetNoteText}
 							onMoveTaskToBacklog={(owner, task) =>
 								void handleMoveTaskToBacklog(owner, task)}
+							onDuplicateTask={(owner, task) => void duplicateTask(index, date, owner, task)}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
 							onNestTask={openBlockPicker}

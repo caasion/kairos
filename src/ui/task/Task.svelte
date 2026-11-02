@@ -58,6 +58,9 @@
 		// backlog entry and drops the day task. Omitted where there is no backlog
 		// to move it to (the backlog view itself).
 		onMoveToBacklog?: () => void;
+		// Put a copy of this task right after it ("Duplicate", spec decision 129).
+		// Omitted where a copy has nowhere to go (a routine template).
+		onDuplicate?: () => void;
 		// Turn this task into a routine ("Repeat…"): opens the rule picker and adds
 		// a routine built from the task. The task itself stays as the first one.
 		onRepeat?: () => void;
@@ -111,6 +114,7 @@
 		onNest,
 		nestLabel = "Nest under block",
 		onMoveToBacklog,
+		onDuplicate,
 		onRepeat,
 		meta,
 		onGrab,
@@ -234,12 +238,32 @@
 			);
 		}
 
+		if (onDuplicate) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Duplicate")
+					.setIcon("copy")
+					.onClick(() => onDuplicate()),
+			);
+		}
+
 		if (onMoveToBacklog) {
 			menu.addItem((item) =>
 				item
 					.setTitle("Move to backlog")
 					.setIcon("inbox")
 					.onClick(() => onMoveToBacklog()),
+			);
+		}
+
+		// The project or domain's note: Ctrl/Cmd+click on the association does
+		// this with a mouse; touch has no modifier (spec decision 128).
+		if (association && onNavigate) {
+			menu.addItem((item) =>
+				item
+					.setTitle("Open note")
+					.setIcon("file-text")
+					.onClick(() => onNavigate()),
 			);
 		}
 
