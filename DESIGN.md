@@ -47,16 +47,17 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `Pill` | A small framed button with an icon, an optional label and a count, that opens a list. `tone` is `neutral`, `warn` (waiting on a decision) or `accent` (offered routines, a filter that's on). `open` gives it the hover look while its list shows, `pressed` marks a list toggled into the view, `dropTarget` a drag over it. `size="s"` for day headers, `"m"` for the Day view's tray and view headers. Name one that opens a popover with `hiddenLabel`. | Tray pills (`TrayPill`), day-header badges (`HeaderBadge`), the routines pill, the Backlog's filter |
 | `Tag` | A short word in small capitals marking a row's state. Not a control. `tone="accent"` fills it, for the current row. | A project's status, "inactive" and "unscheduled" in pickers, "current" in status history |
 | `kairos-count` class | A count beside a name: label size, tabular figures, faint. Inside a `Pill` it takes the pill's colour. A class rather than a component, since it's one `<span>`. | Every number that says how many things a name holds |
-| `AssocGroup` | A group heading for one project or domain: its icon, the name in serif, a count, an optional "+", and a bar in the domain colour down the whole group. | Unscheduled, the Inbox, the Backlog |
+| `AssocGroup` | A group heading and its rows: an icon, the name in serif, the count right after it, an optional "+", and a bar in the domain colour down the whole group. Built for a project or domain; a group that isn't one (a routine's repeat) passes `label` and `icon` and gets a plain bar. `meta` adds a description or status after the count, `actions` adds buttons before the "+". `onStartRename`/`editing`/`onRename` rename it in place, `onOpen` or `onNavigate` open it on Ctrl/Cmd+click, `dim` fades an inactive group, `sticky` keeps the heading in view. | Unscheduled, the Inbox, the Backlog, the Projects view's domains, the Routines view's repeat groups |
 | `RowLabel` | A project's or domain's name, note and intensity in the Grid and Timeline row-label column, with its hover card. | Grid and Timeline rows |
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
 | `Datepicker` | The date navigator and its calendar. | View headers |
 | `Portal` | Renders its children at `<body>`, for popovers that mustn't be clipped. | Popovers, pickers |
+
+A block's header in a list (the Grid cell's and the Routines view's `HH:MM Title` line) is not a group heading. It names a block, not an association, and it is a block: it drags, holds, renames and carries the block's action stack. Don't put it on `AssocGroup`.
 
 ## Next
 
 These still exist as several copies and are the next components to make, in this order:
 
 1. **Popover**: the panel behind header badges, pickers and hover cards (border, shadow, radius, padding).
-2. **Group heading**: move the Projects view's domain headers and the Routines view's group headers onto `AssocGroup`.
-3. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.
+2. **Item row**: the leading control, text and trailing parts shared by tasks, leftovers, backlog entries and routine rows.
