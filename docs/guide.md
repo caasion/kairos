@@ -176,4 +176,5 @@ Kairos is desktop-first. On a phone or tablet:
 - Tap a checkbox to change it; press and hold it to cancel the task.
 - Tap text to edit it; press and hold, then move, to drag a task.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
+- In the Timeline, tap a bar to select it, then drag its edges or tap **⋯** above it for its menu. To start a stretch, tap **⋯** on the row's label → **Add a stretch from today**.
 - Some actions are only in right-click menus, so they aren't available on touch yet: **Move to backlog** and the Grid's row menus.

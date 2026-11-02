@@ -73,6 +73,7 @@
 	import Datepicker from "../components/Datepicker.svelte";
 	import Portal from "../components/Portal.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
+	import IconButton from "../components/IconButton.svelte";
 	import IntensityBars from "../components/IntensityBars.svelte";
 	import { peek } from "../actions/peek";
 	import { intoViewHeader } from "../actions/viewHeader";
@@ -397,9 +398,13 @@
 	/** Press on empty row space: create a new active period. */
 	function beginCreateDrag(e: PointerEvent, row: GanttRow) {
 		if (pxPerDay <= 0 || e.button !== 0) return;
-		e.preventDefault();
 		// Pressing empty canvas clears any bar selection.
 		selectedKey = null;
+		// On touch a press here is how a scroll starts, and a stray tap would
+		// write a stretch: touch adds one from the row label's ⋯ instead
+		// (spec decision 137).
+		if (e.pointerType !== "mouse") return;
+		e.preventDefault();
 		const history = row.entity.history;
 		const date = pointerDay(e);
 		// Clamp to the gaps between existing records so a create can't collide.
@@ -654,6 +659,24 @@
 	// pointer. Items differ by span kind: an open span's "Set end date" is what
 	// makes it definite; a span ending in a gap can have its end removed. Split
 	// works on the day column under the pointer.
+	// Touch's row menu (the row label's ⋯): a press on empty row space makes no
+	// stretch on touch, so this is where one starts (spec decision 137).
+	function openRowMenu(e: MouseEvent, row: GanttRow) {
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item.setTitle("Add a stretch from today").setIcon("plus").onClick(() => addStretchToday(row)),
+		);
+		menu.showAtMouseEvent(e);
+	}
+	function addStretchToday(row: GanttRow) {
+		const live = currentRow(row.key);
+		if (!live) return;
+		const start = todayISO();
+		const note = boundaryNote(live.entity.history, start);
+		if (live.isDomain) setDomainStatus(index, live.entity as Domain, start, "active", note);
+		else setProjectStatus(index, live.entity as Project, start, "active", note);
+	}
+
 	function openMenu(e: MouseEvent, row: GanttRow, span: Span) {
 		e.preventDefault();
 		e.stopPropagation();
@@ -823,6 +846,10 @@
 						<div class="gantt-label-body" bind:offsetHeight={labelHeights[row.key]}>
 							<RowLabel info={row.info} />
 						</div>
+						<!-- Touch only (pointer: coarse): the row's menu. -->
+						<span class="gantt-touch-more">
+							<IconButton label="Row actions" icon="more-horizontal" onclick={(e) => openRowMenu(e, row)} />
+						</span>
 					</div>
 				{/each}
 			</div>
@@ -971,6 +998,14 @@
 									{:else}
 										<span class="gantt-bar-label" class:placeholder={!span.note}>
 											{#if span.note}{span.note}{:else}No intention{/if}
+										</span>
+									{/if}
+									<!-- Touch only (pointer: coarse): a selected bar's menu, where
+									     right-click and double-click can't reach. -->
+									{#if selected}
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<span class="gantt-touch-more gantt-bar-more" onpointerdown={(e) => e.stopPropagation()}>
+											<IconButton label="More actions" icon="more-horizontal" onclick={(e) => openMenu(e, row, span)} />
 										</span>
 									{/if}
 									<!-- Right edge: drag to move the end date, or (open-ended) to set one. -->
@@ -1473,6 +1508,35 @@
 	.gantt-bar.selected .gantt-handle.left::before { left: 0; }
 	.gantt-bar.selected .gantt-handle.right::before { right: 0; }
 	.gantt-bar.selected .gantt-handle:hover::before { opacity: 1; }
+	/* Touch (spec decision 137): only a selected bar's edges can be grabbed, so
+	   a swipe across a bar scrolls, and they're wide enough for a finger. A ⋯
+	   on the selected bar and on each row label opens their menus. */
+	.gantt-touch-more {
+		display: none;
+	}
+	@media (pointer: coarse) {
+		.gantt-handle {
+			pointer-events: none;
+		}
+		.gantt-bar.selected .gantt-handle {
+			pointer-events: auto;
+			touch-action: none;
+			--edge-out: 24px;
+		}
+		.gantt-touch-more {
+			display: flex;
+			align-items: center;
+		}
+		.gantt-bar-more {
+			position: absolute;
+			bottom: calc(100% + 4px);
+			right: 0;
+			z-index: 5;
+			background: var(--background-primary);
+			border-radius: var(--kairos-radius-m);
+			box-shadow: 0 0 0 1px var(--background-modifier-border);
+		}
+	}
 	.gantt-drag-marker {
 		position: absolute;
 		top: 0;
