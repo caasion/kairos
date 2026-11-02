@@ -252,6 +252,14 @@ body .kairos-action-stack:focus-within > * {
    Obsidian's own modal parts do the rest: its title, and the button row
    (`modal-button-container`). The text field fills the dialog, and a
    confirmation's message reads like Obsidian's own dialogs. */
+/* Kairos's dialogs keep the title in line with what's under it. Some themes
+   (Blue Topaz) indent every modal title without indenting the content, which
+   leaves the title hanging 1em in from the rows below. Every Kairos modal adds
+   `kairos-modal` (DESIGN.md, rule 8); the extra class beats the theme's
+   `.modal .modal-title`. */
+.modal.kairos-modal .modal-title {
+	margin-inline: 0;
+}
 .kairos-modal-field {
 	border-top: none;
 	padding-top: 0;

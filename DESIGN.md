@@ -19,6 +19,7 @@ It has three parts:
 5. **Beat Obsidian's button and input styles with `body`.** Obsidian styles `button:not(.clickable-icon)` and `input[type='text']` at specificity (0,1,1), which beats a lone class. A global rule for a `<button>` or `<input>` is written `body .kairos-x`. A component's scoped rule (0,2,0) already wins.
 6. **Truncated text must be readable.** Anything that ellipsizes or clamps carries `use:peek` (`src/ui/actions/peek.ts`), so pointing at it (or pressing and holding on touch) shows the whole text.
 7. **Mind `aria-label`.** Obsidian shows any `aria-label` as a tooltip. On an element that also opens a popover, name it with `aria-labelledby` instead, or the tooltip covers the popover.
+8. **Every dialog adds `kairos-modal`.** A class that extends Obsidian's `Modal` calls `this.modalEl.addClass("kairos-modal")` first thing in `onOpen`. It lines the title up with the content under themes that indent modal titles, and gives Kairos's dialogs one hook. `src/designSystem.test.ts` checks it.
 
 ## Tokens
 
