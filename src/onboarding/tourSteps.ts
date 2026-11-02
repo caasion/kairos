@@ -64,7 +64,7 @@ export const STEPS: TourStep[] = [
 	{
 		id: "add-task",
 		title: "Add a task",
-		body: "Point at the block's top-right corner and select **Add task**, or right-click the block. Tasks are the work; they always live inside a block.",
+		body: "Point at the block's top-right corner to bring up its buttons, then select **Add task**. Right-clicking the block works too. Tasks are the work; they always live inside a block.",
 		bodyMobile: "Tap the block, then select **Add task** in its top-right corner. Tasks are the work; they always live inside a block.",
 		anchor: "block-corner",
 	},

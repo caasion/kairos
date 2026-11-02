@@ -57,6 +57,8 @@ export class Tour {
 	private unsubDate?: Unsubscriber;
 	private unsubDay?: Unsubscriber;
 	private watchedDate: ISODate | null = null;
+	/** The "N tasks" pill's label while the check step's task is tucked behind it. */
+	private tuckedLabel: string | null = null;
 	private welcomeOpen = false;
 	private indexReady = false;
 
@@ -328,7 +330,7 @@ export class Tour {
 		this.popover.render({
 			progress: last ? "" : `Step ${this.state.step + 1} of ${STEPS.length - 1}`,
 			title: step.title,
-			body: this.blockHint(body),
+			body: this.blockHint(this.tuckedHint(body)),
 			link: last ? { text: "Read the getting started guide", href: DOCS_URL } : undefined,
 			actions,
 			onClose: () => this.finish("dismissed"),
@@ -342,6 +344,13 @@ export class Tour {
 		if (!about || !date || date === this.shownDate) return body;
 		const when = date === todayISO() ? "today" : date;
 		return `${body} Your block is on ${when}.`;
+	}
+
+	/** On the check step, says how to show a task the block has tucked away. */
+	private tuckedHint(body: string): string {
+		if (this.step.id !== "check" || !this.tuckedLabel) return body;
+		const show = Platform.isMobile ? "Tap" : "Point at";
+		return `The block is too short to show its task. ${show} **${this.tuckedLabel}** to show it, then ${Platform.isMobile ? "tap" : "select"} its checkbox.`;
 	}
 
 	private position() {
@@ -380,12 +389,45 @@ export class Tour {
 		if (kind === "block-title") {
 			return clip(block.querySelector('[data-kairos-tour="block-title"]') ?? block);
 		}
-		if (kind === "task-checkbox") return clip(block.querySelector(".k-checkbox") ?? block);
-		// block-corner: the top-right zone that wakes the action bar.
+		if (kind === "task-checkbox") return this.checkboxRect(block, clip);
+		// block-corner: once the action bar is up, its Add task button…
+		const add = this.awakeBar(block)?.querySelector('[aria-label="Add task"]');
+		const addRect = add?.getBoundingClientRect() ?? null;
+		if (isVisible(addRect)) return addRect;
+		// …until then, the top-right zone that wakes it.
 		const r = clip(block);
 		if (!r) return null;
 		const size = Math.min(32, r.width, r.height);
 		return { left: r.left + r.width - size, top: r.top, width: size, height: size };
+	}
+
+	/**
+	 * The block's first checkbox when it shows; while the block is too short to
+	 * show its tasks, the "N tasks" pill that does, and the step says so.
+	 */
+	private checkboxRect(block: HTMLElement, clip: (el: Element | null) => Rect | null): Rect | null {
+		const blockRect = clip(block);
+		const box = clip(block.querySelector(".k-checkbox"));
+		// The block clips what doesn't fit, so a checkbox can exist but be cut off.
+		const inside = box && blockRect ? intersect(box, blockRect) : null;
+		const shown = box && inside && inside.height >= box.height - 1 ? box : null;
+		const more = shown ? null : block.querySelector<HTMLElement>(".tl-more");
+		const label = more?.textContent?.trim() || null;
+		if (label !== this.tuckedLabel) {
+			this.tuckedLabel = label;
+			this.render();
+		}
+		if (shown) return box;
+		return clip(more) ?? blockRect;
+	}
+
+	/** The block's action bar while it's up, in place or lifted out as a stack. */
+	private awakeBar(block: HTMLElement): HTMLElement | null {
+		if (!block.classList.contains("kairos-actions-awake")) return null;
+		return (
+			block.querySelector<HTMLElement>(":scope > .kairos-action-bar") ??
+			block.ownerDocument.querySelector<HTMLElement>(".kairos-action-bar.kairos-action-bar-awake")
+		);
 	}
 
 	/** The tracked block's element in the Day view, by line, else by title. */
