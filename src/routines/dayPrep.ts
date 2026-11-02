@@ -88,8 +88,13 @@ export class DayPreparer {
 
 	/** The command: re-apply routines to the day in front of the user. */
 	async applyToCurrentDay(): Promise<void> {
-		const date = this.focusedDate() ?? (await this.pickDate());
+		const date = await this.currentDay();
 		if (date) await this.applyToDate(date);
+	}
+
+	/** "This day" for a command: the focused day (see `focusedDate`), else one the user picks. */
+	async currentDay(): Promise<ISODate | undefined> {
+		return this.focusedDate() ?? (await this.pickDate());
 	}
 
 	/**
