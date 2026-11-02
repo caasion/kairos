@@ -175,10 +175,14 @@ The Timeline view draws each project's active stretches as bars. Switch between 
 The view always spans one week, month, quarter or year. The small arrows can start it partway through one: in **Month**, select › once to see 8 Oct – 7 Nov. **Today**, the calendar and switching interval line it up with whole units again.
 
 - **Add an active stretch:** drag across an empty part of a row. It covers every day you drag over, including the one you let go on. A single click starts an open-ended one.
-- **Move its start or end:** drag the bar's left or right edge.
+- **Select a bar:** click it. A selected bar gets a handle outside each end, so you can grab its edges even when it's thin.
+- **Move a stretch:** drag the bar. It keeps its length and stops when it meets the stretch next to it.
+- **Change its start or end:** drag one of its edges. Only the bar you're dragging changes. If it grows into the next stretch, that stretch gets shorter (it always keeps at least a day). If it shrinks away from one, a gap opens and the other stretch stays where it was.
+- **Nudge it a day:** select it and press **←** or **→** to move it. Hold **Shift** to move its end, or **Alt/Option** to move its start. This works when an edge is outside the period you're looking at.
 - **Set its intensity:** three small lines on the bar show the level, lighting from the bottom: 1 lights the bottom line, 2 adds a dim one above it, and 5 lights all three. Select a line to light up to it (select the top lit line again to dim it), select the bar and press **0** to **5**, or right-click it and choose **Intensity**.
 - **Edit its intention:** double-click the bar.
-- **More:** right-click the bar for exact dates and **Delete**.
+- **Split or merge:** right-click a bar on a day and choose **Split on** that day; the second half gets a new intention for you to rename. Choose **Merge with next** to run it through the next stretch, keeping its own intention.
+- **More:** right-click the bar for exact dates, **Remove end date** and **Delete**. Deleting a stretch leaves the stretches beside it as they were.
 - **Rolled-up projects:** a project you chose to show on its domain's row in the Grid keeps its own row here, marked with a small icon beside its name. Right-click its label to switch between **Show on domain's row** and **Give its own row**.
 
 In the Grid, each row's label shows its current intensity, and a small marker shows on days where it changes.
