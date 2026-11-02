@@ -141,10 +141,15 @@
 		--icon-size: 10px;
 		--icon-stroke: 2.25px;
 	}
+	/* The row label's bar size: at the default 2px bars the three ran
+	   together into one block at cell size. */
 	.grid-intensity-change {
 		display: inline-flex;
 		align-items: center;
 		gap: 2px;
+		--intensity-bar-width: 12px;
+		--intensity-bar-height: 3px;
+		--intensity-bar-row: 5px;
 	}
 	.grid-intensity-arrow {
 		margin-right: 1px;
