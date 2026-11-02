@@ -485,6 +485,7 @@ body {
 .kairos-tour-welcome-note {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
+}
 
 /* ── Header bar in the tab header (src/ui/actions/viewHeader.ts) ──
    The Week, Grid and Timeline views move their header bar (date navigator,
