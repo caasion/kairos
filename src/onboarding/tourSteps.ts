@@ -51,21 +51,21 @@ export const STEPS: TourStep[] = [
 		id: "make-block",
 		title: "Make a block",
 		body: "Press on empty time and drag down. A block is a span of your day, like 09:30 - 11:00 Deep work. A plain click won't make one.",
-		bodyMobile: "Press on empty time, then drag down. A block is a span of your day, like 09:30 - 11:00 Deep work.",
+		bodyMobile: "Press and hold empty time, then drag down to make a block. A block is a span of your day, like 09:30 - 11:00 Deep work.",
 		anchor: "day-canvas",
 	},
 	{
 		id: "rename",
 		title: "Name it",
 		body: "Select the block's title and type what you'll do. **Enter** saves. You can select its time the same way to type an exact one.",
-		bodyMobile: "Tap the block's title and type what you'll do. You can tap its time the same way to type an exact one.",
+		bodyMobile: "Tap the block's title to select it, then tap again and type what you'll do. Its time works the same way, to type an exact one.",
 		anchor: "block-title",
 	},
 	{
 		id: "add-task",
 		title: "Add a task",
 		body: "Point at the block's top-right corner to bring up its buttons, then select **Add task**. Right-clicking the block works too. Tasks are the work; they always live inside a block.",
-		bodyMobile: "Tap the block, then select **Add task** in its top-right corner. Tasks are the work; they always live inside a block.",
+		bodyMobile: "Tap the block to select it, then tap **Add task** on its action bar. **⋯** at the end of the bar has everything else. Tasks are the work; they always live inside a block.",
 		anchor: "block-corner",
 	},
 	{
@@ -86,6 +86,7 @@ export const STEPS: TourStep[] = [
 		id: "finish",
 		title: "That's the whole idea",
 		body: "Time belongs to blocks; work belongs to tasks. When you want more, drag tasks between days in the **Grid**, name projects as they come up, and add routines.",
+		bodyMobile: "Time belongs to blocks; work belongs to tasks. When you want more, press and hold a task to move it to another day in the **Grid**, name projects as they come up, and make a block repeat with **⋯ → Repeat…**.",
 		anchor: "none",
 	},
 ];

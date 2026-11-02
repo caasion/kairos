@@ -421,13 +421,20 @@ export class Tour {
 		return clip(more) ?? blockRect;
 	}
 
-	/** The block's action bar while it's up, in place or lifted out as a stack. */
+	/**
+	 * The block's action bar while it's up: woken from the corner (in place or
+	 * lifted out as a stack), or shown by a tap on touch.
+	 */
 	private awakeBar(block: HTMLElement): HTMLElement | null {
-		if (!block.classList.contains("kairos-actions-awake")) return null;
-		return (
-			block.querySelector<HTMLElement>(":scope > .kairos-action-bar") ??
-			block.ownerDocument.querySelector<HTMLElement>(".kairos-action-bar.kairos-action-bar-awake")
-		);
+		if (block.classList.contains("kairos-actions-awake")) {
+			const stack = block.ownerDocument.querySelector<HTMLElement>(
+				".kairos-action-bar.kairos-action-bar-awake",
+			);
+			if (stack) return stack;
+		}
+		const bar = block.querySelector<HTMLElement>(":scope > .kairos-action-bar");
+		const win = block.ownerDocument.defaultView;
+		return bar && win && Number(win.getComputedStyle(bar).opacity) > 0.5 ? bar : null;
 	}
 
 	/** The tracked block's element in the Day view, by line, else by title. */
