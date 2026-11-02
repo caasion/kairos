@@ -37,8 +37,9 @@
 	import ItemText from "../components/ItemText.svelte";
 	import Portal from "../components/Portal.svelte";
 	import Tag from "../components/Tag.svelte";
+	import { icon } from "../actions/icon";
 	import StatusStrip from "./StatusStrip.svelte";
-	import { formatSpan, stretchesOf, stripOf, type Stretch } from "./statusStretches";
+	import { formatSpan, stretchesOf, type Stretch } from "./statusStretches";
 
 	interface Props {
 		index: KairosIndex;
@@ -67,7 +68,6 @@
 	const today = $derived(todayISO());
 	const stretches = $derived(stretchesOf(entity.history, today));
 	const newestFirst = $derived([...stretches].reverse());
-	const parts = $derived(stripOf(stretches, today));
 
 	type Part = "stretch" | "transition";
 
@@ -194,14 +194,19 @@
 		</div>
 	</div>
 	<div class="setting-items kairos-tl" class:is-readonly={readonly}>
-		{#if parts.length > 0}
+		{#if stretches.length > 0}
 			<div class="kairos-tl-strip">
 				<StatusStrip
-					{parts}
+					history={entity.history}
+					{today}
 					{color}
 					{readonly}
 					marked={typing}
 					onSelect={selectFromStrip}
+					onMoveChange={(from: ISODate, to: ISODate) => {
+						const rec = entity.history.find((r) => r.date === from);
+						if (rec) edit(rec, { date: to });
+					}}
 					onPickIntensity={(date: ISODate, level: number | undefined) => {
 						const rec = entity.history.find((r) => r.date === date);
 						if (rec) setIntensity(rec, level);
@@ -230,7 +235,10 @@
 							aria-label="Change this stretch's status"
 							onclick={(e) => statusMenu(s.rec, e)}
 							onkeydown={(e) => keys(e, () => (e.currentTarget).click())}
-							>{STATUS_LABEL[s.rec.status]}</span
+							>{STATUS_LABEL[s.rec.status]}<span
+								class="kairos-tl-pick-icon"
+								use:icon={"chevron-down"}
+							></span></span
 						>
 						{#if s.rec.status === "active"}
 							<span class="kairos-tl-intensity" class:unrated={s.rec.intensity === undefined}>
@@ -267,7 +275,9 @@
 							aria-label="Change the date"
 							onclick={(e) => openPicker(s.rec, e.currentTarget)}
 							onkeydown={(e) => keys(e, () => openPicker(s.rec, e.currentTarget))}
-							>{formatDate(s.start)}</span
+							><span class="kairos-tl-pick-icon" use:icon={"calendar"}></span>{formatDate(
+								s.start,
+							)}</span
 						>
 						<span class="kairos-tl-change">{changeText(s)}</span>
 						<span class="kairos-tl-spacer"></span>
@@ -402,6 +412,9 @@
 	/* A word you click to change (the status, a change's date): plain text with
 	   a hover fill, like the Timeline's labels. */
 	.kairos-tl-pick {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--size-2-2);
 		padding: 0 var(--size-2-2);
 		margin-inline: calc(-1 * var(--size-2-2));
 		border-radius: var(--radius-s);
@@ -409,6 +422,18 @@
 	}
 	.kairos-tl-pick:hover {
 		background: var(--background-modifier-hover);
+	}
+	/* The icon says it's a control: a calendar on a date, a chevron on a status. */
+	.kairos-tl-pick-icon {
+		--icon-size: var(--icon-xs);
+		display: flex;
+		color: var(--text-faint);
+	}
+	.kairos-tl-pick:hover .kairos-tl-pick-icon {
+		color: var(--text-muted);
+	}
+	.kairos-tl.is-readonly .kairos-tl-pick-icon {
+		display: none;
 	}
 	.kairos-tl.is-readonly .kairos-tl-pick {
 		cursor: default;

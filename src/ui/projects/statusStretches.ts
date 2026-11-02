@@ -80,3 +80,47 @@ export function stripOf(stretches: Stretch[], today: ISODate): StripPart[] {
 		};
 	});
 }
+
+// ── Moving a change by dragging it on the strip ──
+
+/**
+ * How far the change dated `date` can move: from the day after the change
+ * before it (unbounded for the first) to the day before the change after it.
+ * The last change can move up to today, or stay where it is if it's already
+ * scheduled later. Changes keep their order, so a drag never swallows one.
+ */
+export function changeBounds(
+	history: StatusRecord[],
+	date: ISODate,
+	today: ISODate,
+): { min?: ISODate; max: ISODate } {
+	const dates = history.map((r) => r.date).sort();
+	const i = dates.indexOf(date);
+	const before = dates[i - 1];
+	const after = dates[i + 1];
+	return {
+		min: before ? shiftDays(before, 1) : undefined,
+		max: after ? shiftDays(after, -1) : date > today ? date : today,
+	};
+}
+
+/** Clamp a dragged-to date into a change's bounds. */
+export function clampChange(to: ISODate, bounds: { min?: ISODate; max: ISODate }): ISODate {
+	if (bounds.min && to < bounds.min) return bounds.min;
+	if (to > bounds.max) return bounds.max;
+	return to;
+}
+
+/** The history with the change dated `from` moved to `to`, for a drag's preview. */
+export function withChangeMoved(history: StatusRecord[], from: ISODate, to: ISODate): StatusRecord[] {
+	return history.map((r) => (r.date === from ? { ...r, date: to } : r));
+}
+
+/** The strip's first day and its length in days, to turn pixels into days. */
+export function stripSpan(stretches: Stretch[], today: ISODate): { start: ISODate; days: number } | null {
+	const first = stretches[0];
+	const last = stretches.at(-1);
+	if (!first || !last) return null;
+	const stripEnd = shiftDays(last.start > today ? last.start : today, 1);
+	return { start: first.start, days: Math.max(1, daysBetween(first.start, stripEnd)) };
+}
