@@ -90,6 +90,8 @@
 		// `takeBlock`/`isDropTarget` as needed. Returns nothing — the column keeps
 		// previewing vertically until `onPointerUp` resolves the drop.
 		onCrossDayGrab?: (date: ISODate, block: Block, event: PointerEvent) => void;
+		/** Select mode (touch): a tap adds or removes a block (spec decision 138). */
+		selectMode?: boolean;
 		// Open the association picker on a block the moment it is created
 		// (settings.askAssocOnBlockCreate). The parent owns the picker, so this is
 		// just the flag telling us to ask for it.
@@ -118,6 +120,7 @@
 		onNestTask,
 		backlogPath,
 		onCrossDayGrab,
+		selectMode = false,
 		askAssocOnCreate = false,
 		showUnscheduled = true,
 		onUnscheduledChange,
@@ -518,7 +521,14 @@
 		event: PointerEvent,
 	) {
 		const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-		if (additive) {
+		// Select mode (touch, spec decision 138): a tap adds a block, a tap on a
+		// selected one takes it out, and a hold on one drags them all.
+		let started = false;
+		if (selectMode && mode === "move" && selection.has(block)) {
+			untapOnRelease(event, block, () => started);
+		} else if (selectMode && mode === "move") {
+			selection = new Set([...selection, block]);
+		} else if (additive) {
 			const next = new Set(selection);
 			if (next.has(block)) next.delete(block);
 			else next.add(block);
@@ -532,6 +542,7 @@
 		// The canvas sees this press next (it bubbles); it isn't empty time.
 		blockPressed = true;
 		const begin = () => {
+			started = true;
 			gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
 			gestureOriginY = event.clientY;
 			gestureMoved = false;
@@ -551,6 +562,24 @@
 				if (!taskDrag) begin();
 			});
 		}
+	}
+
+	// In select mode, a selected block pressed and released without a drag
+	// leaves the selection.
+	function untapOnRelease(press: PointerEvent, block: Block, dragged: () => boolean) {
+		const win = (press.target as Node | null)?.ownerDocument?.defaultView ?? window;
+		const up = (e: PointerEvent) => {
+			if (e.pointerId !== press.pointerId) return;
+			win.removeEventListener("pointerup", up);
+			win.removeEventListener("pointercancel", up);
+			if (e.type === "pointerup" && !dragged()) {
+				const next = new Set(selection);
+				next.delete(block);
+				selection = next;
+			}
+		};
+		win.addEventListener("pointerup", up);
+		win.addEventListener("pointercancel", up);
 	}
 
 	// Set by a block press, so the canvas leaves that press alone.

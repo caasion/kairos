@@ -69,6 +69,7 @@
 	} from "./weekWindow";
 	import { intoViewHeader } from "../actions/viewHeader";
 	import { swipeDays } from "../actions/swipeDays";
+	import IconButton from "../components/IconButton.svelte";
 	import { holdingDrag } from "../actions/touchHold";
 	import { shiftDays } from "../../gantt/ganttUtils";
 
@@ -193,6 +194,19 @@
 		pinnedAnchor = stepAnchor(anchor, windowSize, steps);
 		closeAssocPicker();
 		closeBlockPicker();
+	}
+
+	// Touch has no Shift or Ctrl/Cmd to select several blocks: the header's
+	// Select toggle stands in (spec decision 138). Off clears every column.
+	let selectMode = $state(false);
+	function toggleSelectMode() {
+		selectMode = !selectMode;
+		if (!selectMode) for (const date of dates) columns[date]?.clearSelection();
+	}
+	function deleteSelectedEverywhere() {
+		for (const date of dates) {
+			if (columns[date]?.hasSelection()) columns[date].deleteSelection();
+		}
 	}
 
 	// A sideways swipe on the days (actions/swipeDays.ts): one day at a time.
@@ -889,6 +903,18 @@
 		<span class="day-range-label">
 			{String(geo.startHour).padStart(2, "0")}:00–{String(geo.endHour).padStart(2, "0")}:00
 		</span>
+		<!-- Touch only (pointer: coarse): select several blocks, and delete them. -->
+		<span class="touch-select-tools">
+			{#if selectMode}
+				<IconButton label="Delete selected blocks" icon="trash-2" onclick={deleteSelectedEverywhere} />
+			{/if}
+			<IconButton
+				label={selectMode ? "Stop selecting" : "Select blocks"}
+				icon="list-checks"
+				pressed={selectMode}
+				onclick={toggleSelectMode}
+			/>
+		</span>
 		<div class="controls-wrap" bind:this={controlsRef}>
 			<button
 				class="icon-btn"
@@ -1086,6 +1112,7 @@
 					>
 						<DayColumn
 							bind:this={columns[date]}
+							{selectMode}
 							{app}
 							{index}
 							{date}
@@ -1301,6 +1328,16 @@
 		display: flex;
 		flex-shrink: 0;
 		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
+	}
+
+	.touch-select-tools {
+		display: none;
+	}
+	@media (pointer: coarse) {
+		.touch-select-tools {
+			display: flex;
+			align-items: center;
+		}
 	}
 
 	.week-gutter-spacer {

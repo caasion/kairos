@@ -74,6 +74,7 @@
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
 	import { pressOnBlockChild, startAfterHold } from "../actions/touchHold";
+	import IconButton from "../components/IconButton.svelte";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		type Gesture,
@@ -945,8 +946,14 @@
 		event: PointerEvent,
 	) {
 		const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-
-		if (additive) {
+		// Select mode (touch, spec decision 138): a tap adds a block, a tap on a
+		// selected one takes it out, and a hold on one drags them all.
+		let started = false;
+		if (selectMode && mode === "move" && selection.has(block)) {
+			untapOnRelease(event, block, () => started);
+		} else if (selectMode && mode === "move") {
+			selection = new Set([...selection, block]);
+		} else if (additive) {
 			const next = new Set(selection);
 			if (next.has(block)) next.delete(block);
 			else next.add(block);
@@ -964,6 +971,7 @@
 		blockPressed = true;
 		const el = event.currentTarget as Element | null;
 		const begin = () => {
+			started = true;
 			gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
 			gestureOriginY = event.clientY;
 			gestureMoved = false;
@@ -978,6 +986,32 @@
 				if (!taskDrag) begin();
 			});
 		}
+	}
+
+	// In select mode, a selected block pressed and released without a drag
+	// leaves the selection.
+	function untapOnRelease(press: PointerEvent, block: Block, dragged: () => boolean) {
+		const win = (press.target as Node | null)?.ownerDocument?.defaultView ?? window;
+		const up = (e: PointerEvent) => {
+			if (e.pointerId !== press.pointerId) return;
+			win.removeEventListener("pointerup", up);
+			win.removeEventListener("pointercancel", up);
+			if (e.type === "pointerup" && !dragged()) {
+				const next = new Set(selection);
+				next.delete(block);
+				selection = next;
+			}
+		};
+		win.addEventListener("pointerup", up);
+		win.addEventListener("pointercancel", up);
+	}
+
+	// Touch has no Shift or Ctrl/Cmd to select several blocks: the header's
+	// Select toggle stands in (spec decision 138). Off clears the selection.
+	let selectMode = $state(false);
+	function toggleSelectMode() {
+		selectMode = !selectMode;
+		if (!selectMode) selection = new Set();
 	}
 
 	// Set by a block press, so the canvas leaves that press alone.
@@ -1376,6 +1410,18 @@
 		<span class="day-header-spacer"></span>
 		<span class="day-range-label">
 			{String(geo.startHour).padStart(2, "0")}:00–{String(geo.endHour).padStart(2, "0")}:00
+		</span>
+		<!-- Touch only (pointer: coarse): select several blocks, and delete them. -->
+		<span class="touch-select-tools">
+			{#if selectMode && selection.size > 0}
+				<IconButton label={`Delete ${selection.size} selected`} icon="trash-2" onclick={() => void deleteSelected()} />
+			{/if}
+			<IconButton
+				label={selectMode ? "Stop selecting" : "Select blocks"}
+				icon="list-checks"
+				pressed={selectMode}
+				onclick={toggleSelectMode}
+			/>
 		</span>
 		<button
 			class="icon-btn follow-btn"
@@ -1930,6 +1976,16 @@
 	}
 
 	/* "Follow the grid" is on: the link icon takes the accent. */
+	.touch-select-tools {
+		display: none;
+	}
+	@media (pointer: coarse) {
+		.touch-select-tools {
+			display: flex;
+			align-items: center;
+		}
+	}
+
 	.follow-btn.on {
 		color: var(--interactive-accent);
 		border-color: var(--interactive-accent);

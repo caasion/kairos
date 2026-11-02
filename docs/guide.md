@@ -176,6 +176,7 @@ Kairos is desktop-first. On a phone or tablet:
 - Press and hold empty time in the Day or Week view, then drag, to make a block.
 - To resize a block, tap it, then drag the handle at its top or bottom edge.
 - Swipe sideways on the Week view or the Grid to move a day earlier or later.
+- To select several blocks, tap the select button in the Day or Week view's header, then tap blocks to add or remove them. Press and hold one to move them all, or tap the trash button to delete them.
 - To copy a task instead of moving it, tap **⋯** → **Duplicate**, then drag the copy.
 - To open a task's or block's project or domain note, tap **⋯** → **Open note**.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
