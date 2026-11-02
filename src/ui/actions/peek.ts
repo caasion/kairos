@@ -94,7 +94,7 @@ export function showPeek(anchor: HTMLElement, text: string, detail?: string): vo
 	hidePeek();
 	if (!text && !detail) return;
 
-	const el = document.body.createDiv({ cls: "kairos-peek" });
+	const el = document.body.createDiv({ cls: "kairos-popover kairos-peek" });
 	if (text) el.createDiv({ cls: "kairos-peek-text", text });
 	if (detail) el.createDiv({ cls: "kairos-peek-detail", text: detail });
 

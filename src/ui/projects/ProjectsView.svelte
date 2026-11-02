@@ -1,8 +1,11 @@
 <script lang="ts">
-	// The Projects & Domains page (spec §5). One list: durable domains as top-level
-	// rows, their projects nested beneath, plus an "Unassigned" group for projects
-	// with no domain. A status filter (Active / Inactive / Archived) sits in the
-	// header; archived is hidden by default.
+	// The Projects & Domains page (spec §5). Two panes: on the left one list,
+	// durable domains as top-level rows, their projects nested beneath, plus an
+	// "Unassigned" group for projects with no domain; on the right the selected
+	// one's details and status history (ProjectDetail). When the view is too
+	// narrow for both, it shows the list, then the details in its place. A status
+	// filter (Active / Inactive / Archived) sits in the header; archived is
+	// hidden by default.
 	//
 	// Per-row inline edits route through projectActions → the index (never markdown
 	// directly): color swatch + reorder (domains), rename, status, and domain link
@@ -29,7 +32,6 @@
 		editProjectStatusRecord,
 		renameDomain,
 		renameProject,
-		setDomainColor,
 		setDomainDescription,
 		setDomainOrder,
 		setDomainStatus,
@@ -40,8 +42,12 @@
 	import { effectiveStatus } from "../../projectFile";
 	import { DomainReorderModal } from "./DomainReorderModal";
 	import { addChangeDomainItem, addRollupItem } from "./projectMenu";
-	import { StatusHistoryModal } from "./StatusHistoryModal";
+	import ProjectDetail from "./ProjectDetail.svelte";
+	import SegmentedControl from "../components/SegmentedControl.svelte";
 	import { ConfirmModal, PromptModal, WhyModal } from "./modals";
+	import Tag from "../components/Tag.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
+	import IconButton from "../components/IconButton.svelte";
 
 	interface Props {
 		app: App;
@@ -158,9 +164,21 @@
 	function toggleStatus(e: Project | Domain, isDomain: boolean) {
 		const next: LifecycleState =
 			statusOf(e) === "active" ? (isDomain ? "inactive" : lastNonActive(e)) : "active";
+		changeStatus(e, isDomain, next);
+	}
+	// `ask` false: the caller asks for the reason itself (the detail pane
+	// starts typing it in the history instead of opening a dialog).
+	function changeStatus(
+		e: Project | Domain,
+		isDomain: boolean,
+		next: LifecycleState,
+		ask = true,
+	): boolean {
+		if (next === statusOf(e)) return false;
 		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
 		else setProjectStatus(index, e as Project, todayISO(), next);
-		askWhy(e, isDomain, next);
+		if (ask) askWhy(e, isDomain, next);
+		return true;
 	}
 
 	// Archive (projects only — domains are durable and can't archive). A one-click
@@ -169,8 +187,7 @@
 	function archiveProject(project: Project) {
 		const next: LifecycleState =
 			statusOf(project) === "archived" ? "active" : "archived";
-		setProjectStatus(index, project, todayISO(), next);
-		askWhy(project, false, next);
+		changeStatus(project, false, next);
 	}
 
 	// ── "Why did this change?" (#26) ──
@@ -205,24 +222,36 @@
 		else editProjectStatusRecord(index, live as Project, date, next);
 	}
 
-	// ── Status history (native modal) ──
-	// The history is an editable log; adding/editing/deleting a record routes
-	// through the pure edit functions (they own the invariants). The modal owns
-	// the chrome and mounts the editable log as a Svelte component that re-resolves
-	// the row from the live feed, so edits refresh in place.
-	function openHistory(e: Project | Domain) {
-		const isDomain = feed.domains.some((d) => d.source.path === e.source.path);
-		new StatusHistoryModal(app, index, {
-			name: e.name,
-			path: e.source.path,
-			isDomain,
-		}).open();
+	// ── Selection: the one shown in the detail pane ──
+	// Held by its stable source path and re-resolved from the live feed, so the
+	// pane follows every edit (and empties if the file goes away).
+	let selected = $state<{ path: string; isDomain: boolean } | null>(null);
+
+	function select(e: Project | Domain, isDomain: boolean) {
+		selected = { path: e.source.path, isDomain };
+	}
+	function isSelected(e: Project | Domain): boolean {
+		return selected?.path === e.source.path;
 	}
 
-	// ── Domain color ──
-	function pickColor(domain: Domain, color: string) {
-		setDomainColor(index, domain, color);
-	}
+	const selectedEntity = $derived.by<Project | Domain | null>(() => {
+		const sel = selected;
+		if (!sel) return null;
+		if (sel.isDomain) return feed.domains.find((d) => d.source.path === sel.path) ?? null;
+		for (const list of feed.projectsByDomain.values()) {
+			const hit = list.find((p) => p.source.path === sel.path);
+			if (hit) return hit;
+		}
+		return feed.orphans.find((p) => p.source.path === sel.path) ?? null;
+	});
+
+	// A project under an inactive domain is read-only history, here as in the list.
+	const selectedReadonly = $derived.by(() => {
+		const e = selectedEntity;
+		if (!e || selected?.isDomain) return false;
+		const parent = feed.domains.find((d) => d.id === (e as Project).domain);
+		return !!parent && statusOf(parent) !== "active";
+	});
 
 	// ── Domain reorder (global, via a modal) ──
 	function openReorder() {
@@ -274,12 +303,6 @@
 				)
 				.setIcon("circle-dot")
 				.onClick(() => toggleStatus(domain, true)),
-		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Status history…")
-				.setIcon("history")
-				.onClick(() => openHistory(domain)),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>
@@ -336,12 +359,6 @@
 				.setIcon("archive")
 				.onClick(() => archiveProject(project)),
 		);
-		menu.addItem((item) =>
-			item
-				.setTitle("Status history…")
-				.setIcon("history")
-				.onClick(() => openHistory(project)),
-		);
 		menu.addSeparator();
 		menu.addItem((item) =>
 			item
@@ -353,11 +370,14 @@
 		menu.showAtMouseEvent(e);
 	}
 
-	// ── Open the markdown file (ctrl/⌘-click) ──
+	// ── Open the markdown file (ctrl/⌘-click, or the detail pane's button) ──
 	function openFile(e: Project | Domain, ev: MouseEvent) {
 		if (!(ev.ctrlKey || ev.metaKey)) return;
 		ev.preventDefault();
 		ev.stopPropagation();
+		openNote(e);
+	}
+	function openNote(e: Project | Domain) {
 		const file = app.vault.getAbstractFileByPath(e.source.path);
 		if (file instanceof TFile) void app.workspace.getLeaf("tab").openFile(file);
 	}
@@ -367,6 +387,12 @@
 		// Domain button → the domain + all its (visible) child projects.
 		const names = [row.domain.name, ...row.projects.map((p) => p.name)];
 		openBacklogFiltered(names, row.domain.name);
+	}
+	function backlogForSelected(e: Project | Domain, isDomain: boolean) {
+		if (!isDomain) return backlogForProject(e as Project);
+		const row = domainRows.find((r) => r.domain === e);
+		if (row) backlogForDomain(row);
+		else openBacklogFiltered([e.name], e.name);
 	}
 	function backlogForProject(project: Project) {
 		openBacklogFiltered([project.name], project.name);
@@ -424,23 +450,27 @@
 	// ConfirmModal.
 	function deleteProject(project: Project) {
 		new ConfirmModal(app, {
-			title: `Delete project "${project.name}"?`,
+			title: `Delete "${project.name}"?`,
 			message:
-				`Archiving is usually better. Any daily-note tags naming this ` +
-				`project (including its aliases) will become dangling references — ` +
-				`they'll still show by name but lose their color.`,
+				`This deletes the project's note. Daily notes that tag it keep the ` +
+				`tag, but it loses its color and no longer opens the project.\n\n` +
+				`To put it away and keep its history, archive it instead.`,
 			cta: "Delete",
 			danger: true,
 			onConfirm: () => void index.deleteProject(project.name),
+			alt:
+				statusOf(project) === "archived"
+					? undefined
+					: { text: "Archive instead", onClick: () => archiveProject(project) },
 		}).open();
 	}
 	function deleteDomain(domain: Domain) {
 		new ConfirmModal(app, {
-			title: `Delete domain "${domain.name}"?`,
+			title: `Delete "${domain.name}"?`,
 			message:
-				`Archiving is usually better. Any daily-note tags naming this ` +
-				`domain (including its aliases), and projects linked to it, will ` +
-				`become dangling references.`,
+				`This deletes the domain's note. Daily notes that tag it keep the ` +
+				`tag but lose its color, and its projects no longer have a domain.\n\n` +
+				`To set it aside for now, make it inactive instead.`,
 			cta: "Delete",
 			danger: true,
 			onConfirm: () => void index.deleteDomain(domain.name),
@@ -476,18 +506,12 @@
 		<span class="pv-title">Projects &amp; domains</span>
 		<span class="pv-spacer"></span>
 
-		<div class="filter-group">
-			{#each ["active", "inactive", "archived"] as const as f}
-				<button
-					class="filter-btn"
-					class:on={filter.has(f)}
-					onclick={(e) => {
-						e.stopPropagation();
-						toggleFilter(f);
-					}}>{STATUS_LABEL[f]}</button
-				>
-			{/each}
-		</div>
+		<SegmentedControl
+			label="Show"
+			options={(["active", "inactive", "archived"] as const).map((f) => ({ value: f, label: STATUS_LABEL[f] }))}
+			isOn={(f) => filter.has(f as Filter)}
+			onSelect={(f) => toggleFilter(f as Filter)}
+		/>
 
 		<!-- Reorder domains — global order, so it opens a modal for the whole list
 		     (there are no per-row up/down arrows; projects aren't reorderable). -->
@@ -527,119 +551,68 @@
 		</button>
 	</div>
 
-	<div class="pv-scroll">
+	<div class="pv-panes" class:has-selection={selectedEntity !== null}>
+	<div class="pv-scroll pv-list">
 		{#each domainRows as row (row.domain.id)}
 			{@const domainInactive = statusOf(row.domain) !== "active"}
-			<section
-				class="domain-group"
-				style={`--domain-accent: ${row.domain.color || "var(--text-faint)"};`}
+			<!-- The group heading every list uses (AssocGroup): the domain icon, the
+			     name in serif and its count, and a bar in the domain color down its
+			     projects. Select it to show its details, Ctrl/Cmd+click to open the
+			     file, right-click (or ⋯) for the rest. -->
+			<AssocGroup
+				assoc={{ kind: "domain", id: row.domain.id }}
+				label={row.domain.name}
+				color={row.domain.color || undefined}
+				count={row.projects.length}
+				sticky
+				dim={domainInactive}
+				editing={isEditing(row.domain)}
+				selected={isSelected(row.domain)}
+				onSelect={() => select(row.domain, true)}
+				onRename={(name: string) => finishRename(row.domain, true, name)}
+				onOpen={(e: MouseEvent) => openFile(row.domain, e)}
+				oncontextmenu={(e: MouseEvent) => openDomainMenu(row.domain, e)}
 			>
-				<!-- The whole header is one interactive object: hovering highlights the
-				     full line, right-click opens the context menu (change status, add
-				     project, delete, …). Only color and backlog stay as inline icons.
-				     The group's accent is the domain color: it tints the kind icon here
-				     and runs as a continuous left line down the project list below (like
-				     the grid/week views), so a domain and its projects read as one block. -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<header
-					class="domain-header"
-					class:dim={domainInactive}
-					oncontextmenu={(e) => openDomainMenu(row.domain, e)}
-				>
-					<!-- Kind icon: this page's top-level rows are always domains. Same
-					     icon the grid/timeline/backlog use for a domain association,
-					     tinted the domain's color to accent it (in place of a stripe). -->
-					<span class="kind-icon" title="Domain">
-						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>
-					</span>
-
-					{#if isEditing(row.domain)}
-						<!-- svelte-ignore a11y_autofocus -->
-						<input
-							class="name-input domain kairos-inline-input"
-							value={row.domain.name}
-							autofocus
-							onclick={(e) => e.stopPropagation()}
-							onblur={(e) => finishRename(row.domain, true, e.currentTarget.value)}
-							onkeydown={(e) => {
-								if (e.key === "Enter") e.currentTarget.blur();
-								if (e.key === "Escape") { e.currentTarget.value = row.domain.name; e.currentTarget.blur(); }
-							}}
-						/>
-					{:else}
-						<button
-							class="domain-name"
-							title="Click to rename · Ctrl/Cmd-click to open file · Right-click for more"
-							onclick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) openFile(row.domain, e); else startRename(row.domain); }}
-						>{row.domain.name}</button>
-					{/if}
-
+				{#snippet meta()}
 					{#if row.domain.description}
 						<span class="row-desc" title={row.domain.description}>{row.domain.description}</span>
 					{/if}
-
-					{#if statusOf(row.domain) !== "active"}
-						<span class="status-tag">{STATUS_LABEL[statusOf(row.domain)]}</span>
+					{#if domainInactive}
+						<Tag>{STATUS_LABEL[statusOf(row.domain)]}</Tag>
 					{/if}
-
-					<span class="domain-count">{row.projects.length}</span>
-					<span class="pv-spacer"></span>
-
-					<!-- Color: a plain native color input. Clicking it opens the OS
-					     picker; the swatch shows the current color. -->
-					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-					<label class="icon-btn color-btn" title="Set color" onclick={(e) => e.stopPropagation()}>
-						<span class="swatch" style={`background:${row.domain.color || "var(--text-faint)"};`}></span>
-						<input class="color-native" type="color" value={row.domain.color || "#888888"}
-							oninput={(e) => pickColor(row.domain, e.currentTarget.value)} />
-					</label>
-
-					<!-- Backlog -->
-					<button class="icon-btn" title="View this domain's backlog"
-						onclick={(e) => { e.stopPropagation(); backlogForDomain(row); }} aria-label="View backlog">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-					</button>
-
-					<!-- More actions (also available via right-click on the row) -->
-					<button class="icon-btn" title="More actions"
-						onclick={(e) => openDomainMenu(row.domain, e)} aria-label="More actions">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-					</button>
-				</header>
+				{/snippet}
+				{#snippet actions()}
+					<IconButton label="View this domain's backlog" icon="inbox" onclick={() => backlogForDomain(row)} />
+					<IconButton label="More actions" icon="more-horizontal" onclick={(e: MouseEvent) => openDomainMenu(row.domain, e)} />
+				{/snippet}
 
 				{#if row.projects.length === 0}
 					<div class="group-empty">No projects here.</div>
 				{:else}
-					<!-- The continuous accent line lives on the list, so it spans every
-					     child project and stops at the last one — extending the domain's
-					     accent down through its projects. -->
-					<ul class="project-list accented" class:dim={domainInactive}>
+					<ul class="project-list">
 						{#each row.projects as project (project.source.path)}
 							{@render projectRow(project, domainInactive)}
 						{/each}
 					</ul>
 				{/if}
-			</section>
+			</AssocGroup>
 		{/each}
 
 		<!-- Orphan projects (no domain) -->
 		{#if orphanRows.length > 0}
-			<section class="domain-group">
-				<header class="domain-header">
-					<span class="domain-name unassigned">Unassigned</span>
-					<span class="domain-count">{orphanRows.length}</span>
-					<span class="pv-spacer"></span>
-					<button class="icon-btn" title="New project"
-						onclick={(e) => { e.stopPropagation(); createProject(undefined); }} aria-label="New project">
-						<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-					</button>
-				</header>
+			<AssocGroup
+				noneLabel="Unassigned"
+				count={orphanRows.length}
+				sticky
+				addLabel="New project"
+				onAdd={() => createProject(undefined)}
+			>
 				<ul class="project-list">
 					{#each orphanRows as project (project.source.path)}
 						{@render projectRow(project, false)}
 					{/each}
 				</ul>
-			</section>
+			</AssocGroup>
 		{/if}
 
 		{#if domainRows.length === 0 && orphanRows.length === 0}
@@ -648,15 +621,47 @@
 			</div>
 		{/if}
 	</div>
+
+	<div class="pv-scroll pv-detail">
+		{#if selectedEntity && selected}
+			{@const e = selectedEntity}
+			{@const isDomain = selected.isDomain}
+			<!-- Keyed by the selection, so switching rows drops a half-edited change. -->
+			{#key selected.path}
+			<ProjectDetail
+				{index}
+				entity={e}
+				{isDomain}
+				domains={feed.domains}
+				readonly={selectedReadonly}
+				onRename={(name: string) => finishRename(e, isDomain, name)}
+				onSetStatus={(next: LifecycleState) => changeStatus(e, isDomain, next, false)}
+				onOpenFile={() => openNote(e)}
+				onBacklog={() => backlogForSelected(e, isDomain)}
+				onMenu={(ev: MouseEvent) =>
+					isDomain ? openDomainMenu(e as Domain, ev) : openProjectMenu(e as Project, ev)}
+				onBack={() => (selected = null)}
+			/>
+			{/key}
+		{:else}
+			<div class="empty-state">Select a project or domain to see its details.</div>
+		{/if}
+	</div>
+	</div>
 </div>
 
 {#snippet projectRow(project: Project, disabled: boolean)}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- When the parent domain is inactive its projects are read-only history:
 	     the row dims and its rename / context-menu / action buttons go inert. -->
+	<!-- The name button is the keyboard way in; the row is the bigger target. -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 	<li
 		class="project-row"
 		class:disabled
+		class:is-selected={isSelected(project)}
+		onclick={(e) => { e.stopPropagation(); if (!isEditing(project)) select(project, false); }}
 		oncontextmenu={(e) => { if (!disabled) openProjectMenu(project, e); }}
 	>
 		<span class="project-bullet"></span>
@@ -678,11 +683,10 @@
 			<button
 				class="project-name"
 				class:dim={statusOf(project) !== "active"}
-				{disabled}
 				title={disabled
 					? "Its domain is inactive"
-					: "Click to rename · Ctrl/Cmd-click to open file · Right-click for more"}
-				onclick={(e) => { e.stopPropagation(); if (disabled) return; if (e.ctrlKey || e.metaKey) openFile(project, e); else startRename(project); }}
+					: "Click for details · Ctrl/Cmd+click to open file · Right-click for more"}
+				onclick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) openFile(project, e); else select(project, false); }}
 			>{project.name}</button>
 		{/if}
 
@@ -702,7 +706,7 @@
 		{/if}
 
 		{#if statusOf(project) !== "active"}
-			<span class="status-tag">{STATUS_LABEL[statusOf(project)]}</span>
+			<Tag>{STATUS_LABEL[statusOf(project)]}</Tag>
 		{/if}
 
 		<span class="pv-spacer"></span>
@@ -749,31 +753,6 @@
 	.pv-spacer {
 		flex: 1;
 	}
-	.filter-group {
-		display: flex;
-		gap: 3px;
-		background: var(--background-primary-alt);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		padding: 2px;
-	}
-	.filter-btn {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-faint);
-		background: transparent;
-		border: none;
-		border-radius: 6px;
-		padding: 3px 9px;
-		cursor: pointer;
-	}
-	.filter-btn:hover {
-		color: var(--text-muted);
-	}
-	.filter-btn.on {
-		color: var(--text-on-accent);
-		background: var(--interactive-accent);
-	}
 	.add-btn {
 		display: flex;
 		align-items: center;
@@ -797,11 +776,41 @@
 		flex-shrink: 0;
 	}
 
-	/* ── Scroll body ── */
-	.pv-scroll {
+	/* ── Two panes: the list, and the selected one's details ── */
+	.projects-view {
+		container: kairos-projects / inline-size;
+	}
+	.pv-panes {
 		flex: 1;
+		min-height: 0;
+		display: flex;
+	}
+	.pv-scroll {
 		overflow: auto;
 		padding: 0 14px 18px;
+	}
+	.pv-list {
+		flex: 0 0 clamp(260px, 38%, 420px);
+		border-right: var(--border-width) solid var(--background-modifier-border);
+	}
+	.pv-detail {
+		flex: 1;
+		min-width: 0;
+		padding: var(--size-4-2) var(--size-4-6) var(--size-4-8);
+	}
+	/* Too narrow for both: the list, then the details in its place. */
+	@container kairos-projects (max-width: 640px) {
+		.pv-list {
+			flex: 1;
+			border-right: none;
+		}
+		.pv-detail,
+		.pv-panes.has-selection .pv-list {
+			display: none;
+		}
+		.pv-panes.has-selection .pv-detail {
+			display: block;
+		}
 	}
 	.empty-state {
 		color: var(--text-faint);
@@ -812,64 +821,8 @@
 		pointer-events: none;
 	}
 
-	/* ── Domain group ── */
-	.domain-group {
-		margin-bottom: 16px;
-	}
-	.domain-header {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 7px 8px;
-		border-radius: 7px;
-		position: sticky;
-		top: 0;
-		/* Sticky at the top of the scroll, with the project rows passing
-		   underneath it — so its fill has to stay opaque. */
-		background: var(--background-primary);
-		z-index: 1;
-	}
-	/* The whole domain row is one hover object (spec §5). The hover token is a
-	   translucent tint, so it is painted as a layer *over* the opaque base rather
-	   than assigned to `background`: the shorthand would drop the primary fill and
-	   let whatever is scrolled under the header read through it. */
-	.domain-header:hover {
-		background-image: linear-gradient(
-			var(--background-modifier-hover),
-			var(--background-modifier-hover)
-		);
-	}
-	.domain-header.dim {
-		opacity: 0.55;
-	}
-	.domain-name {
-		font-size: 13px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-		color: var(--text-normal);
-		background: transparent;
-		border: none;
-		padding: 0;
-		cursor: pointer;
-	}
-	.domain-name:hover {
-		color: var(--interactive-accent);
-	}
-	.domain-name.unassigned {
-		color: var(--text-faint);
-		font-style: italic;
-		text-transform: none;
-		letter-spacing: 0;
-		cursor: default;
-	}
 	.project-name.dim {
 		opacity: 0.55;
-	}
-	.domain-count {
-		font-size: 11px;
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
 	}
 	/* Inline description blurb (domains + projects), shown right after the name.
 	   Truncates so a long blurb never pushes the action icons off the row. */
@@ -890,16 +843,6 @@
 		color: var(--text-faint);
 	}
 
-	.status-tag {
-		font-size: 10px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--text-faint);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 5px;
-		padding: 1px 5px;
-	}
 	.group-empty {
 		font-size: 12px;
 		color: var(--text-faint);
@@ -913,17 +856,6 @@
 		margin: 0;
 		padding: 0;
 	}
-	/* The domain's accent continues as a left line down its project list (mirrors
-	   the grid/week views), so a domain and its projects read as one block. The
-	   line descends from under the domain's tinted kind icon (~15px in); rows are
-	   indented to clear it. It fades with the group when the domain is inactive. */
-	.project-list.accented {
-		margin-left: 15px;
-		border-left: 2px solid var(--domain-accent, var(--text-faint));
-	}
-	.project-list.accented.dim {
-		opacity: 0.55;
-	}
 	.project-row {
 		display: flex;
 		align-items: center;
@@ -932,11 +864,14 @@
 		border-radius: 7px;
 		position: relative;
 	}
-	.project-list.accented .project-row {
-		padding-left: 10px;
+	.project-row {
+		cursor: pointer;
 	}
 	.project-row:hover {
 		background: var(--background-modifier-hover);
+	}
+	.project-row.is-selected {
+		background: var(--background-modifier-active-hover);
 	}
 	/* A project whose domain is inactive is read-only history: dim it and let the
 	   inert buttons/name (disabled) show the not-allowed affordance. */
@@ -974,10 +909,10 @@
 	.project-name:hover {
 		color: var(--interactive-accent);
 	}
-	/* Rename inputs (project + domain) are styled to be indistinguishable from the
+	/* A project's rename input is styled to be indistinguishable from the
 	   static name — no box, no border, no box-shadow — so renaming feels like
-	   putting the cursor on the name, matching the backlog/task rows. The domain
-	   variant keeps the heading's uppercase weight so it doesn't jump on edit. */
+	   putting the cursor on the name, matching the backlog/task rows. A domain's
+	   is AssocGroup's. */
 	.name-input {
 		font-size: 13px;
 		font-family: inherit;
@@ -998,26 +933,6 @@
 		box-shadow: none;
 		outline: none;
 	}
-	.name-input.domain {
-		font-size: 13px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-	}
-
-	/* ── Kind icon (domain marker in the header) ── */
-	/* The domain kind icon carries the domain's accent color (its stripe used to);
-	   falls back to faint when no color is set. */
-	.kind-icon {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		color: var(--domain-accent, var(--text-faint));
-		flex-shrink: 0;
-		/* Obsidian's base styling can collapse an inline SVG to 0 width; pin it. */
-		min-width: min-content;
-	}
-
 	/* ── Row action bar (always visible on this page) ── */
 	.row-actions {
 		display: flex;
@@ -1044,8 +959,7 @@
 		cursor: pointer;
 		flex-shrink: 0;
 	}
-	.project-row:hover .icon-btn,
-	.domain-header .icon-btn {
+	.project-row:hover .icon-btn {
 		color: var(--text-muted);
 	}
 	.icon-btn:hover {
@@ -1059,27 +973,4 @@
 		cursor: default;
 	}
 
-	/* Color control: the swatch sits in an icon-btn; the native <input type=color>
-	   is stretched invisibly over it so a click opens the OS picker directly. */
-	.color-btn {
-		position: relative;
-		overflow: hidden;
-	}
-	.color-btn .swatch {
-		width: 14px;
-		height: 14px;
-		border-radius: 4px;
-		border: 1px solid var(--background-modifier-border);
-	}
-	.color-native {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		opacity: 0;
-		border: none;
-		padding: 0;
-		margin: 0;
-		cursor: pointer;
-	}
 </style>

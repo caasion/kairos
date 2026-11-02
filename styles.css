@@ -7,6 +7,33 @@ If your plugin does not need CSS, delete this file.
 
 */
 
+/* ── Design tokens (DESIGN.md) ──
+   The sizes Kairos uses, named once. Components use these instead of typing a
+   pixel value, so the same role reads the same in every view. Values are what
+   1.1.0 already uses most. Colours are always Obsidian's variables. */
+body {
+	/* Type */
+	--kairos-font-serif: Georgia, "Times New Roman", serif;
+	--kairos-text-display: 24px; /* A date card's day number */
+	--kairos-text-domain: 15px; /* A domain's name in a row label or group */
+	--kairos-text-name: 13px; /* A project's name, picker rows, empty states */
+	--kairos-text-body: 12px; /* Item text, block titles, controls */
+	--kairos-text-label: 11px; /* Buttons, headings, day of week, counts */
+	--kairos-text-meta: 10px; /* Metadata lines, hour labels, tags */
+
+	/* Corners */
+	--kairos-radius-s: 4px; /* Small marks: tags, tiny swatches */
+	--kairos-radius-m: 6px; /* Buttons, pills, rows */
+	--kairos-radius-l: 8px; /* Popovers, cards, date cards */
+
+	/* Accent bar down a group or row, in the domain colour */
+	--kairos-accent-width: 3px;
+
+	/* The tint on every other row of a table (Grid, Timeline), laid over the
+	   row's own background so it reads through today's tint too */
+	--kairos-row-alt: color-mix(in srgb, var(--text-normal) 3%, transparent);
+}
+
 /* ── Inline edit inputs ──
    Inputs that replace a label in place (task text, block title, backlog item,
    Gantt description, project/domain name) must look exactly like the label they
@@ -221,7 +248,18 @@ body .kairos-action-stack:focus-within > * {
 	}
 }
 
-/* ── Prompt / Confirm modals (modals.ts) ── */
+/* ── Prompt / Confirm modals (modals.ts) ──
+   Obsidian's own modal parts do the rest: its title, and the button row
+   (`modal-button-container`). The text field fills the dialog, and a
+   confirmation's message reads like Obsidian's own dialogs. */
+/* Kairos's dialogs keep the title in line with what's under it. Some themes
+   (Blue Topaz) indent every modal title without indenting the content, which
+   leaves the title hanging 1em in from the rows below. Every Kairos modal adds
+   `kairos-modal` (DESIGN.md, rule 8); the extra class beats the theme's
+   `.modal .modal-title`. */
+.modal.kairos-modal .modal-title {
+	margin-inline: 0;
+}
 .kairos-modal-field {
 	border-top: none;
 	padding-top: 0;
@@ -230,28 +268,155 @@ body .kairos-action-stack:focus-within > * {
 	width: 100%;
 }
 .kairos-modal-message p {
-	margin: 0 0 8px;
+	margin: 0 0 var(--size-4-2);
 	color: var(--text-muted);
-	font-size: 13px;
-	line-height: 1.5;
+	line-height: var(--line-height-normal);
 }
 .kairos-modal-message p:last-child {
 	margin-bottom: 0;
 }
 
+/* ── Popover (ui/components/Popover.svelte) ── */
+/* The panel behind header badges, pickers, hover cards and the calendar.
+   Obsidian's menu edge, a firmer border and a larger shadow, holds up over
+   the views' own dark surfaces. */
+.kairos-popover {
+	display: flex;
+	flex-direction: column;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: var(--kairos-radius-l);
+	box-shadow: var(--shadow-l);
+	text-align: left;
+}
+.kairos-popover.is-portal {
+	position: fixed;
+	z-index: var(--layer-popover);
+}
+.kairos-popover.is-anchored {
+	position: absolute;
+	z-index: var(--layer-popover);
+}
+.kairos-popover.is-layer-menu {
+	z-index: var(--layer-menu);
+}
+.kairos-popover.is-secondary {
+	background: var(--background-secondary);
+}
+.kairos-popover.is-pad-s {
+	padding: var(--size-4-1);
+}
+.kairos-popover.is-pad-m {
+	padding: var(--size-4-2);
+}
+.kairos-popover.is-pad-l {
+	padding: var(--size-4-3);
+}
+.kairos-popover.is-gap-s {
+	gap: var(--size-2-1);
+}
+.kairos-popover.is-gap-m {
+	gap: var(--size-4-2);
+}
+.kairos-popover.is-clipped {
+	overflow: hidden;
+}
+.kairos-popover.is-scrolling {
+	overflow-y: auto;
+}
+
+/* ── Regenerate routines (ui/routines/RegenerateModal.ts) ── */
+.kairos-regen-desc {
+	margin-top: 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+.kairos-regen-modal {
+	width: min(760px, 92vw);
+}
+
+/* ── Hover card (ui/components/HoverCard.svelte) ── */
+/* A popover in Kairos's own type: a full-height bar in the entity's colour,
+   the name in serif, a note and description in the UI font, and a small
+   labelled list of facts. Row labels and the Grid's marks open one. */
+.kairos-popover.kairos-hover-card {
+	flex-direction: row;
+	min-width: 180px;
+	max-width: 270px;
+}
+.kairos-hover-card-accent {
+	width: 4px;
+	flex-shrink: 0;
+	background: var(--text-faint);
+}
+.kairos-hover-card-body {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	padding: 12px 14px;
+}
+.kairos-hover-card-name {
+	margin: 1px 0 6px;
+	font-family: var(--kairos-font-serif);
+	font-size: 18px;
+	font-weight: 400;
+	line-height: 1.2;
+	color: var(--text-normal);
+}
+.kairos-hover-card-note {
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+	line-height: var(--line-height-tight);
+	overflow-wrap: anywhere;
+}
+.kairos-hover-card-desc {
+	margin-top: 2px;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	line-height: var(--line-height-tight);
+	overflow-wrap: anywhere;
+}
+.kairos-hover-card-facts {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 5px 12px;
+	align-items: center;
+	margin: 10px 0 0;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+}
+.kairos-hover-card-facts dt {
+	align-self: start;
+	color: var(--text-muted);
+}
+.kairos-hover-card-facts dd {
+	margin: 0;
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	min-width: 0;
+	color: var(--text-normal);
+	overflow-wrap: anywhere;
+}
+.kairos-hover-card-bars {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+.kairos-hover-card-dim {
+	color: var(--text-faint);
+}
+
 /* ── Full-text peek for truncated labels (ui/actions/peek.ts) ── */
+/* A popover too (.kairos-popover), made from TypeScript. */
 .kairos-peek {
 	position: fixed;
 	z-index: var(--layer-popover);
 	max-width: min(320px, calc(100vw - 16px));
 	padding: var(--size-4-2) var(--size-4-3);
-	background: var(--background-primary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
-	box-shadow: var(--shadow-s);
 	pointer-events: none;
-	display: flex;
-	flex-direction: column;
 	gap: var(--size-2-1);
 }
 .kairos-peek-text {
@@ -267,13 +432,16 @@ body .kairos-action-stack:focus-within > * {
 	font-variant-numeric: tabular-nums;
 }
 
-/* ── Status history modal (StatusHistoryModal.ts) ── */
-/* A "Status history" caption trailing the entity name in the modal title. */
-.kairos-history-sub {
-	margin-left: 8px;
-	font-size: 12px;
-	font-weight: 400;
-	color: var(--text-faint);
+/* ── Calendar for a status change's date (StatusHistory.svelte) ──
+   Portaled to <body>: a clear scrim that closes it, and the calendar placed
+   under the date that opened it. */
+.kairos-date-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: var(--layer-menu);
+}
+.kairos-date-anchor {
+	position: fixed;
 }
 
 /* ── Task & block metadata (the "icon + muted label" line) ── */
@@ -336,22 +504,25 @@ body {
 	font-variant-numeric: tabular-nums;
 }
 
-/* A trailing count (e.g. the grid badge's "+3"). Sits outside the ellipsizing
-   label so it is never the first thing truncation eats, and takes its spacing
-   from the item's gap rather than a leading space in the string. */
-.kairos-meta-count {
+/* A count beside a name: a group heading's, a pill's, a list heading's.
+   Every number that says how many things a name holds uses this class, so
+   they all set the same way: label size, tabular figures, faint. In a pill
+   it takes the pill's colour (DESIGN.md). */
+.kairos-count {
 	flex-shrink: 0;
+	font-size: var(--kairos-text-label);
+	font-weight: var(--font-normal);
 	font-variant-numeric: tabular-nums;
-	/* Tinted so the count reads as a quantity distinct from the label beside it,
-	   rather than as more of the same muted text. Carried over from the grid
-	   badge's own rule, which nested this inside the label. */
-	background: color-mix(
-		in srgb,
-		var(--interactive-accent) 20%,
-		var(--background-modifier-border)
-	);
-	padding: 0 3px;
-	border-radius: var(--radius-s, 4px);
+	color: var(--text-faint);
+}
+
+.kairos-pill .kairos-count {
+	color: inherit;
+}
+
+/* A pill's icon passed as a snippet keeps its size. */
+.kairos-pill svg {
+	flex-shrink: 0;
 }
 
 /* A fixed-size SVG dot separator: it can't perturb line-height the way a text

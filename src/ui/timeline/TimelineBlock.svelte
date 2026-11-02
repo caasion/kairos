@@ -19,6 +19,7 @@
   import { peek } from "../actions/peek";
   import { Menu, Notice } from "obsidian";
   import TaskComponent from "../task/Task.svelte";
+  import DraftTask from "../task/DraftTask.svelte";
   import { requestRepeat, requestRepeatBlock } from "../../routines/repeat";
   import { addBlockMenuItems } from "../blockMenu";
   import { actionZone } from "../actions/actionZone";
@@ -78,8 +79,8 @@
 		// Block field write-back.
 		onSetBlockTitle: (block: Block, title: string) => void;
 		onSetBlockTime: (block: Block, time: TimeRange) => void;
-		// Create a new child task inside this block.
-		onAddTask: (block: Block) => void;
+		// Create a new child task inside this block, once it's been typed in.
+		onAddTask: (block: Block, text: string) => void;
 		// Notes (decision 96): add one at the end, or set note `index`'s text
 		// (blank deletes it).
 		onAddNote: (block: Block, text: string) => void;
@@ -92,6 +93,15 @@
 		hover?: HoverTarget | null;
 		onHoverEnter?: (target: HoverTarget) => void;
 		onHoverLeave?: (target: HoverTarget) => void;
+		// Read-only (the Regenerate routines preview): the same block, but
+		// nothing in it can be moved, resized or edited, and it has no actions or
+		// menus. Its tasks look like routine templates. A click anywhere selects it instead (`onSelect`);
+		// pointing still peeks at truncated text. The write-back callbacks above
+		// are never called, so a read-only caller passes no-ops.
+		readonly?: boolean;
+		onSelect?: (block: Block) => void;
+		// Greyed, like a paused routine.
+		muted?: boolean;
   }
 
   let {
@@ -126,6 +136,9 @@
 		hover = null,
 		onHoverEnter,
 		onHoverLeave,
+		readonly = false,
+		onSelect,
+		muted = false,
   }: Props = $props();
 
   // ── Hover link ──
@@ -191,6 +204,9 @@
   // new note starts as an empty row and is only written once it has text.
   let editingNote = $state<number | null>(null);
   let addingNote = $state(false);
+  // A new task is typed in first (DraftTask), after the block's tasks, like a
+  // note: nothing is written until it has a name.
+  let addingTask = $state(false);
   let noteDraft = $state("");
 
   function focusOnMount(node: HTMLInputElement) {
@@ -206,8 +222,16 @@
   function beginNoteAdd() {
     noteDraft = "";
     editingNote = null;
+    addingTask = false;
     addingNote = true;
     // Grow the block so the new row is in view.
+    expand();
+  }
+
+  function beginTaskAdd() {
+    addingNote = false;
+    editingNote = null;
+    addingTask = true;
     expand();
   }
 
@@ -270,7 +294,7 @@
     event: PointerEvent,
   ) {
     // Only the primary button drives gestures; ignore right/middle clicks.
-    if (event.button !== 0) return;
+    if (readonly || event.button !== 0) return;
     // A move or resize works on the block's real size.
     collapse();
     onGestureStart?.(mode, block, event);
@@ -398,11 +422,13 @@
   });
 
   // How many rows the block has room for (none when compact). Rows are its
-  // tasks, then its notes, then a note being added.
+  // tasks, a task being added, then its notes, then a note being added.
   const capacity = $derived(
     compact ? 0 : Math.max(0, Math.floor((taskAreaHeight + 0.5) / rowHeight)),
   );
-  const rowCount = $derived(chips.length + notes.length + (addingNote ? 1 : 0));
+  const rowCount = $derived(
+    chips.length + notes.length + (addingNote ? 1 : 0) + (addingTask ? 1 : 0),
+  );
   // During a drag every block shows all its rows: they are the drop slots.
   const overflowing = $derived(!dragActive && rowCount > capacity);
   const room = $derived(overflowing && !expanded ? Math.max(0, capacity - 1) : rowCount);
@@ -507,9 +533,10 @@
 
   function openContextMenu(event: MouseEvent) {
     event.preventDefault();
+    if (readonly) return;
     const menu = new Menu();
     addBlockMenuItems(menu, block, {
-      onAddTask: () => onAddTask(block),
+      onAddTask: () => beginTaskAdd(),
       onAddNote: () => beginNoteAdd(),
       onEditAssoc: () => requestEditAssoc(),
       onDelete: () => onDelete(block),
@@ -548,6 +575,7 @@
 {#snippet chip(task: ResolvedTask, tr: ReturnType<Resolver> | undefined)}
   <TaskComponent
     {task}
+    template={readonly}
     association={task.owner}
     inherited={task.assoc === undefined}
     showAssociation={!sameAsBlock(task)}
@@ -558,11 +586,13 @@
     onNest={(rect) => onNestTask(block, task, rect)}
     nestLabel="Move to another block"
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
-    onRepeat={() => requestRepeat(task, block)}
-    onGrab={(e) => {
-      collapse();
-      onTaskGrab(block, task, e);
-    }}
+    onRepeat={readonly ? undefined : () => requestRepeat(task, block)}
+    onGrab={readonly
+      ? undefined
+      : (e) => {
+          collapse();
+          onTaskGrab(block, task, e);
+        }}
     onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
     onSetText={(t, text) => onSetTaskText(block, t, text)}
     onDelete={(t) => onDeleteTask(block, t)}
@@ -578,12 +608,26 @@
   class:dragging
   class:linked={blockLinked}
   class:expanded
+  class:readonly
+  class:muted
   style:--kairos-link-color={accentColor}
   data-block-line={block.source.line}
   bind:this={blockEl}
   style={`top: ${top}px; ${expanded ? `min-height: ${height}px;` : `height: ${height}px;`} left: calc(${leftPct}% + 2px); width: calc(${widthPct}% - 4px);`}
   onpointerdown={(e) => start("move", e)}
   oncontextmenu={openContextMenu}
+  onclickcapture={(e) => {
+    // Read-only: a click selects the block and never reaches a task or field.
+    if (!readonly) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect?.(block);
+  }}
+  oncontextmenucapture={(e) => {
+    if (!readonly) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }}
   onpointerenter={(e) => {
     onHoverEnter?.(blockTarget);
     onBlockEnter(e);
@@ -595,6 +639,7 @@
   use:actionZone={{ layout: "stack" }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
+  {#if !readonly}
   <div
     class="tl-resize tl-resize-top"
     onpointerdown={(e) => {
@@ -602,12 +647,14 @@
       start("resize-top", e);
     }}
   ></div>
+  {/if}
 
 	<!-- Action bar: add task, add note, association, repeat and delete, the
 	     same as a Grid block header's. Woken from the top-right corner zone
 	     (see actions/actionZone.ts), not on any hover. On a mouse wake it's a
 	     vertical stack: delete stays in the corner and the rest rise above it
 	     (above the block). Touch keeps the bar. -->
+	{#if !readonly}
 	<div class="tl-actions kairos-action-bar">
 		<button
 			type="button"
@@ -617,7 +664,7 @@
 			onpointerdown={(e) => e.stopPropagation()}
 			onclick={(e) => {
 				e.stopPropagation();
-				onAddTask(block);
+				beginTaskAdd();
 			}}
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
@@ -675,6 +722,7 @@
 			<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
 		</button>
 	</div>
+	{/if}
 
   <!-- Inner visual container -->
   <div
@@ -816,6 +864,14 @@
               {@render chip(task, tr)}
             </div>
           {/each}
+          {#if addingTask && (!overflowing || expanded)}
+            <DraftTask
+              color={accentColor}
+              placeholder="New task"
+              onSubmit={(text) => onAddTask(block, text)}
+              onClose={() => (addingTask = false)}
+            />
+          {/if}
           {#each shownNotes as note, n (n)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="tl-note" oncontextmenu={(e) => openNoteMenu(e, n)}>
@@ -872,6 +928,7 @@
     {/if}
   </div>
 
+  {#if !readonly}
   <div
     class="tl-resize tl-resize-bottom"
     onpointerdown={(e) => {
@@ -879,6 +936,7 @@
       start("resize-bottom", e);
     }}
   ></div>
+  {/if}
 </div>
 
 
@@ -891,6 +949,15 @@
     padding: 0;
     cursor: grab;
     user-select: none;
+  }
+
+  .tl-block.readonly,
+  .tl-block.readonly :is(.tl-title, .tl-time) {
+    cursor: pointer;
+  }
+
+  .tl-block.muted {
+    opacity: 0.5;
   }
 
   .tl-block.dragging {

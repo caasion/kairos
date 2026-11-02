@@ -82,7 +82,9 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "../timeline/LeftoverTask.svelte";
 	import HeaderBadge from "../timeline/HeaderBadge.svelte";
-	import AssocGroup from "../timeline/AssocGroup.svelte";
+	import IconButton from "../components/IconButton.svelte";
+	import { showDayMenu } from "../dayMenu";
+	import AssocGroup from "../components/AssocGroup.svelte";
 	import { groupByAssoc } from "../timeline/groupByAssoc";
 	import TaskRow from "../task/Task.svelte";
 	import { leftOpenLabel, todayLeftovers } from "../timeline/todayLeftovers";
@@ -106,13 +108,15 @@
 	} from "../../dayNote";
 	import { nextDraftLine } from "../../draftLine";
 	import GridCell from "./GridCell.svelte";
+	import CellMarks from "./CellMarks.svelte";
 	import RowLabel from "../components/RowLabel.svelte";
-	import IntensityBars from "../components/IntensityBars.svelte";
 	import type { RowLabelInfo } from "../components/rowLabel";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
 	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import Popover from "../components/Popover.svelte";
+	import StepArrows from "../components/StepArrows.svelte";
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
 	import { intoViewHeader } from "../actions/viewHeader";
@@ -208,9 +212,12 @@
 		Array.from({ length: windowSize }, (_, i) => shiftISO(anchor, i)),
 	);
 
+	// The big arrows move the whole window, the small ones a day. Walking back
+	// onto the default window is the same as "Today".
+	const windowStepLabel = $derived(`${windowSize} days`);
 	function stepWindow(deltaDays: number) {
-		atDefault = false;
 		anchor = shiftISO(anchor, deltaDays);
+		atDefault = anchor === shiftISO(todayISO(), -before);
 		closeAssocPicker();
 	}
 	function goToday() {
@@ -372,6 +379,16 @@
 			s.gridUnscheduledInCells = on;
 		});
 	}
+	function setRowLines(on: boolean) {
+		updateSettings((s) => {
+			s.gridRowLines = on;
+		});
+	}
+	function setRowShading(on: boolean) {
+		updateSettings((s) => {
+			s.gridRowShading = on;
+		});
+	}
 	function setShowRollupProjects(on: boolean) {
 		updateSettings((s) => {
 			s.gridShowRollupProjects = on;
@@ -391,7 +408,7 @@
 	// window reads left to right like the Gantt does. The label's intention stays
 	// today's (prose is too long to be a starting point the way the intensity bars are),
 	// so a new intention anywhere in the window, the first day included, gets a
-	// notebook icon in its cell whose tooltip reads it out.
+	// notebook icon in its cell (CellMarks), whose hover card reads it out.
 	function labelInfo(row: Exclude<GridRow, { kind: "unassigned" }>): RowLabelInfo {
 		const on = dates[0];
 		if (!snapshot || !on) return row.info;
@@ -402,10 +419,13 @@
 		if (!snapshot || inactive || date === dates[0]) return null;
 		return intensityChange(row, date, snapshot);
 	}
-	function intentionOn(row: GridRow, date: ISODate, inactive: boolean): string | null {
+	function intentionOn(row: GridRow, date: ISODate, inactive: boolean) {
 		if (!snapshot || inactive) return null;
 		return intentionChange(row, date, snapshot);
 	}
+	// Each cell's marks' width, by `rowKey|date`, so the cell's floating "+"
+	// stops short of them instead of covering them.
+	let marksWidth = $state<Record<string, number>>({});
 
 	// ── Resurfaced backlog nudges ──
 	// Entries with a resurface date surface on one day (max(resurface, today)),
@@ -595,7 +615,8 @@
 
 	// A "+" opens a field in its cell for the new task instead of making a
 	// "New task" at once (DraftTask), so nothing is made until it has a name.
-	let draft = $state<{ rowKey: GridRow["key"]; date: ISODate } | null>(null);
+	// A block's own "+" opens it in that block (`block`, its line).
+	let draft = $state<{ rowKey: GridRow["key"]; date: ISODate; block?: number } | null>(null);
 	function draftInCell(row: GridRow, date: ISODate): boolean {
 		return draft?.rowKey === row.key && draft.date === date;
 	}
@@ -633,27 +654,30 @@
 
 	async function addDraft(row: GridRow, date: ISODate, text: string) {
 		const assoc = rowAssociation(row);
+		const blockLine = draft?.block;
+		if (blockLine !== undefined) {
+			const day = dayOf(date);
+			const block = day?.blocks.find((b) => b.source.line === blockLine);
+			if (!day || day.path === null || !block) return;
+			commit(date, day.path, addTaskToBlock(day.blocks, block, text, assoc, nextDraftLine()));
+			return;
+		}
 		const day = dayOf(date);
 		const path = day?.path ?? (await ensureNoteForDate(date));
 		const blocks = dayOf(date)?.blocks ?? day?.blocks ?? [];
 		commit(date, path, addTaskToUnscheduled(blocks, path, text, assoc, nextDraftLine()));
 	}
 
-	// A group's "+" (grouping on): a new task in that block, filed under the row
-	// it was added from. Unscheduled's adds to Unscheduled, like the cell's "+".
+	// A group's "+" (grouping on): a field for a new task in that block, filed
+	// under the row it was added from. Unscheduled's adds to Unscheduled, like
+	// the cell's "+".
 	async function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
 		if (isUnscheduledBlock(block)) {
 			await onCreate(row, date);
 			return;
 		}
 		focusDay(date);
-		const day = dayOf(date);
-		if (!day || day.path === null) return;
-		commit(
-			date,
-			day.path,
-			addTaskToBlock(day.blocks, block, "New task", rowAssociation(row), nextDraftLine()),
-		);
+		draft = { rowKey: row.key, date, block: block.source.line };
 	}
 
 	// ── Task drag-to-reschedule (grid DnD) ──
@@ -1289,8 +1313,17 @@
 			if (taskDrag) void onTaskDragUp();
 			if (blockDrag) void onBlockDragUp();
 		};
+		// The browser took the pointer (a system gesture, an Obsidian drawer swipe)
+		// or the window lost focus: end the drag without dropping. Left live, the
+		// ghost stays stuck and the next pointerup drops at the last target.
+		const cancel = () => {
+			if (taskDrag) cancelTaskDrag();
+			if (blockDrag) cancelBlockDrag();
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", cancel);
+		window.addEventListener("blur", cancel);
 
 		return () => {
 			unsub();
@@ -1302,6 +1335,8 @@
 			unsubscribeGrid?.();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", cancel);
+			window.removeEventListener("blur", cancel);
 		};
 	});
 </script>
@@ -1397,36 +1432,18 @@
 <div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
 	<div class="grid-header" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepWindow(-windowSize);
-				}}
-				aria-label="Previous window"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-			</button>
-			<button
-				class="day-date"
-				title="Click to pick a date"
-				onclick={(e) => {
-					e.stopPropagation();
-					showCalendar = !showCalendar;
-				}}
-			>
-				{rangeLabel}
-			</button>
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepWindow(windowSize);
-				}}
-				aria-label="Next window"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-			</button>
+			<StepArrows big={windowStepLabel} small="a day" onstep={(dir, big) => stepWindow(dir * (big ? windowSize : 1))}>
+				<button
+					class="day-date"
+					title="Click to pick a date"
+					onclick={(e) => {
+						e.stopPropagation();
+						showCalendar = !showCalendar;
+					}}
+				>
+					{rangeLabel}
+				</button>
+			</StepArrows>
 			{#if !atDefault}
 				<button
 					class="today-btn"
@@ -1457,7 +1474,13 @@
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
 			</button>
 			{#if showControls}
-				<div class="controls-popup">
+				<Popover
+					class="controls-popup"
+					placement="anchored"
+					padding="l"
+					gap="m"
+					style="top: calc(100% + 6px); right: 0; min-width: 170px;"
+				>
 					<label class="controls-field">
 						<span class="controls-label">Days before today</span>
 						<input type="number" class="controls-input" min="1" max="7" value={before} oninput={(e) => setDaysBefore(+e.currentTarget.value)} />
@@ -1471,6 +1494,14 @@
 						<input type="checkbox" checked={settings.gridUnscheduledInCells} onchange={(e) => setUnscheduledInCells(e.currentTarget.checked)} />
 					</label>
 					<label class="controls-field">
+						<span class="controls-label">Line under every row</span>
+						<input type="checkbox" checked={settings.gridRowLines} onchange={(e) => setRowLines(e.currentTarget.checked)} />
+					</label>
+					<label class="controls-field">
+						<span class="controls-label">Shade every other row</span>
+						<input type="checkbox" checked={settings.gridRowShading} onchange={(e) => setRowShading(e.currentTarget.checked)} />
+					</label>
+					<label class="controls-field">
 						<span class="controls-label">Show projects on rolled-up tasks</span>
 						<input type="checkbox" checked={settings.gridShowRollupProjects} onchange={(e) => setShowRollupProjects(e.currentTarget.checked)} />
 					</label>
@@ -1478,7 +1509,7 @@
 						<span class="controls-label">Highlight across views</span>
 						<input type="checkbox" checked={settings.highlightAcrossViews} onchange={(e) => setHighlightAcrossViews(e.currentTarget.checked)} />
 					</label>
-				</div>
+				</Popover>
 			{/if}
 		</div>
 	</div>
@@ -1508,6 +1539,7 @@
 						if (e.ctrlKey || e.metaKey) void openDayNote(date);
 						else showDay(date);
 					}}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
 				>
 					<span class="dow-label">{dowLabel(date)}</span>
 					<span class="date-number">{dayNumber(date)}</span>
@@ -1518,6 +1550,14 @@
 						<span class="in-day-indicator" aria-label="Shown in the Day view"></span>
 					{/if}
 				</button>
+				<!-- The day's menu, also on right-click; the ⋯ shows it's there. -->
+				<div class="grid-colhead-menu">
+					<IconButton
+						label="Day actions"
+						icon="more-horizontal"
+						onclick={(e) => showDayMenu(e, date, routineActions)}
+					/>
+				</div>
 				<!-- The day's lists as badges, bottom-right of its date cell:
 				     Unscheduled, Inbox, then routines (listed on hover, each addable). -->
 				{#if usBadge || inCount > 0 || (offered && offered.count > 0)}
@@ -1571,7 +1611,12 @@
 	</div>
 
 	<div class="grid-scroll" data-drag-scroll>
-		<div class="grid-table" style={`grid-template-columns: ${gridTemplate};`}>
+		<div
+			class="grid-table"
+			class:row-lines={settings.gridRowLines}
+			class:row-shading={settings.gridRowShading}
+			style={`grid-template-columns: ${gridTemplate};`}
+		>
 			<!-- Body rows -->
 			{#each rows as row, i (row.key)}
 				{@const rowArchived = isCellInactive(row, todayISO())}
@@ -1582,6 +1627,7 @@
 					class:unassigned={row.kind === "unassigned"}
 					class:dim={rowArchived}
 					class:group-end={isGroupEnd(i)}
+					class:alt={i % 2 === 1}
 					style={row.kind !== "unassigned" && "color" in row && row.color
 						? `--row-accent: ${row.color};`
 						: undefined}
@@ -1601,32 +1647,23 @@
 					{@const intention = intentionOn(row, date, inactive)}
 					<div
 						class="grid-datacell"
+						class:alt={i % 2 === 1}
 						class:today={isToday(date)}
+						style:--grid-marks-width={change || intention
+							? `${marksWidth[`${row.key}|${date}`] ?? 0}px`
+							: undefined}
 						data-grid-date={date}
 						data-grid-row-key={row.key}
 					>
 						{#if change || intention}
-							<span
-								class="grid-cell-marks"
-								style={"color" in row && row.color ? `color: ${row.color};` : undefined}
-							>
-								{#if intention}
-									<!-- A new intention starts on this day; the tooltip reads it out. -->
-									<span class="grid-intention-change" title={`Intention: ${intention}`}>
-										<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M16 11.75V22"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M2 6h4"/><path d="M20 11.75V20a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h5.65"/><circle cx="18" cy="5" r="3"/></svg>
-									</span>
-								{/if}
-								{#if change}
-									<!-- Intensity moves on this day: an arrow and the new level. -->
-									<span
-										class="grid-intensity-change"
-										title={`Intensity ${change.from ?? "unset"} → ${change.to} from this day`}
-									>
-										<span class="grid-intensity-arrow">{change.from === null || change.to > change.from ? "↑" : "↓"}</span>
-										<IntensityBars level={change.to} />
-									</span>
-								{/if}
-							</span>
+							<CellMarks
+								name={row.name}
+								color={"color" in row ? row.color : undefined}
+								{date}
+								{intention}
+								intensity={change}
+								bind:width={marksWidth[`${row.key}|${date}`]}
+							/>
 						{/if}
 						{#if day}
 							{@const cell = cellFor(row, day)}
@@ -1645,6 +1682,7 @@
 								{onMoveToBacklog}
 								onCreate={() => onCreate(row, date)}
 								draftOpen={draftInCell(row, date)}
+								draftBlock={draftInCell(row, date) ? draft?.block : undefined}
 								onDraftSubmit={(text: string) => void addDraft(row, date, text)}
 								onDraftClose={() => (draft = null)}
 								holdLanded={!settings.gridUnscheduledInCells}
@@ -1766,11 +1804,6 @@
 		gap: 4px;
 	}
 
-	.nav-btn {
-		height: 24px;
-		width: 24px;
-	}
-
 	.day-date {
 		font-size: 12px;
 		font-weight: 600;
@@ -1842,21 +1875,6 @@
 		flex-shrink: 0;
 	}
 
-	.controls-popup {
-		position: absolute;
-		top: calc(100% + 6px);
-		right: 0;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		padding: 12px;
-		box-shadow: var(--shadow-s);
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 170px;
-	}
 	.controls-field {
 		display: flex;
 		align-items: center;
@@ -1966,6 +1984,24 @@
 		flex: 1;
 		min-width: 0;
 	}
+	/* The ⋯ for the day's menu, beside the in-day dot; shown while the header
+	   is pointed at, and always where there's no hover (DateCard's rule). */
+	.grid-colhead-menu {
+		position: absolute;
+		top: var(--size-2-1);
+		right: var(--size-4-3);
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+	.grid-colhead-wrap:hover .grid-colhead-menu,
+	.grid-colhead-menu:focus-within {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.grid-colhead-menu {
+			opacity: 1;
+		}
+	}
 	.grid-badges {
 		position: absolute;
 		right: 6px;
@@ -1999,7 +2035,7 @@
 		line-height: 1.4;
 	}
 	.grid-colhead .date-number {
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 24px;
 		font-weight: 400;
 		color: var(--text-normal);
@@ -2062,15 +2098,23 @@
 	.grid-rowlabel.unassigned {
 		border-left-color: transparent;
 	}
-	/* Child project rows sit deeper and share the domain's continuous accent, so
-	   the divider between a domain and its children is dropped — the group reads as
-	   one block. */
+	/* Child project rows sit deeper under their domain. By default the label
+	   column drops the line between a domain and its projects, so the group reads
+	   as one block; **Line under every row** keeps every row's line, so it runs
+	   from the label across the cells. The accent stripe runs unbroken either way. */
 	.grid-rowlabel.child {
 		padding-left: calc(var(--kairos-row-label-pad-left) + var(--kairos-row-label-indent));
 	}
-	.grid-rowlabel.child:not(.group-end),
-	.grid-rowlabel.domain {
+	.grid-table:not(.row-lines) .grid-rowlabel.child:not(.group-end),
+	.grid-table:not(.row-lines) .grid-rowlabel.domain {
 		border-bottom-color: transparent;
+	}
+	/* **Shade every other row**: label and cells alike, so a row is easy to
+	   follow across the days. Laid over the row's own background (the label
+	   column's, today's). */
+	.grid-table.row-shading .grid-rowlabel.alt,
+	.grid-table.row-shading .grid-datacell.alt {
+		background-image: linear-gradient(var(--kairos-row-alt), var(--kairos-row-alt));
 	}
 	/* A row for an entity that is inactive/archived today — present for its
 	   history, but dimmed to read as past (mirrors the Projects page). */
@@ -2094,14 +2138,10 @@
 	}
 
 
-	:global(.resurface-popup) {
+	/* Places the calendar, which draws its own popover panel. */
+	.resurface-popup {
 		position: fixed;
-		z-index: 1000;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		padding: 4px;
+		z-index: var(--layer-menu);
 	}
 
 	.grid-datacell {
@@ -2110,33 +2150,6 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		border-left: 1px solid var(--background-modifier-border);
 		min-width: 0;
-	}
-	/* Where a row's intention or intensity changes: a notebook icon and/or a small
-	   arrow with the intensity bars, in the row's accent, tucked in the cell's bottom-right
-	   corner, under task action bars and the cell's "+" (both sit higher). */
-	.grid-cell-marks {
-		position: absolute;
-		right: 4px;
-		bottom: 2px;
-		z-index: 1;
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		color: var(--text-faint);
-		font-size: 9px;
-		line-height: 1;
-		opacity: 0.85;
-	}
-	.grid-intention-change {
-		display: inline-flex;
-	}
-	.grid-intensity-change {
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-	}
-	.grid-intensity-arrow {
-		margin-right: 1px;
 	}
 	/* Faint tint marking the currently active day's column. */
 	.grid-datacell.today {

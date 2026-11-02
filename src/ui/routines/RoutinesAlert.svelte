@@ -17,11 +17,15 @@
 	import type { Routine } from "../../routines/routinesFile";
 	import type { RoutineItem, RoutineList } from "../../routines/preview";
 	import { formatTimeRange } from "../../parser";
+	import Pill from "../components/Pill.svelte";
+	import Popover from "../components/Popover.svelte";
 
 	interface Props {
 		list: RoutineList;
 		/** A full-width bar (Day view) or a small pill (column headers). */
 		variant: "bar" | "pill";
+		/** The pill's size: "s" on column headers, "m" among the Day view's tray pills. */
+		size?: "s" | "m";
 		/** The day, for the list's heading ("Routines for Mon, Oct 12"). */
 		label: string;
 		/** Hidden when routines are added to new daily notes automatically. */
@@ -32,10 +36,10 @@
 		onAddAll: () => void;
 	}
 
-	let { list, variant, label, showAddAll, onAdd, onAddAll }: Props = $props();
+	let { list, variant, size = "s", label, showAddAll, onAdd, onAddAll }: Props = $props();
 
 	let rootEl = $state<HTMLDivElement>();
-	let triggerEl = $state<HTMLElement>();
+	let triggerEl = $state<HTMLButtonElement>();
 	let panelEl = $state<HTMLDivElement>();
 	let open = $state(false);
 	let panelStyle = $state("");
@@ -49,17 +53,6 @@
 	function clearTimer() {
 		window.clearTimeout(timer);
 		timer = undefined;
-	}
-
-	// The panel is portaled to the body and fixed there: a view's leaf is a
-	// transformed, clipping ancestor, which would otherwise offset and cut it.
-	function portal(node: HTMLElement) {
-		node.ownerDocument.body.appendChild(node);
-		return {
-			destroy() {
-				node.remove();
-			},
-		};
 	}
 
 	function inside(target: EventTarget | null): boolean {
@@ -152,6 +145,8 @@
 	</button>
 {/snippet}
 
+{#snippet pillIcon()}{@render repeatIcon(12)}{/snippet}
+
 {#snippet repeatIcon(size: number)}
 	<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
 {/snippet}
@@ -160,7 +155,6 @@
 <div
 	class="ra"
 	class:ra-bar={variant === "bar"}
-	class:ra-pill={variant === "pill"}
 	class:open
 	bind:this={rootEl}
 	onpointerenter={onEnter}
@@ -189,27 +183,34 @@
 			{/if}
 		</div>
 	{:else}
-		<button
-			class="ra-pill-trigger"
-			bind:this={triggerEl}
+		<!-- Named by hidden text, not aria-label: Obsidian shows every
+		     aria-label as a tooltip, which would cover the list. -->
+		<Pill
+			{size}
+			tone="accent"
+			icon={pillIcon}
+			count={list.count}
+			{open}
+			hiddenLabel={summary}
 			aria-expanded={open}
-			aria-label={summary}
+			bind:el={triggerEl}
 			onclick={onTriggerClick}
-		>
-			{@render repeatIcon(12)}
-			<span class="ra-count">{list.count}</span>
-		</button>
+		/>
 	{/if}
 
 	{#if open}
-		<div
+		<!-- Portaled out of .ra (Popover), so it carries the accent itself. -->
+		<Popover
 			class="ra-panel"
-			style={panelStyle}
+			surface="secondary"
+			padding="l"
+			gap="s"
+			overflow="scroll"
+			style="{panelStyle} --ra-accent: var(--interactive-accent);"
 			role="dialog"
-			tabindex="-1"
+			tabindex={-1}
 			aria-label={`Routines for ${label}`}
-			bind:this={panelEl}
-			use:portal
+			bind:el={panelEl}
 			onpointerenter={onEnter}
 			onpointerleave={onLeave}
 		>
@@ -264,17 +265,13 @@
 					</div>
 				{/each}
 			{/if}
-		</div>
+		</Popover>
 	{/if}
 </div>
 
 <style>
-	/* The panel is portaled out of .ra, so it carries the accent itself. */
-	.ra,
-	.ra-panel {
-		--ra-accent: var(--interactive-accent);
-	}
 	.ra {
+		--ra-accent: var(--interactive-accent);
 		min-width: 0;
 	}
 
@@ -317,33 +314,6 @@
 		white-space: nowrap;
 	}
 
-	/* ── Pill (column headers) ── */
-	.ra-pill-trigger {
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		height: 20px;
-		padding: 0 6px;
-		border-radius: 10px;
-		border: 1px dashed color-mix(in srgb, var(--ra-accent) 50%, transparent);
-		background: var(--background-primary);
-		color: var(--ra-accent);
-		font-size: 11px;
-		font-variant-numeric: tabular-nums;
-		box-shadow: none;
-		cursor: pointer;
-	}
-	.ra-pill.open .ra-pill-trigger,
-	.ra-pill-trigger:hover {
-		background: var(--ra-accent);
-		color: var(--text-on-accent);
-		border-style: solid;
-		box-shadow: none;
-	}
-	.ra-count {
-		line-height: 1;
-	}
-
 	.ra-add-all {
 		flex-shrink: 0;
 		height: 22px;
@@ -362,21 +332,6 @@
 	}
 
 	/* ── The list ── */
-	.ra-panel {
-		position: fixed;
-		z-index: var(--layer-popover);
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		/* The same look as the header badges' lists (HeaderBadge). */
-		padding: 10px 12px;
-		border-radius: var(--radius-s);
-		border: 1px solid var(--background-modifier-border);
-		background: var(--background-secondary);
-		box-shadow: var(--shadow-s);
-		text-align: left;
-	}
 	.ra-head {
 		display: flex;
 		align-items: baseline;
@@ -388,7 +343,7 @@
 	.ra-title {
 		flex: 1;
 		min-width: 0;
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 15px;
 		color: var(--text-normal);
 		overflow: hidden;

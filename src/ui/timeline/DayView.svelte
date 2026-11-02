@@ -29,7 +29,7 @@
 	import { leftovers, type Leftover } from "../../carry";
 	import LeftoverBanner from "./LeftoverBanner.svelte";
 	import { leftOpenLabel } from "./todayLeftovers";
-	import AssocGroup from "./AssocGroup.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import TrayPill from "./TrayPill.svelte";
 	import { surfacedOn } from "../../backlogModel";
@@ -58,6 +58,8 @@
 	import { commitNumber } from "./numberField";
 	import { requestRepeat } from "../../routines/repeat";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
+	import IconButton from "../components/IconButton.svelte";
+	import { showDayMenu } from "../dayMenu";
 	import { routinesToOffer } from "../../routines/preview";
 	import RoutinesAlert from "../routines/RoutinesAlert.svelte";
 	import { dayLabel } from "../../routines/plan";
@@ -65,6 +67,8 @@
 	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
+	import Popover from "../components/Popover.svelte";
+	import StepArrows from "../components/StepArrows.svelte";
 	import { placeUnderAnchor } from "../floating";
 	import {
 		hitTestTimeline,
@@ -616,12 +620,12 @@
 	// (real lines are >= 0).
 
 
-	function handleAddTask(block: Block) {
+	function handleAddTask(block: Block, text: string) {
 		const real = ownerFor(block);
 		if (!real) return;
 		const task: Task = {
 			source: { path: real.source.path, line: nextDraftLine() },
-			text: "New task",
+			text,
 			status: " ",
 		};
 		real.tasks = [...real.tasks, task];
@@ -1019,6 +1023,15 @@
 		if (committedPreview.size > 0) await commitRetime(committedPreview);
 	}
 
+	// The browser took the pointer (a touch that turned into a scroll, a system
+	// gesture) or the window lost focus: drop the gesture without writing. Left
+	// live, the next pointerup anywhere would commit its stale preview.
+	function cancelGesture() {
+		gesture = null;
+		preview = new Map();
+		draft = null;
+	}
+
 	async function commitRetime(ranges: Map<Block, TimeRange>) {
 		// Apply each new range in place on the live block. `ranges` is keyed by the
 		// preview's block objects; match back to the live array by source line.
@@ -1244,8 +1257,14 @@
 			if (taskDrag) onTaskDragUp();
 			else void onPointerUp();
 		};
+		const cancel = () => {
+			cancelTaskDrag();
+			cancelGesture();
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", cancel);
+		window.addEventListener("blur", cancel);
 
 		return () => {
 			unsubscribeDay?.();
@@ -1259,6 +1278,8 @@
 			window.clearInterval(tick);
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", cancel);
+			window.removeEventListener("blur", cancel);
 		};
 	});
 </script>
@@ -1277,39 +1298,20 @@
 	     Obsidian's header look in place (kairos-header-bar is-native). -->
 	<div class="day-header kairos-header-bar is-native">
 		<div class="day-nav" bind:this={dateNavRef}>
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepDay(-1);
-				}}
-				aria-label="Previous day"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-			</button>
-
-			<button
-				class="day-date"
-				class:today={isToday}
-				title="Click to pick a date · Ctrl+click to open the daily note"
-				onclick={(e) => {
-					e.stopPropagation();
-					void openDayNote(e);
-				}}
-			>
-				{dateLabel}
-			</button>
-
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepDay(1);
-				}}
-				aria-label="Next day"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-			</button>
+			<StepArrows big="a week" small="a day" onstep={(dir, big) => stepDay(dir * (big ? 7 : 1))}>
+				<button
+					class="day-date"
+					class:today={isToday}
+					title="Click to pick a date · Ctrl+click to open the daily note"
+					onclick={(e) => {
+						e.stopPropagation();
+						void openDayNote(e);
+					}}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
+				>
+					{dateLabel}
+				</button>
+			</StepArrows>
 
 			{#if !isToday}
 				<button
@@ -1333,6 +1335,14 @@
 				</div>
 			{/if}
 		</div>
+		<!-- The day's menu, also on the date's right-click; the same one the
+		     Week and Grid date headers open. -->
+		<IconButton
+			label="Day actions"
+			icon="more-horizontal"
+			size="m"
+			onclick={(e) => showDayMenu(e, date, routineActions)}
+		/>
 
 		<span class="day-header-spacer"></span>
 		<span class="day-range-label">
@@ -1366,7 +1376,13 @@
 			</button>
 
 			{#if showControls}
-				<div class="controls-popup">
+				<Popover
+					class="controls-popup"
+					placement="anchored"
+					padding="l"
+					gap="m"
+					style="top: calc(100% + 6px); right: 0; min-width: 170px;"
+				>
 					<label class="controls-field">
 						<span class="controls-label">Start hour</span>
 						<input
@@ -1401,7 +1417,7 @@
 							onchange={(e) => commitNumber(e.currentTarget, setHourHeight)}
 						/>
 					</label>
-				</div>
+				</Popover>
 			{/if}
 		</div>
 	</div>
@@ -1487,6 +1503,7 @@
 				<RoutinesAlert
 					list={offeredRoutines}
 					variant="pill"
+					size="m"
 					label={dayLabel(date)}
 					showAddAll={!settings.autoApplyRoutines}
 					onAdd={(rs) => routineActions.insert(date, rs)}
@@ -1801,11 +1818,6 @@
 		gap: 4px;
 	}
 
-	.nav-btn {
-		height: 24px;
-		width: 24px;
-	}
-
 	.day-date {
 		font-size: 12px;
 		font-weight: 600;
@@ -1902,22 +1914,6 @@
 		width: 14px;
 		height: 14px;
 		flex-shrink: 0;
-	}
-
-	.controls-popup {
-		position: absolute;
-		top: calc(100% + 6px);
-		right: 0;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		padding: 12px;
-		box-shadow: var(--shadow-s);
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 170px;
 	}
 
 	.controls-field {
@@ -2043,11 +2039,6 @@
 		padding: 4px 8px;
 		border-bottom: 1px solid var(--background-modifier-border);
 	}
-	/* The routines pill sits among the tray's pills, so it takes their shape. */
-	.day-tray :global(.ra-pill-trigger) {
-		height: 22px;
-		border-radius: var(--radius-s);
-	}
 	/* Toggled-on lists push the timeline down, up to a little under half the
 	   view; past that they scroll on their own. */
 	.day-tray-lists {
@@ -2092,13 +2083,9 @@
 
 	/* ── Resurfacing (backlog nudges due today) ── */
 
-	:global(.resurface-popup) {
+	/* Places the calendar, which draws its own popover panel. */
+	.resurface-popup {
 		position: fixed;
-		z-index: 1000;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		padding: 4px;
+		z-index: var(--layer-menu);
 	}
 </style>

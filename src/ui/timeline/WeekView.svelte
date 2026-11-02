@@ -3,6 +3,7 @@
 	import { onMount } from "svelte";
 	import type { Readable } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
+	import { showDayMenu } from "../dayMenu";
 	import type {
 		Association,
 		BacklogEntry,
@@ -33,6 +34,7 @@
 	import BacklogNudge from "../backlog/BacklogNudge.svelte";
 	import { placeUnderAnchor } from "../floating";
 	import DayColumn from "./DayColumn.svelte";
+	import type { DayColumnHandle } from "./dayColumnHandle";
 	import { type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
 	import { commitNumber } from "./numberField";
@@ -42,7 +44,10 @@
 	import type { Leftover } from "../../carry";
 	import LeftoverTask from "./LeftoverTask.svelte";
 	import HeaderBadge from "./HeaderBadge.svelte";
-	import AssocGroup from "./AssocGroup.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
+	import DateCard from "../components/DateCard.svelte";
+	import HourGutter from "../components/HourGutter.svelte";
+	import HourLines from "../components/HourLines.svelte";
 	import { groupByAssoc } from "./groupByAssoc";
 	import { leftOpenLabel, todayLeftovers } from "./todayLeftovers";
 	import LeftoverButtons from "./LeftoverButtons.svelte";
@@ -53,12 +58,9 @@
 	import { createAssociation } from "../association/createAssociation";
 	import BlockPicker from "./BlockPicker.svelte";
 	import Datepicker from "../components/Datepicker.svelte";
-	import {
-		geometryFromSettings,
-		gridHeight,
-		minutesToOffset,
-		visibleHours,
-	} from "./layout";
+	import Popover from "../components/Popover.svelte";
+	import StepArrows from "../components/StepArrows.svelte";
+	import { geometryFromSettings } from "./layout";
 	import {
 		anchorFor,
 		clampSpan,
@@ -118,8 +120,6 @@
 
 	// Shared vertical geometry — one time axis for the whole week.
 	const geo = $derived(geometryFromSettings(settings));
-	const hours = $derived(visibleHours(geo));
-	const bodyHeight = $derived(gridHeight(geo));
 
 	// ── The week window ──
 	// Default window is [today − before, today + after] from settings. It's still
@@ -174,10 +174,14 @@
 		return out;
 	});
 
-	// `steps` counts whole windows, so the next window starts the day after this
-	// one ends: nothing is skipped and nothing is shown twice.
-	function stepWindow(steps: number) {
-		pinnedAnchor = stepAnchor(anchor, windowSize, steps);
+	// The big arrows walk whole windows, so the next window starts the day after
+	// this one ends: nothing is skipped and nothing is shown twice. The small
+	// arrows move it a day. Walking back onto the default window is the same as
+	// "Today", so the button goes away again.
+	const windowStepLabel = $derived(`${windowSize} days`);
+	function stepWindow(dir: 1 | -1, big: boolean) {
+		const next = stepAnchor(anchor, big ? windowSize : 1, dir);
+		pinnedAnchor = next === anchorFor(todayISO(), before) ? null : next;
 		closeAssocPicker();
 		closeBlockPicker();
 	}
@@ -306,7 +310,7 @@
 
 	// ── Column registry (for pointer forwarding + cross-day commits) ──
 	// Svelte 5: `bind:this` on each DayColumn gives us its exported methods.
-	let columns = $state<Record<string, DayColumn>>({});
+	let columns = $state<Record<string, DayColumnHandle | undefined>>({});
 	let columnEls = $state<Record<string, HTMLDivElement>>({});
 
 	// Per-date unscheduled items pushed up from each DayColumn via callback.
@@ -698,8 +702,18 @@
 		const unsubscribeFocus = links.focus$.subscribe((req) => handleFocus(req));
 		const move = (e: PointerEvent) => onWindowPointerMove(e);
 		const up = (e: PointerEvent) => void onWindowPointerUp(e);
+		// A cancelled pointer (a touch that became a scroll) or a lost window
+		// ends every column's gesture without writing, cross-day intent included.
+		const cancel = () => {
+			for (const date of dates) columns[date]?.cancelPointer();
+			dragFromDate = null;
+			dragBlock = null;
+			hoverDate = null;
+		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
+		window.addEventListener("pointercancel", cancel);
+		window.addEventListener("blur", cancel);
 		return () => {
 			unsubscribeResolver();
 			unsubscribeBacklog();
@@ -708,6 +722,8 @@
 			unsubscribeFocus();
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
+			window.removeEventListener("pointercancel", cancel);
+			window.removeEventListener("blur", cancel);
 		};
 	});
 
@@ -804,38 +820,18 @@
 <div class="week-view" tabindex="-1" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown}>
 	<div class="week-header" use:intoViewHeader={viewHeader}>
 		<div class="day-nav" bind:this={dateNavRef}>
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepWindow(-1);
-				}}
-				aria-label="Previous window"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-			</button>
-
-			<button
-				class="day-date"
-				title="Click to pick a date"
-				onclick={(e) => {
-					e.stopPropagation();
-					showCalendar = !showCalendar;
-				}}
-			>
-				{rangeLabel}
-			</button>
-
-			<button
-				class="icon-btn nav-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					stepWindow(1);
-				}}
-				aria-label="Next window"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-			</button>
+			<StepArrows big={windowStepLabel} small="a day" onstep={stepWindow}>
+				<button
+					class="day-date"
+					title="Click to pick a date"
+					onclick={(e) => {
+						e.stopPropagation();
+						showCalendar = !showCalendar;
+					}}
+				>
+					{rangeLabel}
+				</button>
+			</StepArrows>
 
 			{#if !atDefault}
 				<button class="today-btn" onclick={(e) => { e.stopPropagation(); goToday(); }}>
@@ -864,7 +860,13 @@
 			</button>
 
 			{#if showControls}
-				<div class="controls-popup">
+				<Popover
+					class="controls-popup"
+					placement="anchored"
+					padding="l"
+					gap="m"
+					style="top: calc(100% + 6px); right: 0; min-width: 170px;"
+				>
 					<label class="controls-field">
 						<span class="controls-label">Start hour</span>
 						<input type="number" class="controls-input" min="0" max="23" value={geo.startHour} onchange={(e) => commitNumber(e.currentTarget, setStartHour)} />
@@ -885,39 +887,34 @@
 						<span class="controls-label">Days after today</span>
 						<input type="number" class="controls-input" min="1" max="7" value={after} onchange={(e) => commitNumber(e.currentTarget, setDaysAfter)} />
 					</label>
-				</div>
+				</Popover>
 			{/if}
 		</div>
 	</div>
 
 	<!-- Column titles row, aligned with the columns below (offset by the gutter). -->
 	<div class="week-colheads">
-		<div class="week-gutter-spacer"></div>
+		<HourGutter {geo} corner />
 		{#each dates as date (date)}
 			{@const offered = routinesByDate.get(date)}
 			{@const usCount = unscheduledByDate[date]?.length ?? 0}
 			{@const inCount = inboxCountFor(date)}
-			<div class="col-head-wrap">
-				<button
-					class="col-head date-card"
-					class:today={isToday(date)}
-					title="Ctrl+click to open the daily note"
-					onclick={(e) => {
-						e.stopPropagation();
-						if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
-					}}
-				>
-					<span class="dow-label">{dowLabel(date)}</span>
-					<span class="date-number">{dayNumber(date)}</span>
-					{#if isToday(date)}
-						<span class="today-indicator"></span>
-					{/if}
-				</button>
+			<DateCard
+				label={dowLabel(date)}
+				value={dayNumber(date)}
+				today={isToday(date)}
+				title="Ctrl+click to open the daily note"
+				onclick={(e: MouseEvent) => {
+					e.stopPropagation();
+					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
+				}}
+				onmenu={(e: MouseEvent) => showDayMenu(e, date, routineActions)}
+			>
+				{#snippet badges()}
 				<!-- The day's lists as badges on its header — Unscheduled,
 				     Inbox (yesterday's open tasks on today, and resurfacing entries),
 				     routines — instead of strips that push every column down. -->
 				{#if usCount > 0 || inCount > 0 || (offered && offered.count > 0)}
-					<div class="col-badges">
 						{#if usCount > 0}
 							<HeaderBadge
 								title="Unscheduled"
@@ -951,9 +948,9 @@
 								onAddAll={() => routineActions.addAll(date)}
 							/>
 						{/if}
-					</div>
 				{/if}
-			</div>
+				{/snippet}
+			</DateCard>
 		{/each}
 	</div>
 
@@ -973,7 +970,7 @@
 				<div class="week-us-gutter-spacer">
 					<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
 					<span>Unscheduled</span>
-					<span class="us-count">{totalUnscheduled}</span>
+					<span class="kairos-count">{totalUnscheduled}</span>
 				</div>
 				{#each dates as date (date)}
 					<div
@@ -1018,21 +1015,11 @@
 	<div class="week-scroll" data-drag-scroll>
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
-			<div class="week-gutter" style={`height: ${bodyHeight}px;`}>
-				{#each hours as hour (hour)}
-					<div class="day-hour-label" style={`top: ${minutesToOffset(hour * 60, geo)}px;`}>
-						{String(hour).padStart(2, "0")}:00
-					</div>
-				{/each}
-			</div>
+			<HourGutter {geo} />
 
 			<div class="week-columns">
 				<!-- Grid lines drawn once across all columns, behind them. -->
-				<div class="week-lines" style={`height: ${bodyHeight}px;`}>
-					{#each hours as hour (hour)}
-						<div class="day-hour-line" style={`top: ${minutesToOffset(hour * 60, geo)}px;`}></div>
-					{/each}
-				</div>
+				<HourLines {geo} />
 
 				{#each dates as date (date)}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1126,11 +1113,6 @@
 		gap: 4px;
 	}
 
-	.nav-btn {
-		height: 24px;
-		width: 24px;
-	}
-
 	.day-date {
 		font-size: 12px;
 		font-weight: 600;
@@ -1213,22 +1195,6 @@
 		flex-shrink: 0;
 	}
 
-	.controls-popup {
-		position: absolute;
-		top: calc(100% + 6px);
-		right: 0;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		padding: 12px;
-		box-shadow: var(--shadow-s);
-		z-index: 100;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 170px;
-	}
-
 	.controls-field {
 		display: flex;
 		align-items: center;
@@ -1263,45 +1229,6 @@
 		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
 	}
 
-	.week-gutter-spacer {
-		width: 46px;
-		min-width: 46px;
-		/* Carry the gutter's vertical divider up through the header so it reads as one
-		   continuous line into the body below, rather than a stray line that begins at
-		   the header's bottom edge. The bottom rule lives here (and on the col-heads)
-		   so it stops at the real content extents instead of bleeding into the padded
-		   flex edges. */
-		border-right: 1px solid var(--background-modifier-border);
-		border-bottom: 1px solid var(--background-modifier-border);
-		/* The strip's outer top corners round like the Grid's (its corner cell
-		   and last card); everything between is square. */
-		border-radius: 8px 0 0 0;
-		background: var(--background-secondary);
-	}
-
-	/* Holos-style date card: an uppercase day-of-week label over a large serif
-	   day number, left-aligned, one per column. Kept identical to the Grid view's
-	   .grid-colhead.date-card so the two headers read the same.
-
-	   The two text lines flow normally in the button; the today underline is
-	   absolutely positioned in the reserved bottom strip (padding-bottom) so it
-	   never overlaps the number. */
-	.col-head-wrap {
-		position: relative;
-		flex: 1;
-		min-width: 0;
-		display: flex;
-	}
-	/* Bottom-right of the date card, as in the Grid. */
-	.col-badges {
-		position: absolute;
-		right: 6px;
-		bottom: 6px;
-		display: flex;
-		align-items: center;
-		gap: 3px;
-	}
-
 	/* The "Left open on …" heading inside a day's Inbox list. */
 	.inbox-left-head {
 		display: flex;
@@ -1317,65 +1244,6 @@
 		flex: 1;
 	}
 
-	.col-head.date-card {
-		position: relative;
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 1px;
-		background: var(--background-secondary);
-		border: none;
-		border-radius: 0;
-		/* The header's bottom rule; carried on each column cell so it spans exactly the
-		   body's column extents (no overhang past the timeline). */
-		border-bottom: 1px solid var(--background-modifier-border);
-		padding: 8px 8px 12px 12px;
-		cursor: pointer;
-		box-shadow: none;
-		transition: filter 150ms ease;
-		height: 100%;
-	}
-
-	.col-head-wrap:last-child > .col-head.date-card {
-		border-top-right-radius: 8px;
-	}
-	.col-head.date-card:hover {
-		filter: brightness(1.15);
-	}
-
-	.col-head .dow-label {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-muted);
-		text-transform: uppercase;
-		letter-spacing: 1px;
-		line-height: 1.4;
-	}
-
-	.col-head .date-number {
-		font-family: Georgia, "Times New Roman", serif;
-		font-size: 24px;
-		font-weight: 400;
-		color: var(--text-normal);
-		line-height: 1.1;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.col-head .today-indicator {
-		position: absolute;
-		left: 10%;
-		bottom: -2px;
-		width: 80%;
-		height: 2px;
-		background: var(--interactive-accent);
-		border-radius: 1px;
-	}
-
-	.col-head.today {
-		background: color-mix(in srgb, var(--interactive-accent) 5%, var(--background-secondary));
-	}
 	/* ── Body ── */
 	.week-scroll {
 		flex: 1;
@@ -1392,45 +1260,11 @@
 		min-width: 0;
 	}
 
-	.week-gutter {
-		width: 46px;
-		min-width: 46px;
-		position: relative;
-		border-right: 1px solid var(--background-modifier-border);
-		background: var(--background-secondary);
-	}
-
-	.day-hour-label {
-		position: absolute;
-		right: 6px;
-		transform: translateY(-0.5em);
-		font-size: 10px;
-		color: var(--text-muted);
-		font-variant-numeric: tabular-nums;
-	}
-
 	.week-columns {
 		position: relative;
 		flex: 1;
 		min-width: 0;
 		display: flex;
-	}
-
-	.week-lines {
-		position: absolute;
-		left: 0;
-		right: 0;
-		top: 0;
-		pointer-events: none;
-		z-index: 0;
-	}
-
-	.day-hour-line {
-		position: absolute;
-		left: 0;
-		right: 0;
-		border-top: 1px solid var(--background-modifier-border);
-		opacity: 0.5;
 	}
 
 	.week-col {
@@ -1559,11 +1393,6 @@
 		transform: rotate(0deg);
 	}
 
-	.us-count {
-		font-size: 10px;
-		font-weight: 400;
-		color: var(--text-faint);
-	}
 
 	.week-us-body {
 		display: flex;
@@ -1596,13 +1425,9 @@
 	}
 
 
-	:global(.resurface-popup) {
+	/* Places the calendar, which draws its own popover panel. */
+	.resurface-popup {
 		position: fixed;
-		z-index: 1000;
-		background: var(--background-primary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 8px;
-		box-shadow: var(--shadow-s);
-		padding: 4px;
+		z-index: var(--layer-menu);
 	}
 </style>

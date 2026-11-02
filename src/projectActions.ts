@@ -10,7 +10,7 @@
 // edit. Rename and create are gated by `nameCollision` (spec §4.4 conflict guard)
 // — the caller checks first and surfaces the clash to the user.
 
-import type { Domain, ISODate, LifecycleState, Project } from "./types";
+import type { Domain, ISODate, LifecycleState, Project, StatusRecord } from "./types";
 import type { KairosIndex } from "./index";
 import {
 	appendActivePeriod,
@@ -18,6 +18,7 @@ import {
 	editStatusRecord,
 	removeStatusRecord,
 	renameWithAlias,
+	replaceHistory,
 	setColor,
 	setDescription,
 	setDomain,
@@ -126,6 +127,23 @@ export function removeDomainStatusRecord(
 	date: ISODate,
 ): void {
 	index.applyDomainEdit(removeStatusRecord(domain, date));
+}
+
+/** Write a whole rewritten history in one edit (a Timeline bar move or resize). */
+export function setProjectHistory(
+	index: KairosIndex,
+	project: Project,
+	history: StatusRecord[],
+): void {
+	index.applyProjectEdit(replaceHistory(project, history));
+}
+
+export function setDomainHistory(
+	index: KairosIndex,
+	domain: Domain,
+	history: StatusRecord[],
+): void {
+	index.applyDomainEdit(replaceHistory(domain, history));
 }
 
 // ── description (either kind) ──
