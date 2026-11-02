@@ -56,6 +56,7 @@ For colour, always use Obsidian's variables: `--text-normal`, `--text-muted`, `-
 | `AssocMeta` | An item's project or domain on its meta line, Ctrl/Cmd-click to open. | `ItemRow`'s `meta` |
 | `RowLabel` | A project's or domain's name, note and intensity in the Grid and Timeline row-label column, with its hover card. | Grid and Timeline rows |
 | `HoverCard` | Kairos's own hover card, on `Popover`: a bar in the entity's colour, then the name in serif (`kairos-hover-card-name`) and whatever goes under it: `-note`, `-desc`, a `-facts` list, `-bars`, `-dim` (classes in `styles.css`). It never takes the pointer. Its owner decides when it opens; `hoverHold` (`src/ui/actions/hoverHold.ts`) opens it on a resting pointer or a touch hold. | Row labels, the Grid's intention and intensity marks |
+| `SpanBar` | A stretch of active time as the Timeline draws it: caps in the entity's colour, the inside tinted by intensity (dashed at 0), an arrow while it runs on, the intention inside, and intensity bars that pick a level. Fills its parent. | The status strip in the Projects view |
 | `IntensityBars` | A project's intensity as three stacked bars. | Grid labels, Timeline bars |
 | `StepArrows` | The arrows around a header's date, « ‹ date › »: the outer pair takes the view's big step, the inner pair one smaller unit. Pass `big` and `small` as "a week", "7 days", and it writes the tooltips ("Back a week"). | Every view's date navigator |
 | `Datepicker` | The calendar behind a header's date. | View headers |
@@ -75,3 +76,4 @@ These still exist as several copies and are the next components to make, in this
 1. **Row buttons**: the corner action bars of tasks, nudges and backlog entries, and the leftover and nudge arrows, onto `IconButton`.
 2. **Routine suggestions**: the rows in the Routines alert panel (`RoutinesAlert.svelte`) onto `ItemRow`.
 3. **Date card and hour gutter everywhere**: the Grid's date headers are still their own copy of `DateCard` (with a Day-view dot and a spring highlight to add as props), and the Day view still draws its own hour gutter and lines.
+4. **Timeline bars onto `SpanBar`**: the Timeline view (`GanttView`) still draws its bars with its own copy of the same look.

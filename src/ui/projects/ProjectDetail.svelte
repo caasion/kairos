@@ -27,6 +27,9 @@
 	import { autogrow, singleLine } from "../actions/autogrow";
 	import StatusHistory from "./StatusHistory.svelte";
 
+	// The history text being typed over; a status change here starts on its reason.
+	let typing = $state<{ part: "stretch" | "transition"; date: string } | null>(null);
+
 	interface Props {
 		index: KairosIndex;
 		entity: Project | Domain;
@@ -37,8 +40,8 @@
 		readonly: boolean;
 		/** Rename, with the view's collision check. */
 		onRename: (name: string) => void;
-		/** Change today's status, and ask why if it went inactive or archived. */
-		onSetStatus: (status: LifecycleState) => void;
+		/** Change today's status; true if it changed. */
+		onSetStatus: (status: LifecycleState) => boolean;
 		onOpenFile: () => void;
 		onBacklog: () => void;
 		onMenu: (event: MouseEvent) => void;
@@ -168,7 +171,11 @@
 							label="Status"
 							options={states.map((s) => ({ value: s, label: STATUS_LABEL[s] }))}
 							isOn={(s) => s === status}
-							onSelect={(s) => onSetStatus(s as LifecycleState)}
+							onSelect={(s) => {
+								// The reason goes on the change, typed straight into the history.
+								if (onSetStatus(s as LifecycleState) && !readonly)
+									typing = { part: "transition", date: todayISO() };
+							}}
 							disabled={readonly}
 						/>
 					</div>
@@ -229,7 +236,14 @@
 			</div>
 		</div>
 
-		<StatusHistory {index} {entity} {isDomain} {readonly} />
+		<StatusHistory
+			bind:typing
+			{index}
+			{entity}
+			{isDomain}
+			{readonly}
+			color={color ?? "var(--interactive-accent)"}
+		/>
 	</fieldset>
 </div>
 

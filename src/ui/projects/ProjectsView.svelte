@@ -166,11 +166,19 @@
 			statusOf(e) === "active" ? (isDomain ? "inactive" : lastNonActive(e)) : "active";
 		changeStatus(e, isDomain, next);
 	}
-	function changeStatus(e: Project | Domain, isDomain: boolean, next: LifecycleState) {
-		if (next === statusOf(e)) return;
+	// `ask` false: the caller asks for the reason itself (the detail pane
+	// starts typing it in the history instead of opening a dialog).
+	function changeStatus(
+		e: Project | Domain,
+		isDomain: boolean,
+		next: LifecycleState,
+		ask = true,
+	): boolean {
+		if (next === statusOf(e)) return false;
 		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
 		else setProjectStatus(index, e as Project, todayISO(), next);
-		askWhy(e, isDomain, next);
+		if (ask) askWhy(e, isDomain, next);
+		return true;
 	}
 
 	// Archive (projects only — domains are durable and can't archive). A one-click
@@ -627,7 +635,7 @@
 				domains={feed.domains}
 				readonly={selectedReadonly}
 				onRename={(name: string) => finishRename(e, isDomain, name)}
-				onSetStatus={(next: LifecycleState) => changeStatus(e, isDomain, next)}
+				onSetStatus={(next: LifecycleState) => changeStatus(e, isDomain, next, false)}
 				onOpenFile={() => openNote(e)}
 				onBacklog={() => backlogForSelected(e, isDomain)}
 				onMenu={(ev: MouseEvent) =>
