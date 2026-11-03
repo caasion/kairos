@@ -197,7 +197,7 @@
 	const windowStepLabel = $derived(`${windowSize} days`);
 	function stepWindow(dir: 1 | -1, big: boolean) {
 		const next = stepAnchor(anchor, big ? windowSize : 1, dir);
-		pinnedAnchor = next === anchorFor(todayISO(), before) ? null : next;
+		pinnedAnchor = next === shiftDays(todayISO(), -before) ? null : next;
 		closeAssocPicker();
 		closeBlockPicker();
 	}
