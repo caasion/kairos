@@ -609,6 +609,80 @@ body {
 	text-overflow: ellipsis;
 }
 
+/* ── Guided tour (src/onboarding/) ──
+   The ring circles what a step points at; the card sits beside it. Both are
+   `fixed` on the body and moved every frame by the tour. Below menus and
+   modals, so a right-click menu or the welcome covers them. The ring never
+   takes the pointer: the person acts on the very thing it circles. */
+.kairos-tour-ring {
+	position: fixed;
+	z-index: var(--layer-popover);
+	border: 2px solid var(--interactive-accent);
+	border-radius: var(--radius-m);
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+	pointer-events: none;
+	animation: kairos-tour-pulse 1.6s ease-in-out infinite;
+}
+.kairos-tour-ring.is-hidden {
+	display: none;
+}
+@keyframes kairos-tour-pulse {
+	50% {
+		box-shadow: 0 0 0 8px color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.kairos-tour-ring {
+		animation: none;
+	}
+}
+.kairos-tour-card {
+	position: fixed;
+	z-index: var(--layer-popover);
+	box-sizing: border-box;
+	width: min(300px, calc(100vw - 16px));
+	padding: var(--size-4-3) var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-l);
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+}
+.kairos-tour-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 20px;
+}
+.kairos-tour-progress {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.kairos-tour-close {
+	padding: 2px;
+}
+.kairos-tour-title {
+	margin: var(--size-4-1) 0;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+}
+.kairos-tour-body {
+	margin-bottom: var(--size-4-2);
+	line-height: var(--line-height-normal);
+}
+.kairos-tour-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-3);
+}
+.kairos-tour-welcome-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
 /* ── Header bar in the tab header (src/ui/actions/viewHeader.ts) ──
    The Week, Grid and Timeline views move their header bar (date navigator,
    settings) into Obsidian's tab header, in place of the tab's title. The

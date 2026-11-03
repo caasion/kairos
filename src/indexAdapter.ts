@@ -21,6 +21,9 @@ import type Kairos from "./main";
 export class IndexAdapter {
 	readonly index: KairosIndex;
 	private refs: EventRef[] = [];
+	private markReady!: () => void;
+	/** Settles once the cold start has seeded the index from disk. */
+	readonly ready = new Promise<void>((resolve) => (this.markReady = resolve));
 
 	constructor(private plugin: Kairos) {
 		this.index = new KairosIndex(this.buildDeps());
@@ -29,6 +32,7 @@ export class IndexAdapter {
 	/** Cold start: seed from disk, then subscribe to vault changes. */
 	async start(): Promise<void> {
 		await this.seed();
+		this.markReady();
 		this.registerEvents();
 		this.normalizeStatusFiles();
 	}

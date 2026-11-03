@@ -403,9 +403,11 @@
   // ── Showing every task ──
   // A block shows as many of its tasks as fit. When they don't all fit, the
   // last row it has room for becomes a "N more" row, centred at the bottom of
-  // the task list; a block with room for one row or less shows only that row
-  // ("N tasks"), a compact block a small pill beside its title, and a block
-  // with no room for a row that pill on its time line. Pointing at
+  // the task list; a block with room for just one row shows its first task and
+  // puts "N more" on its time line, a compact block a small pill beside its
+  // title, and a block with no room for a row that pill on its time line. The
+  // first task stays in sight wherever it fits, so a short block doesn't look
+  // empty. Pointing at
   // it (mouse) or tapping it (touch) makes the block itself grow down until all
   // its tasks fit, over whatever is below, and shrink back once the pointer
   // leaves the block. It stays the same block: same width, same look.
@@ -449,10 +451,13 @@
   );
   // During a drag every block shows all its rows: they are the drop slots.
   const overflowing = $derived(!dragActive && rowCount > capacity);
-  const room = $derived(overflowing && !expanded ? Math.max(0, capacity - 1) : rowCount);
+  // Room for one row: it goes to the first task, and "N more" to the time line.
+  const oneRow = $derived(!compact && capacity === 1 && overflowing && !expanded);
+  const shownRows = $derived(oneRow ? 1 : Math.max(0, capacity - 1));
+  const room = $derived(overflowing && !expanded ? shownRows : rowCount);
   const shownChips = $derived(chips.slice(0, room));
   const shownNotes = $derived(notes.slice(0, Math.max(0, room - chips.length)));
-  const hiddenCount = $derived(overflowing ? rowCount - Math.max(0, capacity - 1) : 0);
+  const hiddenCount = $derived(overflowing ? rowCount - shownRows : 0);
   // What's hidden: tasks (they come first) when no note is, notes when no task
   // is, else both.
   const hiddenNoun = $derived.by(() => {
@@ -462,13 +467,15 @@
     return "items";
   });
   const moreLabel = $derived(
-    capacity <= 1 ? `${hiddenCount} ${hiddenNoun}` : `${hiddenCount} more`,
+    capacity === 0 ? `${hiddenCount} ${hiddenNoun}` : `${hiddenCount} more`,
   );
   // A compact block that grows lays out like a full one, so its tasks show.
   const compactLayout = $derived(compact && !expanded);
   // A full block with no room for even one row: the list under its time line is
   // clipped to nothing, so the pill goes on the time line instead.
-  const metaPill = $derived(!compactLayout && capacity === 0 && overflowing && !expanded);
+  const metaPill = $derived(
+    oneRow || (!compactLayout && capacity === 0 && overflowing && !expanded),
+  );
 
   function cancelExpandTimer() {
     window.clearTimeout(expandTimer);
@@ -586,9 +593,14 @@
       expand();
     }}
   >
-    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    {#if variant === "row"}{@render chevron()}{/if}
     {moreLabel}
+    {#if variant !== "row"}{@render chevron()}{/if}
   </button>
+{/snippet}
+
+{#snippet chevron()}
+  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 {/snippet}
 
 <!-- One task chip. -->
@@ -768,6 +780,7 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <span
           class="tl-title"
+          data-kairos-tour="block-title"
           role="textbox"
           tabindex="0"
           onpointerdown={keepPressForTouch}
@@ -1335,25 +1348,34 @@
     color: var(--text-normal);
     background: var(--background-modifier-hover);
   }
-  /* Beside a compact block's title: a small pill right after the text. Its
-     fill is translucent, so it takes the block's tint (hover, selection,
-     linked) instead of sitting on it as an opaque patch. */
+  /* Beside a compact block's title: a small pill right after the text, in the
+     accent colour with its chevron after the label, so it reads as something
+     to open, not a label. Its fill is translucent, so it takes the block's
+     tint (hover, selection, linked) instead of sitting on it as an opaque
+     patch. */
   .tl-more.pill {
     flex-shrink: 0;
     width: auto;
     height: 16px;
-    padding: 0 6px;
+    padding: 0 4px 0 6px;
     border-radius: 8px;
     font-size: 10px;
+    color: var(--text-accent);
     background: var(--background-modifier-hover);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
   }
-  .tl-more.pill:hover {
-    background: var(--background-modifier-active-hover);
+  .tl-more.pill:hover,
+  .tl-more.meta:hover {
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
   }
   /* On the time line: one more item after the association, styled like it
-     (same size, muted, no fill) and separated by the same dot. */
+     (same size, no fill, but in the accent colour) and separated by the same
+     dot. */
   .tl-more.meta {
     flex-shrink: 0;
+    color: var(--text-accent);
     width: auto;
     height: auto;
     padding: 1px 3px;

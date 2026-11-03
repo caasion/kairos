@@ -1387,6 +1387,7 @@
 				<button
 					class="day-date"
 					class:today={isToday}
+					data-kairos-tour="day-date"
 					title="Click to pick a date · Ctrl+click to open the daily note"
 					onclick={(e) => {
 						e.stopPropagation();
@@ -1719,6 +1720,7 @@
 				<div
 					class="day-canvas"
 					class:creating={gesture?.mode === "create"}
+					data-kairos-tour="day-canvas"
 					data-tl-date={date}
 					data-tl-start-hour={geo.startHour}
 					data-tl-end-hour={geo.endHour}
