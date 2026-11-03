@@ -79,14 +79,14 @@ export const STEPS: TourStep[] = [
 		id: "open-note",
 		title: "See the markdown",
 		body: "Ctrl/Cmd+click the date to open the day's note. Your plan is plain markdown under its schedule heading, and you can edit it by hand.",
-		bodyMobile: "Your plan is plain markdown under the schedule heading of the day's note. Open the note from the file explorer to see it.",
+		bodyMobile: "Tap **⋯** beside the date and select **Open daily note**. Your plan is plain markdown under its schedule heading, and you can edit it by hand.",
 		anchor: "day-date",
 	},
 	{
 		id: "finish",
 		title: "That's the whole idea",
 		body: "Time belongs to blocks; work belongs to tasks. When you want more, drag tasks between days in the **Grid**, name projects as they come up, and add routines.",
-		bodyMobile: "Time belongs to blocks; work belongs to tasks. When you want more, press and hold a task to move it to another day in the **Grid**, name projects as they come up, and make a block repeat with **⋯ → Repeat…**.",
+		bodyMobile: "Time belongs to blocks; work belongs to tasks. To move a block, tap it and drag the round handle on its side, or press and hold its title. When you want more, press and hold a task to move it to another day in the **Grid**, name projects as they come up, and make a block repeat with **⋯ → Repeat…**.",
 		anchor: "none",
 	},
 ];
