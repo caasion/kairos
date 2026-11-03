@@ -1070,7 +1070,7 @@
      swipe that starts on it scrolls. A selected one gets handles a finger
      can hold, 24px tall, just outside its edges with the grip always shown:
      inside, they covered the title of a short block, which a tap there then
-     missed. Its action bar rises above the top handle. */
+     missed. Its action bar rises above the top handle (styles.css). */
   @media (pointer: coarse) {
     .tl-resize {
       pointer-events: none;
@@ -1084,9 +1084,6 @@
     }
     .tl-block.selected .tl-resize-bottom {
       bottom: -24px;
-    }
-    .tl-block.selected:global(.kairos-touch-selected) > .tl-actions {
-      bottom: calc(100% + 28px);
     }
     .tl-block.selected .tl-resize::after {
       content: "";
