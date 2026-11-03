@@ -1024,10 +1024,18 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 32px;
-      height: 4px;
+      width: 44px;
+      height: 8px;
       border-radius: var(--kairos-radius-s);
       background: var(--interactive-accent);
+      box-shadow:
+        0 0 0 2px var(--background-primary),
+        var(--shadow-s);
+    }
+    /* A block whose hold matured lifts, so the finger knows it can move. */
+    .tl-block.dragging .tl-content {
+      transform: scale(1.03);
+      box-shadow: var(--shadow-l);
     }
   }
 
