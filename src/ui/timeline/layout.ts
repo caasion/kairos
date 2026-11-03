@@ -30,12 +30,21 @@ export const MIN_BLOCK_MINUTES = SNAP_MINUTES;
  */
 export function geometryFromSettings(
 	settings: KairosSettings,
+	opts: { coarse?: boolean } = {},
 ): TimelineGeometry {
 	const startHour = clamp(settings.timelineStartHour, 0, 23);
 	const endHour = clamp(settings.timelineEndHour, startHour + 1, 24);
-	const hourHeight = clamp(settings.timelineHourHeight, 20, 240);
+	let hourHeight = clamp(settings.timelineHourHeight, 20, 240);
+	if (opts.coarse) hourHeight = Math.max(hourHeight, TOUCH_MIN_HOUR_HEIGHT);
 	return { startHour, endHour, hourHeight, topPad: TOP_PAD };
 }
+
+/**
+ * The shortest an hour is drawn under a finger (a coarse pointer), whatever
+ * the setting: at 60px a 15-minute block is a 15px strip nobody can tap, and
+ * back-to-back short blocks read as one stack. At 120px it is 30px.
+ */
+export const TOUCH_MIN_HOUR_HEIGHT = 120;
 
 function clamp(n: number, lo: number, hi: number): number {
 	return Math.min(hi, Math.max(lo, n));

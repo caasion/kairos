@@ -736,3 +736,43 @@ body {
 	/* Extra inset for a project under its domain. */
 	--kairos-row-label-indent: 14px;
 }
+
+/* ── Phone layout (pointer: coarse) ──
+   A Week view date card too narrow for its badges' counts keeps only their
+   icons, so they stop covering the date. */
+body .col-head-wrap {
+	container-type: inline-size;
+}
+@container (max-width: 160px) {
+	body .col-badges .hb-count {
+		display: none;
+	}
+}
+/* The Grid on a phone: each row's label becomes a narrow tab with its name
+   running up the side, like a notebook's, so the day column gets the width.
+   The description, pips and icons are in the label's card (tap it). */
+@media (pointer: coarse) and (max-width: 600px) {
+	body .grid-view {
+		--kairos-row-label-width: 40px;
+	}
+	body .grid-view .grid-rowlabel {
+		padding: 6px 0;
+		justify-content: center;
+		align-items: center;
+	}
+	body .grid-view .grid-rowlabel .row-label-text {
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
+		max-height: 100%;
+	}
+	body .grid-view .grid-rowlabel .row-label-name {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	body .grid-view .grid-rowlabel .row-label-note,
+	body .grid-view .grid-rowlabel .row-label-pips,
+	body .grid-view .grid-rowlabel .row-label-icon {
+		display: none;
+	}
+}

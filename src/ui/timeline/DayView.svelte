@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { coarsePointer } from "../actions/pickerPlace";
 	import { TFile } from "obsidian";
 	import type { App } from "obsidian";
 	import { onMount } from "svelte";
@@ -202,7 +203,8 @@
 	}
 
 	// Geometry follows the persisted hour-range / zoom settings, live.
-	const geo = $derived(geometryFromSettings(settings));
+	// On a phone hours are drawn taller, so short blocks can be tapped.
+	const geo = $derived(geometryFromSettings(settings, { coarse: coarsePointer(window) }));
 	const hours = $derived(visibleHours(geo));
 	const bodyHeight = $derived(gridHeight(geo));
 
