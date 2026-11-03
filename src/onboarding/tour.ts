@@ -427,8 +427,15 @@ export class Tour {
 			? { left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height }
 			: { left: 0, top: 0, width: win.innerWidth, height: win.innerHeight };
 		const leaf = this.dayVisible() ? this.plugin.app.workspace.getLeavesOfType(KAIROS_VIEW_TYPE)[0] : undefined;
-		const content = leaf?.view.containerEl.querySelector(".view-content")?.getBoundingClientRect();
-		return (content && isVisible(content) && intersect(content, screen)) || screen;
+		const root = leaf?.view.containerEl;
+		const content = root?.querySelector(".view-content")?.getBoundingClientRect();
+		const area = (content && isVisible(content) && intersect(content, screen)) || screen;
+		// In a sidebar the Day view keeps its own date row inside its content:
+		// the card goes under it, so the date and its ⋯ stay in reach.
+		const head = root?.querySelector(".day-header")?.getBoundingClientRect();
+		if (!head || !isVisible(head) || head.bottom <= area.top) return area;
+		const top = Math.min(head.bottom, area.top + area.height);
+		return { ...area, top, height: area.top + area.height - top };
 	}
 
 	/** Whether a text field has focus: the person is typing a name. */
@@ -474,9 +481,11 @@ export class Tour {
 		const add = this.awakeBar(block)?.querySelector('[aria-label="Add task"]');
 		const addRect = add?.getBoundingClientRect() ?? null;
 		if (isVisible(addRect)) return addRect;
-		// …until then, the top-right zone that wakes it.
+		// …until then, the top-right zone that wakes it. On touch a tap on the
+		// block brings the bar, so the block itself.
 		const r = clip(block);
 		if (!r) return null;
+		if (Platform.isMobile) return r;
 		const size = Math.min(32, r.width, r.height);
 		return { left: r.left + r.width - size, top: r.top, width: size, height: size };
 	}
