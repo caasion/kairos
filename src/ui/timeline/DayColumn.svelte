@@ -16,10 +16,12 @@
 	} from "../../types";
 	import { addTaskToUnscheduled, deleteBlock, deleteBlocks, makeBlock, nestTaskUnderBlock, notesWithAdded, notesWithText } from "../../writer";
 	import { moveTaskToBacklog } from "../../backlogActions";
+	import { formatTimeRange } from "../../parser";
 	import { daySignature, type KairosIndex, type Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
 	import {
 		hitTestTimeline,
+		type IncomingBlock,
 		type TaskDragState,
 		type UnscheduledItem,
 	} from "./taskDrag";
@@ -104,6 +106,11 @@
 		// The title for a block made by dropping a task on empty time (a setting;
 		// empty: the task's project or domain).
 		dropBlockTitle?: string;
+		// A block moving here from another Week column: drawn where it would land.
+		incoming?: IncomingBlock | null;
+		// This column's block that is moving to another column: it stays put,
+		// dimmed, while the other column draws where it lands.
+		leaving?: Block | null;
 	}
 
 	let {
@@ -122,6 +129,8 @@
 		onUnscheduledChange,
 		links,
 		dropBlockTitle = "",
+		incoming = null,
+		leaving = null,
 	}: Props = $props();
 
 	// Mirrors of the cross-view stores (subscribed on mount, like the resolver):
@@ -437,6 +446,24 @@
 		};
 	});
 
+	const incomingRect = $derived.by(() => {
+		if (!incoming || incoming.date !== date) return null;
+		const top = minutesToOffset(incoming.time.start, geo);
+		return {
+			top,
+			height: minutesToOffset(incoming.time.end, geo) - top,
+			label: incoming.label,
+			timeLabel: formatTimeRange(incoming.time),
+		};
+	});
+
+	// The range a single-block move is previewing, for the Week view to draw on
+	// another day while the pointer is over it. Null for any other gesture.
+	export function movePreview(): TimeRange | null {
+		if (!gesture || gesture.mode !== "move" || gesture.grips.length !== 1 || !gestureMoved) return null;
+		return preview.get(gesture.grips[0]!.block) ?? null;
+	}
+
 	// Hover link: report what's under the pointer; glow what another view points at.
 	function hoverEnter(target: HoverTarget) {
 		links.setHover(target);
@@ -458,6 +485,7 @@
 	const displayBlocks = $derived.by(() => {
 		if (preview.size === 0) return blocks;
 		return blocks.map((b) => {
+			if (leaving && b.source.line === leaving.source.line) return b;
 			const time = preview.get(b);
 			return time ? { ...b, time } : b;
 		});
@@ -944,6 +972,7 @@
 				column={p.column}
 				lanes={p.lanes}
 				selected={isSelected(p.block)}
+				muted={leaving?.source.line === p.block.source.line}
 				dragging={gesture !== null && isSelected(p.block)}
 				{resolve}
 				{onNavigate}
@@ -977,6 +1006,17 @@
 				class="col-draft"
 				style={`top: ${draftRect.top}px; height: ${draftRect.height}px;`}
 			></div>
+		{/if}
+
+		{#if incomingRect}
+			<!-- Where a block moved here from another day would land. -->
+			<div
+				class="kairos-drop-preview"
+				style={`top: ${incomingRect.top}px; height: ${incomingRect.height}px;`}
+			>
+				<span class="kairos-drop-preview-label">{incomingRect.label}</span>
+				<span class="kairos-drop-preview-time">{incomingRect.timeLabel}</span>
+			</div>
 		{/if}
 
 		{#if timePreview}

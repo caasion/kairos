@@ -69,13 +69,18 @@
 		intentionChange,
 		blockDropAssociation,
 		dropAssociation,
+		gridDropLine,
+		isNoOpGroupDrop,
 		ownerRowKey,
 		sourceKey,
 		rolledUpProjectOf,
 		rolledUpProjects,
 		rowAssociation,
 		type BlockGroup,
+		type GridDragFrom,
+		type GridDropOver,
 		type GridRow,
+		type GroupKey,
 	} from "../../gridModel";
 	import { addChangeDomainItem, addRollupItem, submenuOf } from "../projects/projectMenu";
 	import type { LeftoverActions, RoutineActions } from "../../routines/routinesFeed";
@@ -701,6 +706,8 @@
 	// The timeline position under the pointer, when it's over a Day/Week view.
 	// Takes precedence over a grid cell (the two never overlap on screen).
 	let timelineDrop = $state<TimelineDrop | null>(null);
+	// The group that draws the drop line, in which cell (see `gridDropLine`).
+	let dropLine = $state<{ date: ISODate; rowKey: string; group: GroupKey } | null>(null);
 	// Last pointer coordinates, updated on every pointermove during a drag.
 	// Re-hit-tested at pointerup to get the freshest drop slot.
 	let lastPointerX = 0;
@@ -754,14 +761,66 @@
 		timelineDrop = hitTestTimeline(event);
 		groupDrop = timelineDrop ? null : hitTestGridGroup(event);
 		taskDrop = timelineDrop || groupDrop ? null : hitTestGridCell(event);
+		dropLine = dropLineFor(drag);
 		springLoad(event);
 		links.setDrag({
 			from: { date: drag.task.date, line: drag.task.source.line },
-			// A Grid block group lands in that block, so the timelines show it too.
-			drop: timelineDrop ?? groupDrop?.drop ?? null,
+			// A Grid block group lands in that block, so the timelines show it too,
+			// unless the drop there changes nothing (no drop line either).
+			drop: timelineDrop ?? (groupDrop && dropLine ? groupDrop.drop : null),
 			label: newBlockLabel(drag.task, drag.owner, dropMods(drag)),
 			duplicate: drag.duplicate,
 		});
+	}
+
+	// The task a drag holds, as `gridDropLine` and `isNoOpGroupDrop` see it.
+	function dragFrom(drag: GridTaskDrag): GridDragFrom {
+		return {
+			date: drag.task.date,
+			group: isUnscheduledBlock(drag.owner) ? "unscheduled" : drag.owner.source.line,
+			duplicate: drag.duplicate,
+		};
+	}
+
+	// Whether a drop in row `rowKey` keeps the task's association (the row it
+	// already shows in), as `dropAssociation` decides.
+	function keepsRow(drag: GridTaskDrag, rowKey: string): boolean {
+		const row = rows.find((r) => r.key === rowKey);
+		if (!snapshot) return false;
+		return dropAssociation(row, drag.task.owner, snapshot)?.sameRow ?? false;
+	}
+
+	// Where a drop on the Grid would draw its line: the group under the pointer,
+	// or the Unscheduled of the cell under it. None over a timeline, which draws
+	// its own, nor in a read-only cell, which takes no drop.
+	function dropLineFor(drag: GridTaskDrag): { date: ISODate; rowKey: string; group: GroupKey } | null {
+		let at: { date: ISODate; rowKey: string };
+		let over: GridDropOver;
+		if (groupDrop) {
+			const group = groupKeyOf(groupDrop.drop);
+			if (group === undefined) return null;
+			at = { date: groupDrop.drop.date, rowKey: groupDrop.rowKey };
+			over = { kind: "group", date: at.date, group, sameRow: keepsRow(drag, at.rowKey) };
+		} else if (taskDrop) {
+			at = { date: taskDrop.date, rowKey: taskDrop.rowKey };
+			over = { kind: "cell", date: at.date };
+		} else {
+			return null;
+		}
+		const row = rows.find((r) => r.key === at.rowKey);
+		if (!row || isCellInactive(row, at.date)) return null;
+		const group = gridDropLine(dragFrom(drag), over);
+		return group === undefined ? null : { ...at, group };
+	}
+
+	function groupKeyOf(drop: TimelineDrop): GroupKey | undefined {
+		if (drop.kind === "unscheduled") return "unscheduled";
+		return drop.kind === "block" ? drop.blockLine : undefined;
+	}
+
+	function dropLineOn(date: ISODate, row: GridRow): GroupKey | undefined {
+		const l = dropLine;
+		return l && l.date === date && l.rowKey === row.key ? l.group : undefined;
 	}
 
 	// What a drop applies: the drag's modifiers plus the block-name setting.
@@ -801,6 +860,7 @@
 		taskDrop = null;
 		groupDrop = null;
 		timelineDrop = null;
+		dropLine = null;
 		clearSpring();
 		stopDragScroll();
 		links.setDrag(null);
@@ -947,12 +1007,13 @@
 		const target = dropAssociation(targetRow, drag.task.owner, snapshot);
 		const assoc = target && !target.sameRow ? target.assoc : undefined;
 		// Dropped back on its own group: nothing to do.
-		const sameDay = at.drop.date === drag.task.date;
-		const ownGroup =
-			at.drop.kind === "block"
-				? at.drop.blockLine === drag.owner.source.line
-				: at.drop.kind === "unscheduled" && isUnscheduledBlock(drag.owner);
-		if (sameDay && ownGroup && assoc === undefined && !drag.duplicate) return;
+		const group = groupKeyOf(at.drop);
+		if (
+			group !== undefined &&
+			isNoOpGroupDrop(dragFrom(drag), { date: at.drop.date, group, sameRow: target?.sameRow ?? false })
+		) {
+			return;
+		}
 		await dropTaskOnTimeline(
 			index,
 			drag.task.date,
@@ -1701,6 +1762,7 @@
 								chipFor={chipFor(row)}
 								{date}
 								dropGroup={dropGroupOn(date, row)}
+								dropLine={dropLineOn(date, row)}
 								unscheduledSlot={wantsUnscheduledSlot(cell, inactive, date, row)}
 								onCreateInBlock={(block: Block) => void onCreateInBlock(row, date, block)}
 								{isBlockLinked}
