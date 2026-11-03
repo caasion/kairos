@@ -1209,11 +1209,12 @@
 	.interval-select {
 		display: none;
 	}
+	/* Outranks `.interval-tabs`' own display, which comes later in the file. */
 	@media (max-width: 600px) {
-		.interval-tabs {
+		.gantt-header-bar .interval-tabs {
 			display: none;
 		}
-		.interval-select {
+		.gantt-header-bar .interval-select {
 			display: block;
 		}
 	}
