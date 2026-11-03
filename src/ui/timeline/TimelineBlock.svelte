@@ -886,7 +886,7 @@
             {@const tr = task.owner ? resolve(task.owner) : undefined}
             <!-- Drop indicator before this row when the drag targets slot `i`. -->
             {#if dropIndex === i}
-              <div class="tl-drop-line"></div>
+              <div class="kairos-drop-line"></div>
             {/if}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
@@ -953,7 +953,7 @@
           {#if dragActive}
             <div class="tl-drop-tail">
               {#if dropIndex !== undefined && dropIndex >= chips.length}
-                <div class="tl-drop-line"></div>
+                <div class="kairos-drop-line"></div>
               {/if}
             </div>
           {/if}
@@ -1470,13 +1470,6 @@
   /* The origin row dims while its task is being dragged elsewhere. */
   .tl-task-wrap.dragging-origin {
     opacity: 0.35;
-  }
-
-  /* Insertion indicator between task rows (or at the list ends). */
-  .tl-drop-line {
-    height: 0;
-    border-top: 2px solid var(--interactive-accent);
-    margin: -1px 0;
   }
 
   /* Trailing drop zone below the last row: a padded, non-clipped home for the

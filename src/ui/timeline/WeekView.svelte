@@ -36,7 +36,7 @@
 	import { placeUnderAnchor } from "../floating";
 	import DayColumn from "./DayColumn.svelte";
 	import type { DayColumnHandle } from "./dayColumnHandle";
-	import { type UnscheduledItem } from "./taskDrag";
+	import { incomingBlock, type IncomingBlock, type UnscheduledItem } from "./taskDrag";
 	import TaskRow from "../task/Task.svelte";
 	import { commitNumber } from "./numberField";
 	import { tooltip } from "../actions/tooltip";
@@ -481,6 +481,8 @@
 	let dragBlock = $state<Block | null>(null);
 	// The date the pointer is currently hovering (drop target highlight).
 	let hoverDate = $state<ISODate | null>(null);
+	// Where the moved block would land on another day, for that column to draw.
+	let incoming = $state<IncomingBlock | null>(null);
 
 	// The column that most recently had a gesture/selection, so keyboard delete
 	// targets the right day.
@@ -519,8 +521,14 @@
 		for (const date of dates) {
 			if (columns[date]?.handlePointerMove(event)) handled = true;
 		}
-		if (handled && dragBlock) {
+		if (handled && dragBlock && dragFromDate) {
 			hoverDate = columnAt(event.clientX, event.clientY);
+			incoming = incomingBlock(
+				dragFromDate,
+				hoverDate,
+				dragBlock,
+				columns[dragFromDate]?.movePreview() ?? null,
+			);
 		}
 	}
 
@@ -543,6 +551,7 @@
 		dragFromDate = null;
 		dragBlock = null;
 		hoverDate = null;
+		incoming = null;
 
 		if (!returned) return;
 
@@ -748,6 +757,7 @@
 			dragFromDate = null;
 			dragBlock = null;
 			hoverDate = null;
+			incoming = null;
 		};
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
@@ -1112,6 +1122,8 @@
 							{onCrossDayGrab}
 							askAssocOnCreate={settings.askAssocOnBlockCreate}
 							dropBlockTitle={settings.dropBlockTitle}
+							{incoming}
+							leaving={incoming && dragFromDate === date ? dragBlock : null}
 							showUnscheduled={false}
 							{onUnscheduledChange}
 							{links}
