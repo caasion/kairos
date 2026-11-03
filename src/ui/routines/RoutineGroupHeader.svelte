@@ -107,7 +107,7 @@
 	class:paused
 	bind:this={rowEl}
 	oncontextmenu={openMenu}
-	use:actionZone={{ layout: "stack" }}
+	use:actionZone={{ layout: "stack", menu: true }}
 >
 	{#if isBlock}
 		<!-- The same stack as a block's in the Day, Week and Grid views: delete in

@@ -6,7 +6,7 @@ Tasks and blocks keep their actions in their top-right corner. Point at a task o
 
 ## Plan a day (Day and Week views)
 
-The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in the tab's header (**Days before today**, **Days after today**). The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
+The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side: as many as fit the view, up to seven. To choose the number yourself, set **Days before today** and **Days after today** with the gear in the tab's header. The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
 
 **Move through dates**
 
@@ -205,6 +205,14 @@ In the Grid, each row's label shows its current intensity, and a small marker sh
 Kairos is desktop-first. On a phone or tablet:
 
 - Tap a checkbox to change it; press and hold it to cancel the task.
-- Tap text to edit it; press and hold, then move, to drag a task.
+- Tap a task or block to select it and show its actions. Tap it again to edit its text.
+- Tap **⋯** at the end of a selected task's or block's actions for everything its right-click menu has, such as **Move to backlog**.
+- Press and hold, then move, to drag a task or a block.
+- Press and hold empty time in the Day or Week view, then drag, to make a block.
+- To resize a block, tap it, then drag the handle at its top or bottom edge.
+- Swipe sideways on the Week view or the Grid to move a day earlier or later.
+- To select several blocks, tap the select button in the Day or Week view's header, then tap blocks to add or remove them. Press and hold one to move them all, or tap the trash button to delete them.
+- To copy a task instead of moving it, tap **⋯** → **Duplicate**, then drag the copy.
+- To open a task's or block's project or domain note, tap **⋯** → **Open note**.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
-- Some actions are only in right-click menus, so they aren't available on touch yet: **Move to backlog** and the Grid's row menus.
+- The Grid's row menus are still right-click only.

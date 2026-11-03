@@ -21,6 +21,12 @@ export interface BlockMenuActions {
 	onDelete: () => void;
 	/** Open the block in the Day view (the Grid; the timeline is already there). */
 	onReveal?: () => void;
+	/**
+	 * Open the block's project or domain note: Ctrl/Cmd+click on its
+	 * association with a mouse, this on touch (spec decision 128). Omitted when
+	 * the block has none.
+	 */
+	onOpenNote?: () => void;
 }
 
 /** "Open in day view". */
@@ -67,6 +73,15 @@ export function addBlockMenuItems(menu: Menu, block: Block, actions: BlockMenuAc
 		);
 	}
 	if (onReveal) addRevealItem(menu, onReveal);
+	if (actions.onOpenNote) {
+		const open = actions.onOpenNote;
+		menu.addItem((item) =>
+			item
+				.setTitle("Open note")
+				.setIcon("file-text")
+				.onClick(() => open()),
+		);
+	}
 
 	menu.addSeparator();
 

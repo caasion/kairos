@@ -90,6 +90,23 @@ describe("planTaskDrop", () => {
 		expect(out.day.blocks[0]!.tasks[0]!.assoc).toEqual({ kind: "project", id: "Kairos" });
 	});
 
+	it("duplicates a task right after itself, keeping its own association (the menu's Duplicate)", () => {
+		const day = wed();
+		const owner = day.blocks[0]!;
+		const task = owner.tasks[0]!;
+		const out = planTaskDrop(
+			{ day, owner, task },
+			day,
+			{ kind: "block", date: day.date, blockLine: 3, index: 1 },
+			{ duplicate: true },
+			task.assoc ?? null,
+		);
+		if (out?.kind !== "day") throw new Error("expected one day to change");
+		const tasks = out.day.blocks[0]!.tasks;
+		expect(tasks.map((t) => t.text)).toEqual(["Fix carry bug", "Fix carry bug"]);
+		expect(tasks[1]!.assoc).toBeUndefined();
+	});
+
 	it("returns null when the block is gone", () => {
 		const day = wed();
 		expect(planTaskDrop(launchFrom(day), day, { kind: "block", date: day.date, blockLine: 42, index: 0 }, plain)).toBeNull();

@@ -32,11 +32,13 @@
 //   middle for "right"), growing as the pointer nears it, so a new user can
 //   see where the actions are. It is the row's last child, `kairos-action-ear`
 //   (ACTION_EAR_CLASS), and hides while the bar is awake.
-// - Mouse only. Touch has no pointer position to track; there the styles keep
-//   showing the bar on the row's (sticky) `:hover` after a tap
-//   (`@media (hover: none)`), and never show the dog-ear.
+// - Mouse only. Touch has no pointer position to track; there a first tap
+//   selects the row and shows its bar (touchSelect.ts), and the dog-ear never
+//   shows. `menu: true` adds ⋯ to a selected row's bar, for its right-click
+//   menu.
 
 import { ActionStack } from "./actionStack";
+import { touchSelect } from "./touchSelect";
 import { cornerNearness, inActionZone, type ActionZoneAnchor } from "./actionZoneGeometry";
 
 /** Class on the row while its action bar is awake (mouse in the zone). */
@@ -82,6 +84,11 @@ export interface ActionZoneOptions {
 	 * there's no room above). Mouse wakes only; touch keeps the bar's CSS.
 	 */
 	layout?: "bar" | "stack";
+	/**
+	 * The row has a right-click menu. On touch, its selected bar gets a ⋯ that
+	 * opens it (touchSelect.ts).
+	 */
+	menu?: boolean;
 }
 
 export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
@@ -225,6 +232,10 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		if (!isStack()) return;
 		const bar = findBar();
 		if (!bar || !bar.contains(event.target as Node)) return;
+		// Keyboard focus only. A tap focuses the button it lands on (Android),
+		// and turning the bar into a stack then moved that button away before
+		// the tap's click arrived, so the click missed it.
+		if (!(event.target as Partial<Element>).matches?.(":focus-visible")) return;
 		if (!stack?.portaled) stackFor(bar).place(false, opts.anchor);
 		syncViewportListeners();
 	}
@@ -269,6 +280,13 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		return owner !== null && owner !== host && host.contains(owner);
 	}
 
+	const touch = touchSelect(host, {
+		findBar,
+		ownsTarget: (el) => !nestedZoneAt(el),
+		awakeClass: ACTIONS_AWAKE_CLASS,
+		menu: () => opts.menu === true,
+	});
+
 	host.setAttribute(ZONE_ATTR, "");
 	host.addEventListener("pointermove", onMove);
 	host.addEventListener("pointerleave", onLeave);
@@ -289,6 +307,7 @@ export function actionZone(host: HTMLElement, options: ActionZoneOptions = {}) {
 		destroy() {
 			destroyed = true;
 			clearTimers();
+			touch.destroy();
 			host.removeEventListener("pointermove", onMove);
 			host.removeEventListener("pointerleave", onLeave);
 			host.removeEventListener("focusin", onFocusIn);

@@ -222,8 +222,9 @@ Find these in **Settings → Kairos**. Some are also in a view's gear menu.
 | Timeline start hour | 6 | The first hour shown in the Day and Week views. |
 | Timeline end hour | 24 | The last hour shown. |
 | Timeline hour height | 60 | Pixels per hour. |
-| Days before today | 1 | How many past days the Week view and Grid show. |
-| Days after today | 5 | How many future days the Week view and Grid show. |
+| Fit days to the width | On | The Week view and Grid show as many days as fit, up to seven, with one before today once three fit. Turned off when you set the days below. |
+| Days before today | 1 | How many past days the Week view and Grid show, when not fitting to the width. |
+| Days after today | 5 | How many future days the Week view and Grid show, when not fitting to the width. |
 | Show unscheduled tasks in the grid | On | Show each day's tasks without a time in the Grid's cells. Off, they're listed behind the Unscheduled badge on the day's header. |
 | Line under every row | Off | Draw a line under every Grid row, including between a domain and its projects. |
 | Shade every other row | Off | Tint every other Grid row, so a row is easier to follow across the days. |

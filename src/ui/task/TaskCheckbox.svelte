@@ -61,6 +61,7 @@
 	bind:this={buttonEl}
 	type="button"
 	class="k-checkbox"
+	data-kairos-tap-through
 	class:open={status === " "}
 	class:partial={status === "/"}
 	class:checked={status === "x"}

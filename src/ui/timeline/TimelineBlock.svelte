@@ -62,6 +62,8 @@
 		// travels along so the parent can locate the task and lift its inherited
 		// association before dropping it.
 		onMoveTaskToBacklog: (owner: Block, task: Task) => void;
+		/** Put a copy of a task right after it (the task menu's Duplicate). */
+		onDuplicateTask?: (owner: Block, task: Task) => void;
 		// A long-press on a task body began a drag-to-nest gesture. The parent (the
 		// canvas owner) takes over window pointer tracking, previews a drop slot,
 		// and commits the nest on release. Reports the source block + task + press.
@@ -123,6 +125,7 @@
 		onEditTaskAssoc,
 		onNestTask,
 		onMoveTaskToBacklog,
+		onDuplicateTask,
 		onTaskGrab,
 		dragTaskLine,
 		dropSlot,
@@ -289,16 +292,30 @@
   // A short block can't show its task chips; collapse to a compact look.
   const compact = $derived(height < 44);
 
+  // The title, time and association take a mouse press for themselves, so a
+  // click edits or opens them instead of starting a move. A touch press goes on
+  // to the block: it selects it, and a move there waits for a hold
+  // (touchHold.ts), so a tap still reaches the text.
+  function keepPressForTouch(event: PointerEvent) {
+    if (event.pointerType === "mouse") event.stopPropagation();
+  }
+
   function start(
     mode: "move" | "resize-top" | "resize-bottom",
     event: PointerEvent,
   ) {
     // Only the primary button drives gestures; ignore right/middle clicks.
     if (readonly || event.button !== 0) return;
-    // A move or resize works on the block's real size.
-    collapse();
+    // A move or resize works on the block's real size. A touch move waits for
+    // a hold, and shrinking at the press would shift the block under the
+    // finger, so the tap's click landed on whatever moved there: it shrinks
+    // once the drag starts (the effect below).
+    if (event.pointerType === "mouse" || mode !== "move") collapse();
     onGestureStart?.(mode, block, event);
   }
+  $effect(() => {
+    if (dragging) collapse();
+  });
 
   // ── Title editing (single click, in place) ──────────────────────
 
@@ -540,6 +557,7 @@
       onAddNote: () => beginNoteAdd(),
       onEditAssoc: () => requestEditAssoc(),
       onDelete: () => onDelete(block),
+      onOpenNote: block.assoc ? () => onNavigate(block.assoc!) : undefined,
     });
     menu.showAtMouseEvent(event);
   }
@@ -556,6 +574,7 @@
     class:meta={variant === "meta"}
     style={variant === "row" ? `height: ${rowHeight}px;` : undefined}
     bind:this={moreEl}
+    data-kairos-tap-through
     aria-label={`Show all ${rowCount} rows`}
     aria-expanded={expanded}
     onpointerdown={(e) => e.stopPropagation()}
@@ -586,6 +605,7 @@
     onNest={(rect) => onNestTask(block, task, rect)}
     nestLabel="Move to another block"
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
+    onDuplicate={!readonly && onDuplicateTask ? () => onDuplicateTask(block, task) : undefined}
     onRepeat={readonly ? undefined : () => requestRepeat(task, block)}
     onGrab={readonly
       ? undefined
@@ -636,7 +656,7 @@
     onHoverLeave?.(blockTarget);
     onBlockLeave(e);
   }}
-  use:actionZone={{ layout: "stack" }}
+  use:actionZone={{ layout: "stack", menu: true }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
   {#if !readonly}
@@ -749,7 +769,7 @@
           class="tl-title"
           role="textbox"
           tabindex="0"
-          onpointerdown={(e) => e.stopPropagation()}
+          onpointerdown={keepPressForTouch}
           onclick={beginTitleEdit}
           use:peek={{ text: block.title }}
         >{block.title}</span>
@@ -785,7 +805,7 @@
             class="tl-time kairos-meta kairos-meta-label"
             role="button"
             tabindex="0"
-            onpointerdown={(e) => e.stopPropagation()}
+            onpointerdown={keepPressForTouch}
             onclick={beginTimeEdit}
           >{timeLabel}</span>
         {/if}
@@ -806,7 +826,7 @@
             class="kairos-meta"
             class:is-linked={r.resolved}
             title={r.resolved ? "Ctrl+click to open" : undefined}
-            onpointerdown={(e) => e.stopPropagation()}
+            onpointerdown={keepPressForTouch}
             onclick={(e) => {
               if (e.ctrlKey || e.metaKey) {
                 e.stopPropagation();
@@ -1044,6 +1064,41 @@
 
   .tl-resize-bottom {
     bottom: 0;
+  }
+
+  /* Touch (spec decision 136): an unselected block has no resize edge, so a
+     swipe that starts on it scrolls. A selected one gets handles a finger
+     can hold, 24px tall, just outside its edges with the grip always shown:
+     inside, they covered the title of a short block, which a tap there then
+     missed. Its action bar rises above the top handle. */
+  @media (pointer: coarse) {
+    .tl-resize {
+      pointer-events: none;
+    }
+    .tl-block.selected .tl-resize {
+      pointer-events: auto;
+      height: 24px;
+    }
+    .tl-block.selected .tl-resize-top {
+      top: -24px;
+    }
+    .tl-block.selected .tl-resize-bottom {
+      bottom: -24px;
+    }
+    .tl-block.selected:global(.kairos-touch-selected) > .tl-actions {
+      bottom: calc(100% + 28px);
+    }
+    .tl-block.selected .tl-resize::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 32px;
+      height: 4px;
+      border-radius: var(--kairos-radius-s);
+      background: var(--interactive-accent);
+    }
   }
 
   /* A faint grab affordance on the edge when hovering the block. */

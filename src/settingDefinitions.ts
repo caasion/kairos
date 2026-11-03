@@ -30,6 +30,11 @@ export interface KairosSettings {
 	 */
 	weekDaysBefore: number;
 	weekDaysAfter: number;
+	/**
+	 * Week and Grid show as many days as fit their width (a day column has a
+	 * minimum width), up to seven, instead of the span above (spec decision 139).
+	 */
+	fitDaysToWidth: boolean;
 
 	/** Vault folder holding project files. */
 	projectsFolder: string;
@@ -116,6 +121,7 @@ export const DEFAULT_SETTINGS: KairosSettings = {
 	timelineHourHeight: 60,
 	weekDaysBefore: 1,
 	weekDaysAfter: 5,
+	fitDaysToWidth: true,
 	projectsFolder: 'Projects',
 	domainsFolder: 'Domains',
 	backlogPath: 'Backlog.md',
@@ -181,6 +187,18 @@ export const SETTING_DEFINITIONS: SettingDefinitionItem<KairosSettingKey>[] = [
 		type: 'group',
 		heading: 'Week view',
 		items: [
+			{
+				name: 'Fit days to the width',
+				desc:
+					'Show as many days as fit the Week and Grid views, up to seven, ' +
+					'with one before today when three or more fit. Off: use the days ' +
+					'before and after today below.',
+				control: {
+					type: 'toggle',
+					key: 'fitDaysToWidth',
+					defaultValue: DEFAULT_SETTINGS.fitDaysToWidth,
+				},
+			},
 			{
 				name: 'Days before today',
 				desc: 'How many days before today the week view spans by default (1–7).',

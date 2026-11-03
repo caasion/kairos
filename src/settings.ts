@@ -129,6 +129,13 @@ export class KairosSettingTab extends PluginSettingTab {
 				});
 				return;
 			}
+			case 'fitDaysToWidth': {
+				const on = Boolean(value);
+				await this.plugin.updateSettings((s) => {
+					s.fitDaysToWidth = on;
+				});
+				return;
+			}
 			case 'gridUnscheduledInCells': {
 				const on = Boolean(value);
 				await this.plugin.updateSettings((s) => {
