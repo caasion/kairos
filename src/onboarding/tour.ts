@@ -19,6 +19,7 @@ import type { PopoverAction } from "./popover";
 import {
 	follow,
 	locate,
+	findExact,
 	findNewBlock,
 	summarizeDay,
 	track,
@@ -27,6 +28,12 @@ import type { BlockSummary, TrackedBlock } from "./tourProgress";
 import { DOCS_URL, STEPS, isStepDone, resumeStep } from "./tourSteps";
 import type { AnchorKind, StepContext } from "./tourSteps";
 import { WelcomeModal } from "./welcomeModal";
+import { ConfirmModal } from "../ui/projects/modals";
+
+/** Minutes after midnight as "09:30". */
+function hhmm(minutes: number): string {
+	return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
 
 /**
  * - `unseen`: a new install; the welcome opens with the first Kairos view.
@@ -278,19 +285,39 @@ export class Tour {
 		void this.save({ status, step: 0 });
 	}
 
-	/** Delete the tour's block, tasks and notes with it. */
+	/**
+	 * Delete the tour's block, tasks and notes with it, after asking. Only the
+	 * block exactly as the tour last saw it (`findExact`); if it can't be found
+	 * that way, nothing is removed, since this runs in a real daily note.
+	 */
 	private removeTrackedBlock() {
 		const tracked = this.state.block;
 		if (!tracked) return;
 		const index = this.plugin.indexAdapter.index;
 		const day = index.snapshot().days.get(tracked.date);
-		const found = day && locate(tracked, summarizeDay(day));
-		if (!day || !found) return;
-		index.applyDayEdit(
-			day.date,
-			day.path,
-			day.blocks.filter((b) => b.source.line !== found.line),
-		);
+		const found = day && findExact(tracked, summarizeDay(day));
+		if (!day || !found) {
+			new Notice("Couldn't find the tour's block as it was, so nothing was removed.");
+			return;
+		}
+		const tasks = found.tasks.length;
+		new ConfirmModal(this.plugin.app, {
+			title: "Remove the tour's block?",
+			message:
+				`This removes "${found.title}" (${hhmm(found.start)}–${hhmm(found.end)}) from ${tracked.date}` +
+				(tasks > 0 ? `, with its ${tasks === 1 ? "task" : `${tasks} tasks`}.` : "."),
+			cta: "Remove",
+			danger: true,
+			onConfirm: () => {
+				const live = index.snapshot().days.get(tracked.date);
+				if (!live || !findExact(tracked, summarizeDay(live))) return;
+				index.applyDayEdit(
+					live.date,
+					live.path,
+					live.blocks.filter((b) => b.source.line !== found.line),
+				);
+			},
+		}).open();
 	}
 
 	private save(state: TourState) {

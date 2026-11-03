@@ -64,7 +64,33 @@ export function findNewBlock(
 ): BlockSummary | undefined {
 	if (now.length <= baseline.length) return undefined;
 	const before = new Set(baseline.map(key));
-	return now.find((b) => !before.has(key(b)));
+	// Only a block as the Day view makes one, still with its default title:
+	// in a real vault a day can also gain a block from sync or from routines
+	// while this step is up, and the tour mustn't take that one as its own
+	// (its Remove would delete it).
+	return now.find((b) => !before.has(key(b)) && b.title === NEW_BLOCK_TITLE);
+}
+
+/** The title a block gets when it's made on a timeline (writer.ts). */
+export const NEW_BLOCK_TITLE = "New block";
+
+/**
+ * The tracked block exactly as the tour last saw it: same line, title and
+ * time. This is what **Remove what I made** deletes, and only this; `locate`'s
+ * looser fallbacks (same time, same title) are for following the block while
+ * the tour runs, and could land on one of the person's own blocks.
+ */
+export function findExact(
+	tracked: TrackedBlock,
+	now: BlockSummary[],
+): BlockSummary | undefined {
+	return now.find(
+		(b) =>
+			b.line === tracked.line &&
+			b.title === tracked.title &&
+			b.start === tracked.start &&
+			b.end === tracked.end,
+	);
 }
 
 /**

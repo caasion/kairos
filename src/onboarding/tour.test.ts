@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { intersect, placePopover } from "./placement";
 import {
+	findExact,
 	findNewBlock,
 	follow,
 	locate,
@@ -60,6 +61,25 @@ describe("findNewBlock", () => {
 
 	it("ignores a retime that adds nothing", () => {
 		expect(findNewBlock(base, [block(2, "Swim", 800, 860)])).toBeUndefined();
+	});
+
+	it("ignores a block that arrived already named (sync, routines)", () => {
+		const now = [block(-1, "Gym", 540, 600), block(4, "Swim", 780, 840)];
+		expect(findNewBlock(base, now)).toBeUndefined();
+	});
+});
+
+describe("findExact", () => {
+	const tracked = track("2026-11-03", block(5, "Deep work", 540, 600));
+
+	it("finds the block where the tour last saw it", () => {
+		expect(findExact(tracked, [block(5, "Deep work", 540, 600)])?.line).toBe(5);
+	});
+
+	it("never falls back to a same-title or same-time block of the person's", () => {
+		expect(findExact(tracked, [block(9, "Deep work", 540, 600)])).toBeUndefined();
+		expect(findExact(tracked, [block(5, "Gym", 540, 600)])).toBeUndefined();
+		expect(findExact(tracked, [block(5, "Deep work", 600, 660)])).toBeUndefined();
 	});
 });
 
