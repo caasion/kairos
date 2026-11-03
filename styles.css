@@ -785,9 +785,14 @@ body .col-head-wrap {
 	body .gantt-wrap {
 		--kairos-row-label-width: 40px;
 	}
-	body .gantt-wrap .gantt-label {
+	/* A column: the name, then anything else the row carries (its ⋯) under
+	   it. No indent for a project; the accent stripe still groups it. */
+	body .gantt-wrap .gantt-label,
+	body .gantt-wrap .gantt-label.indent {
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
 		padding: 6px 0;
-		justify-content: center;
 	}
 	body .gantt-wrap .gantt-label .row-label-text {
 		writing-mode: vertical-rl;
