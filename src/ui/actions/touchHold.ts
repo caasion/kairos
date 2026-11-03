@@ -14,7 +14,10 @@ import { movedPastSlop } from "./peek";
 export const HOLD_TO_DRAG_MS = 350;
 
 /** A press that moves farther than this before maturing is a scroll. */
-const HOLD_SLOP_PX = 8;
+const HOLD_SLOP_PX = 10;
+
+/** A short buzz when a hold matures, so the finger knows it can move. */
+const HOLD_BUZZ_MS = 12;
 
 /**
  * Whether a press inside a block landed on something with its own hold or
@@ -58,6 +61,8 @@ export function startAfterHold(press: PointerEvent, begin: () => void): boolean 
 	function mature() {
 		stop();
 		holdScrollUntilLift(win);
+		// Android buzzes; iOS has no vibration API and the call is skipped.
+		win.navigator.vibrate?.(HOLD_BUZZ_MS);
 		begin();
 	}
 
