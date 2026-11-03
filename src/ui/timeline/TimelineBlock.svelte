@@ -1032,6 +1032,15 @@
         0 0 0 2px var(--background-primary),
         var(--shadow-s);
     }
+    /* Narrow phone columns: a title wraps onto a second line rather than
+       being cut to its first few letters. */
+    .tl-title {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
     /* A block whose hold matured lifts, so the finger knows it can move. */
     .tl-block.dragging .tl-content {
       transform: scale(1.03);

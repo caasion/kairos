@@ -239,10 +239,10 @@ describe("fitWindow", () => {
 		expect(fitWindow(190, GRID_MIN_COLUMN_PX)).toEqual({ before: 0, size: 1 });
 	});
 	it("shows two days from today when two fit", () => {
-		expect(fitWindow(220, WEEK_MIN_COLUMN_PX)).toEqual({ before: 0, size: 2 });
+		expect(fitWindow(300, WEEK_MIN_COLUMN_PX)).toEqual({ before: 0, size: 2 });
 	});
 	it("keeps a day before today once three fit", () => {
-		expect(fitWindow(324, WEEK_MIN_COLUMN_PX)).toEqual({ before: 1, size: 3 });
+		expect(fitWindow(430, WEEK_MIN_COLUMN_PX)).toEqual({ before: 1, size: 3 });
 	});
 	it("never shows more than seven", () => {
 		expect(fitWindow(2400, WEEK_MIN_COLUMN_PX)).toEqual({ before: 1, size: MAX_FIT_DAYS });

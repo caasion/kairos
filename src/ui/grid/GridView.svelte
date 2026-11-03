@@ -52,8 +52,14 @@
 	import { fitWindow, GRID_MIN_COLUMN_PX } from "../timeline/weekWindow";
 	import { swipeDays } from "../actions/swipeDays";
 
-	/** The row-label column's width (`--kairos-row-label-width`), left of the days. */
-	const ROW_LABEL_PX = 180;
+	/**
+	 * The row-label column's width (`--kairos-row-label-width`), left of the
+	 * days: 180px, or a 40px tab on a phone (styles.css). Read from the view.
+	 */
+	function rowLabelPx(): number {
+		const v = viewEl ? parseFloat(getComputedStyle(viewEl).getPropertyValue("--kairos-row-label-width")) : NaN;
+		return Number.isFinite(v) ? v : 180;
+	}
 	import {
 		blockLit,
 		hoverBlockTarget,
@@ -203,7 +209,7 @@
 	// columns' width (weekWindow.ts, spec decision 139); off, the settings' span.
 	let scrollWidth = $state(0);
 	const fit = $derived(
-		settings.fitDaysToWidth ? fitWindow(scrollWidth - ROW_LABEL_PX, GRID_MIN_COLUMN_PX) : null,
+		settings.fitDaysToWidth ? fitWindow(scrollWidth - rowLabelPx(), GRID_MIN_COLUMN_PX) : null,
 	);
 	const before = $derived(fit ? fit.before : clampSpan(settings.weekDaysBefore));
 	const after = $derived(fit ? fit.size - 1 - fit.before : clampSpan(settings.weekDaysAfter));

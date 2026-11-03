@@ -73,8 +73,11 @@ export function stepAnchor(
 // seven days squeezed to about 44px each. With "Fit days to the width" on, the
 // window is however many days fit at a minimum width, up to seven.
 
-/** The narrowest a Week view day column gets: room for a block's title. */
-export const WEEK_MIN_COLUMN_PX = 100;
+/**
+ * The narrowest a Week view day column gets: room for a block's title on two
+ * lines and its date card's badges. A portrait phone shows two days.
+ */
+export const WEEK_MIN_COLUMN_PX = 140;
 /** The narrowest a Grid day column gets: room for a cell's tasks to read. */
 export const GRID_MIN_COLUMN_PX = 140;
 /** The most days a fitted window shows, as the default span does. */

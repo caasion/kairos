@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { App } from "obsidian";
+	import { coarsePointer } from "../actions/pickerPlace";
 	import { onMount } from "svelte";
 	import type { Readable } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
@@ -125,7 +126,8 @@
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
 	// Shared vertical geometry — one time axis for the whole week.
-	const geo = $derived(geometryFromSettings(settings));
+	// On a phone hours are drawn taller, so short blocks can be tapped.
+	const geo = $derived(geometryFromSettings(settings, { coarse: coarsePointer(window) }));
 	const hours = $derived(visibleHours(geo));
 	const bodyHeight = $derived(gridHeight(geo));
 
