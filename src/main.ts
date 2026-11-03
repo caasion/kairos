@@ -229,6 +229,12 @@ export default class Kairos extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'regenerate-routines-for-day',
+			name: 'Regenerate routines for this day',
+			callback: () => void preparer.regenerateCurrentDay(),
+		});
+
+		this.addCommand({
 			id: 'start-tour',
 			name: 'Start tour',
 			callback: () => this.tour.start(),

@@ -11,8 +11,9 @@
 
 	import { formatShortDate } from "../../dayNote";
 	import type { RowLabelInfo } from "./rowLabel";
-	import Portal from "./Portal.svelte";
+	import HoverCard from "./HoverCard.svelte";
 	import IntensityBars from "./IntensityBars.svelte";
+	import { icon } from "../actions/icon";
 
 	let { info }: { info: RowLabelInfo } = $props();
 
@@ -20,7 +21,7 @@
 	let hovering = $state(false);
 	let anchorEl = $state<HTMLElement>();
 	let cardStyle = $state("left: -9999px; top: -9999px;");
-	let cardEl = $state<HTMLElement>();
+	let cardEl = $state<HTMLDivElement>();
 
 	function open() {
 		hovering = true;
@@ -86,6 +87,14 @@
 	<div class="row-label-text">
 		<span class="row-label-line">
 			<span class="row-label-name" title={info.name}>{info.name}</span>
+			{#if info.rolledUpOnto}
+				<!-- Shown on its domain's Grid row instead of its own (#11). -->
+				<span
+					class="row-label-rollup-mark"
+					use:icon={"fold-vertical"}
+					aria-label="Shown on {info.rolledUpOnto}'s row in the Grid"
+				></span>
+			{/if}
 			{#if info.intensity}
 				<span
 					class="row-label-pips"
@@ -137,56 +146,47 @@
 {/snippet}
 
 {#if hovering && hasCardBody}
-	<Portal>
-		<!-- The card in Kairos's own type — a full-height bar in the
-		     entity's color, the name in serif, the status as a dot before the
-		     first line under it, the note and description in the UI font, and the dates as a small
-		     labelled list with intensity drawn as its stacked bars. -->
-		<div class="row-label-card" bind:this={cardEl} style={cardStyle}>
-			<span
-				class="rlc-accent"
-				style={info.color ? `background: ${info.color};` : undefined}
-			></span>
-			<div class="rlc-body">
-				<span class="rlc-name">
-					{#if dotLine === "name"}{@render statusDot()}{/if}{info.name}
-				</span>
-				{#if info.note.trim() !== ""}
-					<div class="rlc-note">{@render statusDot()}{info.note}</div>
-				{/if}
-				{#if info.description.trim() !== ""}
-					<div class="rlc-desc">
-						{#if dotLine === "description"}{@render statusDot()}{/if}{info.description}
-					</div>
-				{/if}
-				{#if info.intensity || info.since !== null || rolledUp.length > 0}
-					<dl class="rlc-facts">
-						{#if info.intensity}
-							<dt>Intensity</dt>
-							<dd>
-								<span
-									class="rlc-bars"
-									style={info.color ? `color: ${info.color};` : undefined}
-								><IntensityBars level={info.intensity.level} /></span>
-								<span class="rlc-dim">({info.intensity.level})</span>
-								<span>on {formatShortDate(info.intensity.on)}</span>
-							</dd>
-						{/if}
-						{#if info.since !== null}
-							<dt>{statusLabel}</dt>
-							<dd>
-								Since {formatShortDate(info.since)}{#if info.until !== null}<span class="rlc-dim">&nbsp;· until {formatShortDate(info.until)}</span>{/if}
-							</dd>
-						{/if}
-						{#if rolledUp.length > 0}
-							<dt>Also here</dt>
-							<dd>{rolledUpText}</dd>
-						{/if}
-					</dl>
-				{/if}
+	<!-- The name in serif, the status as a dot before the first line under
+	     it, the note and description in the UI font, and the dates as a small
+	     labelled list with intensity drawn as its stacked bars. -->
+	<HoverCard color={info.color} style={cardStyle} bind:el={cardEl}>
+		<span class="kairos-hover-card-name">
+			{#if dotLine === "name"}{@render statusDot()}{/if}{info.name}
+		</span>
+		{#if info.note.trim() !== ""}
+			<div class="kairos-hover-card-note">{@render statusDot()}{info.note}</div>
+		{/if}
+		{#if info.description.trim() !== ""}
+			<div class="kairos-hover-card-desc">
+				{#if dotLine === "description"}{@render statusDot()}{/if}{info.description}
 			</div>
-		</div>
-	</Portal>
+		{/if}
+		{#if info.intensity || info.since !== null || rolledUp.length > 0}
+			<dl class="kairos-hover-card-facts">
+				{#if info.intensity}
+					<dt>Intensity</dt>
+					<dd>
+						<span
+							class="kairos-hover-card-bars"
+							style={info.color ? `color: ${info.color};` : undefined}
+						><IntensityBars level={info.intensity.level} /></span>
+						<span class="kairos-hover-card-dim">({info.intensity.level})</span>
+						<span>on {formatShortDate(info.intensity.on)}</span>
+					</dd>
+				{/if}
+				{#if info.since !== null}
+					<dt>{statusLabel}</dt>
+					<dd>
+						Since {formatShortDate(info.since)}{#if info.until !== null}<span class="kairos-hover-card-dim">&nbsp;· until {formatShortDate(info.until)}</span>{/if}
+					</dd>
+				{/if}
+				{#if rolledUp.length > 0}
+					<dt>Also here</dt>
+					<dd>{rolledUpText}</dd>
+				{/if}
+			</dl>
+		{/if}
+	</HoverCard>
 {/if}
 
 <style>
@@ -226,9 +226,16 @@
 		--intensity-bar-row: 5px;
 	}
 
+	.row-label-rollup-mark {
+		display: inline-flex;
+		flex-shrink: 0;
+		--icon-size: var(--icon-xs);
+		color: var(--text-faint);
+	}
+
 	.row-label-name {
 		max-width: 100%;
-		font-family: Georgia, "Times New Roman", serif;
+		font-family: var(--kairos-font-serif);
 		font-size: 13px;
 		font-weight: 400;
 		line-height: 1.3;
@@ -269,35 +276,8 @@
 		color: var(--text-faint);
 	}
 
-	/* ── Hover card (Kairos style) ── */
-	:global(.row-label-card) {
-		position: fixed;
-		z-index: var(--layer-popover);
-		min-width: 180px;
-		max-width: 270px;
-		height: auto;
-		display: flex;
-		overflow: hidden;
-		background: var(--background-secondary);
-		border: 1px solid var(--background-modifier-border);
-		border-radius: var(--radius-s);
-		box-shadow: var(--shadow-s);
-		pointer-events: none;
-	}
-	/* Full-height bar in the entity's color (faint when none is set). */
-	:global(.row-label-card) .rlc-accent {
-		width: 4px;
-		flex-shrink: 0;
-		background: var(--text-faint);
-	}
-	:global(.row-label-card) .rlc-body {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		padding: 12px 14px;
-	}
-	:global(.row-label-card) .rlc-dot {
+	/* The status dot in the hover card (HoverCard). */
+	.rlc-dot {
 		display: inline-block;
 		width: 6px;
 		height: 6px;
@@ -306,58 +286,10 @@
 		vertical-align: 0.15em;
 		background: var(--text-faint);
 	}
-	:global(.row-label-card) .rlc-dot.active {
+	.rlc-dot.active {
 		background: var(--color-green);
 	}
-	:global(.row-label-card) .rlc-dot.archived {
+	.rlc-dot.archived {
 		background: var(--color-red);
-	}
-	:global(.row-label-card) .rlc-name {
-		margin: 1px 0 6px;
-		font-family: Georgia, "Times New Roman", serif;
-		font-size: 18px;
-		font-weight: 400;
-		line-height: 1.2;
-		color: var(--text-normal);
-	}
-	:global(.row-label-card) .rlc-note {
-		font-size: var(--font-ui-small);
-		color: var(--text-normal);
-		line-height: var(--line-height-tight);
-	}
-	:global(.row-label-card) .rlc-desc {
-		margin-top: 2px;
-		font-size: var(--font-ui-smaller);
-		color: var(--text-muted);
-		line-height: var(--line-height-tight);
-	}
-	:global(.row-label-card) .rlc-facts {
-		display: grid;
-		grid-template-columns: auto 1fr;
-		gap: 5px 12px;
-		align-items: center;
-		margin: 10px 0 0;
-		padding-top: 8px;
-		border-top: 1px solid var(--background-modifier-border);
-		font-size: var(--font-ui-smaller);
-		font-variant-numeric: tabular-nums;
-	}
-	:global(.row-label-card) .rlc-facts dt {
-		color: var(--text-muted);
-	}
-	:global(.row-label-card) .rlc-facts dd {
-		margin: 0;
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		min-width: 0;
-		color: var(--text-normal);
-	}
-	:global(.row-label-card) .rlc-bars {
-		display: inline-flex;
-		color: var(--text-muted);
-	}
-	:global(.row-label-card) .rlc-dim {
-		color: var(--text-faint);
 	}
 </style>

@@ -16,10 +16,10 @@
 	import type { Association, Task } from "../../types";
 	import type { KairosIndex, Resolver } from "../../index";
 	import { navigateToAssociation } from "../../navigate";
-	import { tooltip } from "../actions/tooltip";
 	import { singleLine } from "../actions/autogrow";
 	import TaskRow from "../task/Task.svelte";
 	import RoutineGroupHeader from "./RoutineGroupHeader.svelte";
+	import AssocGroup from "../components/AssocGroup.svelte";
 	import BlockPicker from "../timeline/BlockPicker.svelte";
 	import type { BlockOption } from "../../blockOptions";
 	import AssociationPicker from "../association/AssociationPicker.svelte";
@@ -94,12 +94,11 @@
 		await store.edit((md) => addRoutine(md, draft));
 	}
 
-	function openAddMenu(rule: Rule, event: MouseEvent) {
-		event.stopPropagation();
+	function openAddMenu(rule: Rule, anchor: DOMRect) {
 		const menu = new Menu();
 		menu.addItem((i) => i.setTitle("Add task").setIcon("square-check").onClick(() => void add(rule, "task")));
 		menu.addItem((i) => i.setTitle("Add block").setIcon("clock").onClick(() => void add(rule, "block")));
-		menu.showAtMouseEvent(event);
+		menu.showAtPosition({ x: anchor.left, y: anchor.bottom });
 	}
 
 	function openNewGroup(event: MouseEvent) {
@@ -369,18 +368,16 @@
 		{/if}
 
 		{#each groups as group (group.key)}
-			<section class="routines-group">
-				<header class="group-header">
-					<span class="group-icon">
-						<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
-					</span>
-					<span class="group-name">{group.name}</span>
-					<span class="group-count">{group.routines.length}</span>
-					<button class="add-btn" aria-label="Add a routine here" use:tooltip={"Add a routine here"} onclick={(e) => openAddMenu(group.rule, e)}>
-						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-					</button>
-				</header>
-
+			<!-- The group heading every list uses (AssocGroup), for when the
+			     routines repeat: the name in serif, the count, the "+". -->
+			<AssocGroup
+				label={group.name}
+				icon="repeat"
+				count={group.routines.length}
+				sticky
+				addLabel="Add a routine here"
+				onAdd={(rect: DOMRect) => openAddMenu(group.rule, rect)}
+			>
 				<!-- Laid out like a Grid cell grouped by block (decision 70): each
 				     block's header, its tasks under it, Unscheduled last. A header's
 				     "+" adds a task to that block. -->
@@ -418,7 +415,7 @@
 						</div>
 					{/each}
 				</div>
-			</section>
+			</AssocGroup>
 		{/each}
 	</div>
 </div>
@@ -510,53 +507,6 @@
 		font-size: 13px;
 		color: var(--text-muted);
 		padding: 8px 4px;
-	}
-	.routines-group {
-		margin-bottom: 14px;
-	}
-	.group-header {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		padding: 6px 4px;
-		position: sticky;
-		top: 0;
-		background: var(--background-primary);
-		z-index: 1;
-	}
-	.group-icon {
-		display: flex;
-		color: var(--text-muted);
-	}
-	.group-name {
-		font-size: 12px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-		color: var(--text-normal);
-	}
-	.group-count {
-		font-size: 11px;
-		color: var(--text-faint);
-		font-variant-numeric: tabular-nums;
-	}
-	.add-btn {
-		margin-left: auto;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 22px;
-		width: 22px;
-		min-width: min-content;
-		border: 1px solid var(--background-modifier-border);
-		border-radius: 6px;
-		background: var(--background-primary-alt);
-		color: var(--text-muted);
-		cursor: pointer;
-	}
-	.add-btn:hover {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
 	}
 	/* Block groups, spaced like the Grid's (GridCell .grid-cell-block-group). */
 	.routine-blocks {

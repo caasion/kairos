@@ -250,12 +250,12 @@
 		writeToDisk();
 	}
 
-	function handleAddTask(block: Block) {
+	function handleAddTask(block: Block, text: string) {
 		const real = ownerFor(block);
 		if (!real) return;
 		const task: Task = {
 			source: { path: real.source.path, line: nextDraftLine() },
-			text: "New task",
+			text,
 			status: " ",
 		};
 		real.tasks = [...real.tasks, task];
@@ -601,6 +601,16 @@
 		links.setDrag(null);
 	}
 
+	// The browser took the pointer (a touch that turned into a scroll, a system
+	// gesture) or the window lost focus: drop any task drag or block gesture
+	// without writing. Left live, the next pointerup would commit it.
+	export function cancelPointer() {
+		cancelTaskDrag();
+		gesture = null;
+		preview = new Map();
+		draft = null;
+	}
+
 	// Parent forwards window pointer moves so a drag keeps tracking across
 	// columns. Returns whether this column is handling a live gesture.
 	export function handlePointerMove(event: PointerEvent): boolean {
@@ -876,7 +886,7 @@
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="us-chevron"><path d="m6 9 6 6 6-6"/></svg>
 			<span>Unscheduled</span>
-			<span class="us-count">{unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).length, 0)}</span>
+			<span class="kairos-count">{unscheduled.reduce((n, b) => n + (tasksBySource.get(b.source.line) ?? []).length, 0)}</span>
 		</div>
 		{#if unscheduledOpen}
 			{#each unscheduled as block (block.source.line)}
@@ -1111,10 +1121,4 @@
 		transform: rotate(0deg);
 	}
 
-	.us-count {
-		font-size: 10px;
-		font-weight: 400;
-		color: var(--text-faint);
-		margin-left: 2px;
-	}
 </style>

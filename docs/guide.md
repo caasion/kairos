@@ -8,6 +8,21 @@ Tasks and blocks keep their actions in their top-right corner. Point at a task o
 
 The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in the tab's header (**Days before today**, **Days after today**). The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
 
+**Move through dates**
+
+The date navigators in the Week, Grid and Timeline views have two pairs of arrows around the date. The outer pair (« ») takes a big step and the inner pair (‹ ›) a small one. The Day view has only ‹ ›. Point at an arrow to see how far it goes.
+
+| View | « » | ‹ › |
+|---|---|---|
+| Day | – | A day |
+| Week, Grid | The whole window (all the days shown) | A day |
+| Timeline, Week | A week | A day |
+| Timeline, Month | A month | A week |
+| Timeline, Quarter | A quarter | A month |
+| Timeline, Year | A year | A quarter |
+
+Select the date to pick one from a calendar. Once you've moved away, **Today** takes you back.
+
 **Blocks**
 
 - **Make a block:** drag down on empty time. It snaps to 5 minutes. A plain click doesn't make one.
@@ -21,7 +36,7 @@ The Day view shows one day and opens in the right sidebar. The Week view shows s
 
 **Tasks**
 
-- **Add a task:** point at the block's top-right corner and select **Add task**, or right-click the block.
+- **Add a task:** point at the block's top-right corner and select **Add task**, or right-click the block, then type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it. A short block grows while you type.
 - **Rename it:** select its text. **Enter** saves, **Esc** cancels.
 - **Check it off:** select its checkbox. Each click moves it along: open → half-done → done → open.
 - **Cancel it:** press and hold its checkbox, or right-click and select **Mark cancelled**.
@@ -55,7 +70,7 @@ The Grid has one row per project and domain, and one column per day. Use it to s
 
 **Adding and moving**
 
-- **Add a task to a block:** point at the top-right corner of the block's header and select **Add task**. A block header has the same corner actions as a block in the Day view.
+- **Add a task to a block:** point at the top-right corner of the block's header and select **Add task**, then type its name, as in a cell. A block header has the same corner actions as a block in the Day view.
 - **Add a task without a time:** select the **+** in the cell's corner, or the **+** on its Unscheduled header, and type its name. **Enter** adds it and leaves the field open for the next one; **Esc** closes it.
 - **Move a task:** press and hold its text, then drag.
   - Onto a block in the same cell: it moves into that block.
@@ -99,6 +114,7 @@ Routines are blocks and tasks that repeat, like a morning routine on weekdays or
 
 - Right-click a task or a block in any view and select **Repeat…**. Choose when it repeats. The one you right-clicked stays where it is as the first occurrence.
 - Or open the **Routines** view from the hourglass menu and select **New routine**.
+- Or write `Routines.md` yourself, or have an AI assistant write it. [Routines.md](reference.md#routinesmd) in the reference describes the whole format, so you can point the assistant there.
 
 **Add routines to a day**
 
@@ -110,6 +126,18 @@ Kairos doesn't fill your days by itself. When a day is missing routines, it tell
 Point at the pill to see the list. Select a routine's arrow to add it, or **Add all**. If you delete a routine from a day after that, Kairos won't offer it again for that day.
 
 You can also run **Apply routines to this day** from the command palette. To add routines automatically whenever a daily note is created, turn on **Settings → Kairos → Add routines to new daily notes**.
+
+**Update a day after changing routines**
+
+Adding routines only adds what's missing. A block that's already in the day keeps its project or domain and its time when you change the routine. To bring a day in line with `Routines.md` again, open the day's menu (the **⋯** on its header in the Day, Week or Grid view, or right-click the header) and select **Regenerate routines…**, or run **Regenerate routines for this day** from the command palette.
+
+It shows the day as it would be, beside a list of what differs. Checking or unchecking a change updates the day, with what changes outlined. Nothing changes until you select **Apply**:
+
+- A block or task whose project or domain is different from its routine.
+- Routine tasks missing from a block, and routines missing from the day.
+- A block at a different time from its routine. These start unchecked, since you may have moved the block on purpose.
+
+Uncheck what you want to keep as it is. Nothing is removed: tasks you added to a routine block stay, and done tasks stay done. Past days can't be regenerated, so they keep the record of what happened.
 
 **Edit routines**
 
@@ -157,11 +185,18 @@ Edit these in **Status history…**, or in the Timeline view.
 
 The Timeline view draws each project's active stretches as bars. Switch between **Week**, **Month**, **Quarter** and **Year** in the header.
 
+The view always spans one week, month, quarter or year. The small arrows can start it partway through one: in **Month**, select › once to see 8 Oct – 7 Nov. **Today**, the calendar and switching interval line it up with whole units again.
+
 - **Add an active stretch:** drag across an empty part of a row. It covers every day you drag over, including the one you let go on. A single click starts an open-ended one.
-- **Move its start or end:** drag the bar's left or right edge.
+- **Select a bar:** click it. A selected bar gets a handle outside each end, so you can grab its edges even when it's thin.
+- **Move a stretch:** drag the bar. It keeps its length and stops when it meets the stretch next to it.
+- **Change its start or end:** drag one of its edges. Only the bar you're dragging changes. If it grows into the next stretch, that stretch gets shorter (it always keeps at least a day). If it shrinks away from one, a gap opens and the other stretch stays where it was.
+- **Nudge it a day:** select it and press **←** or **→** to move it. Hold **Shift** to move its end, or **Alt/Option** to move its start. This works when an edge is outside the period you're looking at.
 - **Set its intensity:** three small lines on the bar show the level, lighting from the bottom: 1 lights the bottom line, 2 adds a dim one above it, and 5 lights all three. Select a line to light up to it (select the top lit line again to dim it), select the bar and press **0** to **5**, or right-click it and choose **Intensity**.
 - **Edit its intention:** double-click the bar.
-- **More:** right-click the bar for exact dates and **Delete**.
+- **Split or merge:** right-click a bar on a day and choose **Split on** that day; the second half gets a new intention for you to rename. Choose **Merge with next** to run it through the next stretch, keeping its own intention.
+- **More:** right-click the bar for exact dates, **Remove end date** and **Delete**. Deleting a stretch leaves the stretches beside it as they were.
+- **Rolled-up projects:** a project you chose to show on its domain's row in the Grid keeps its own row here, marked with a small icon beside its name. Right-click its label to switch between **Show on domain's row** and **Give its own row**.
 
 In the Grid, each row's label shows its current intensity, and a small marker shows on days where it changes.
 

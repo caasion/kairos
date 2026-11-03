@@ -301,9 +301,9 @@ describe("intensityOn / intensityChange", () => {
 
 	it("marks a new intention on the day its record starts, not a kept or cleared one", () => {
 		// Fixture notes: 08-04 "push", 08-06 "unrated now", others none.
-		expect(intentionChange(row, "2026-08-04", s)).toBe("push");
+		expect(intentionChange(row, "2026-08-04", s)).toEqual({ from: null, to: "push" });
 		expect(intentionChange(row, "2026-08-05", s)).toBeNull(); // no record that day
-		expect(intentionChange(row, "2026-08-06", s)).toBe("unrated now");
+		expect(intentionChange(row, "2026-08-06", s)?.to).toBe("unrated now");
 		expect(intentionChange(row, "2026-08-08", s)).toBeNull(); // cleared
 		const q = project({
 			history: [
@@ -313,8 +313,20 @@ describe("intensityOn / intensityChange", () => {
 		});
 		const t = snap([q], [], []);
 		const r = buildRows(t, AS_OF)[0]!;
-		expect(intentionChange(r, "2026-08-01", t)).toBe("same"); // first record counts
+		expect(intentionChange(r, "2026-08-01", t)).toEqual({ from: null, to: "same" }); // first record counts
 		expect(intentionChange(r, "2026-08-04", t)).toBeNull(); // kept
+		const v = project({
+			history: [
+				{ date: "2026-08-01", status: "active", note: "explore" },
+				{ date: "2026-08-04", status: "active", note: "ship it" },
+			],
+		});
+		const w = snap([v], [], []);
+		// The card shows what the new intention replaces.
+		expect(intentionChange(buildRows(w, AS_OF)[0]!, "2026-08-04", w)).toEqual({
+			from: "explore",
+			to: "ship it",
+		});
 	});
 
 	it("gives the unassigned row no intensity", () => {

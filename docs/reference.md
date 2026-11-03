@@ -91,6 +91,14 @@ Each line is an item, with an optional association and an optional resurface dat
 
 Lines Kairos can't read are listed at the top of the Routines view.
 
+To have an AI assistant write or change this file, point it at this section. A few things it should know:
+
+- Kairos finds a routine in a day by name: a block by its title, a task by its text. Renaming a routine makes it a new one, so a day already set up is offered it again.
+- An association is `[Project]` or `[D:Domain]`, naming a project or domain you already have. A task without one takes its block's.
+- Kairos only ever adds routines to a day, never removes them, so a routine left out of the file just stops being offered.
+
+Check the result in the Routines view: lines it can't read are listed at the top.
+
 ### Project and domain files
 
 Kairos finds projects in the `Projects` folder and domains in the `Domains` folder (both can be changed in settings). A file counts only if its frontmatter has the tag `kairos/project` or `kairos/domain`, which Kairos adds when you create one from the Projects & domains view. The file name is the project's name.
@@ -141,6 +149,9 @@ status:
 | **Esc** during a drag | Cancel it |
 | Ctrl/Cmd+click a date | Open (or create) that day's note |
 | Ctrl/Cmd+click a task's or block's project | Open the project's note |
+| Select « or » in a header | Step back or forward a big step: the whole window (Week, Grid), the interval (Timeline) |
+| Select ‹ or › in a header | Step back or forward a small step: a day (Day, Week, Grid, Timeline Week), a week (Timeline Month), a month (Timeline Quarter), a quarter (Timeline Year) |
+| Select **Today** in a header | Go back to today |
 
 ### Day and Week views
 
@@ -155,6 +166,7 @@ status:
 | Point at or select "N more" | Grow the block to show all its tasks |
 | Drop a task on empty time | Make a 30-minute block around it |
 | Drop a task on Unscheduled | Take its time away |
+| Right-click a day's header, or its **⋯** (Day, Week, Grid) | The day's menu: **Regenerate routines…**, to bring the day in line with `Routines.md` (today and later) |
 
 ### Grid
 
@@ -173,13 +185,21 @@ status:
 |---|---|
 | Drag across an empty part of a row | Add an active stretch |
 | Click an empty part of a row | Start an open-ended active stretch |
-| Drag a bar's left or right edge | Move its start or end |
-| Click a bounded bar's right edge without dragging | Remove its end date |
+| Click a bar | Select it; its edge handles appear outside its ends |
+| Drag a bar | Move the stretch, keeping its length; it stops at the next stretch |
+| Drag a bar's left or right edge | Move its start or end; a stretch it grows into gets shorter |
+| Select a bar, then press **←** or **→** | Move it a day |
+| Select a bar, then press **Shift+←** or **Shift+→** | Move its end a day |
+| Select a bar, then press **Alt/Option+←** or **Alt/Option+→** | Move its start a day |
+| Right-click a bar, then **Split on** | Split it on the day you right-clicked |
+| Right-click a bar, then **Merge with next** | Join it with the next stretch |
+| Right-click a bar, then **Remove end date** | Let it run on to the next stretch, or open-ended |
 | Select one of a bar's three intensity lines | Light its intensity up to that line (select the top lit line again to dim it) |
 | Select a bar, then press **0**–**5** | Set its intensity |
 | Right-click a bar, then **Intensity** | Set or clear its intensity |
 | Select a bar, then press **Delete** | Delete the stretch |
 | Double-click a bar | Edit its intention |
+| Right-click a project's row label | **Show on domain's row** / **Give its own row** |
 
 ## Commands
 
@@ -191,6 +211,7 @@ status:
 - Open timeline view
 - Open routines view
 - Apply routines to this day
+- Regenerate routines for this day
 - Start tour: a short guided tour that plans a piece of your day
 
 ## Settings
@@ -205,6 +226,8 @@ Find these in **Settings → Kairos**. Some are also in a view's gear menu.
 | Days before today | 1 | How many past days the Week view and Grid show. |
 | Days after today | 5 | How many future days the Week view and Grid show. |
 | Show unscheduled tasks in the grid | On | Show each day's tasks without a time in the Grid's cells. Off, they're listed behind the Unscheduled badge on the day's header. |
+| Line under every row | Off | Draw a line under every Grid row, including between a domain and its projects. |
+| Shade every other row | Off | Tint every other Grid row, so a row is easier to follow across the days. |
 | Show projects on rolled-up tasks | Off | On a domain row with rolled-up projects, show each task's project at the end of its line. |
 | Highlight across views | On | Pointing at a block or task lights it up in every view. |
 | Follow the grid | On | Working on a day in the Grid shows it in the Day view, and in the Week view when it's out of sight. |

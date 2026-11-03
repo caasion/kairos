@@ -6,6 +6,10 @@
 - Entry point: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
 - Required release artifacts: `main.js`, `manifest.json`, and optional `styles.css`.
 
+## UI and the design system
+
+Read `DESIGN.md` before adding or changing UI. Build from its components (`IconButton`, `AssocGroup`, …) and tokens instead of copying another view's CSS. `src/designSystem.test.ts` fails if a change adds hex colours, pixel font sizes or radii, pasted SVG icons or hand-made frameless buttons.
+
 ## Environment & tooling
 
 - Node.js: use current LTS (Node 18+ recommended).

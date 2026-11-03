@@ -17,6 +17,7 @@ export class WelcomeModal extends Modal {
 	}
 
 	onOpen() {
+		this.modalEl.addClass("kairos-modal");
 		const { contentEl } = this;
 		this.setTitle("Welcome to Kairos");
 		contentEl.addClass("kairos-tour-welcome");
