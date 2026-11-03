@@ -72,3 +72,24 @@ export function intersect(a: Rect, b: Rect): Rect | null {
 	if (r <= left || btm <= top) return null;
 	return { left, top, width: r - left, height: btm - top };
 }
+
+/**
+ * On a phone the card is a strip across the top of the visible view, just
+ * under its header, never beside its anchor: there's no room beside anything,
+ * and the keyboard pushes a floating card over what's being typed into. When
+ * the anchor is up there under the strip, the strip moves to the bottom.
+ * `area` is the part of the view that's on screen (the keyboard shrinks it).
+ */
+export function dockPopover(
+	anchor: Rect | null,
+	height: number,
+	area: Rect,
+	inset = 6,
+): { left: number; top: number; width: number; side: "top" | "bottom" } {
+	const left = area.left + inset;
+	const width = Math.max(0, area.width - inset * 2);
+	const top = area.top + inset;
+	const covers = anchor !== null && anchor.top < top + height + inset && anchor.top + anchor.height > top;
+	if (!covers) return { left, top, width, side: "top" };
+	return { left, top: Math.max(top, area.top + area.height - height - inset), width, side: "bottom" };
+}

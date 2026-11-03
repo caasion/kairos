@@ -5,7 +5,7 @@
 // the person can act on the very thing it circles.
 
 import { setIcon } from "obsidian";
-import { placePopover } from "./placement";
+import { dockPopover, placePopover } from "./placement";
 import type { Rect } from "./placement";
 
 export interface PopoverAction {
@@ -50,6 +50,8 @@ export class TourPopover {
 
 		const head = card.createDiv({ cls: "kairos-tour-head" });
 		head.createSpan({ cls: "kairos-tour-progress", text: content.progress });
+		// The step's name, beside the progress, for the one-line compact card.
+		head.createSpan({ cls: "kairos-tour-head-title", text: content.title });
 		const close = head.createEl("button", {
 			cls: "kairos-tour-close clickable-icon",
 			attr: { "aria-label": "End tour" },
@@ -77,8 +79,12 @@ export class TourPopover {
 		}
 	}
 
-	/** Circle `anchor` (or nothing) and move the card beside it. */
-	position(anchor: Rect | null) {
+	/**
+	 * Circle `anchor` (or nothing) and move the card beside it, or, with a
+	 * `dock` area (a phone), into a strip across that area (`dockPopover`).
+	 * `compact` shrinks the card to its head line, while the person types.
+	 */
+	position(anchor: Rect | null, dock: Rect | null = null, compact = false) {
 		const win = this.card.win;
 		if (anchor) {
 			const pad = 4;
@@ -93,6 +99,18 @@ export class TourPopover {
 			this.ring.addClass("is-hidden");
 		}
 
+		this.card.toggleClass("is-docked", dock !== null);
+		this.card.toggleClass("is-compact", compact);
+		if (dock) {
+			const placed = dockPopover(anchor, this.card.offsetHeight, dock);
+			this.card.setCssStyles({
+				left: `${placed.left}px`,
+				top: `${placed.top}px`,
+				width: `${placed.width}px`,
+			});
+			return;
+		}
+		this.card.setCssStyles({ width: "" });
 		const placed = placePopover(
 			anchor,
 			{ width: this.card.offsetWidth, height: this.card.offsetHeight },
