@@ -74,7 +74,7 @@
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
-	import { pressOnBlockChild, startAfterHold } from "../actions/touchHold";
+	import { pressOnBlockChild, pressOnMoveGrip, startAfterHold } from "../actions/touchHold";
 	import IconButton from "../components/IconButton.svelte";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
@@ -981,7 +981,9 @@
 		};
 		// A resize handle shows only on a selected block and starts at once; a
 		// move on touch waits for a hold, so a swipe over a block scrolls.
-		if (mode !== "move") begin();
+		// A resize handle, or the move grip, shows only on a selected block and
+		// starts at once.
+		if (mode !== "move" || pressOnMoveGrip(event.target)) begin();
 		else if (event.pointerType === "mouse" || !pressOnBlockChild(event.target)) {
 			startAfterHold(event, () => {
 				// A task's own hold may have matured first and started its drag.
