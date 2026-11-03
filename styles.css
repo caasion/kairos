@@ -766,6 +766,17 @@ body .col-head-wrap {
 		max-height: 100%;
 	}
 	body .grid-view .grid-rowlabel .row-label-name {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	body .grid-view .grid-rowlabel .row-label-note,
+	body .grid-view .grid-rowlabel .row-label-pips,
+	body .grid-view .grid-rowlabel .row-label-icon {
+		display: none;
+	}
+}
+
 /* The Timeline on a phone: each row's label becomes a narrow tab with its
    name running up the side, like a notebook's, so the plot gets the width.
    The name is capped so a long one doesn't make its row tall; the rest is in
@@ -788,9 +799,6 @@ body .col-head-wrap {
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	body .grid-view .grid-rowlabel .row-label-note,
-	body .grid-view .grid-rowlabel .row-label-pips,
-	body .grid-view .grid-rowlabel .row-label-icon {
 	body .gantt-wrap .gantt-label .row-label-note,
 	body .gantt-wrap .gantt-label .row-label-pips,
 	body .gantt-wrap .gantt-label .row-label-icon {
