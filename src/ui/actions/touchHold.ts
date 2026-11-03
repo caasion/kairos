@@ -33,6 +33,15 @@ export function pressOnBlockChild(target: EventTarget | null): boolean {
 	);
 }
 
+/** Class of a selected block's move grip (touch): a press there drags at once. */
+export const MOVE_GRIP_CLASS = "tl-move-grip";
+
+/** Whether a press landed on a block's move grip, which needs no hold. */
+export function pressOnMoveGrip(target: EventTarget | null): boolean {
+	const el = target as Partial<Element> | null;
+	return typeof el?.closest === "function" && el.closest(`.${MOVE_GRIP_CLASS}`) !== null;
+}
+
 /**
  * Run `begin` now for a mouse press, or after a hold for touch and pen.
  * Returns whether `begin` ran synchronously.
