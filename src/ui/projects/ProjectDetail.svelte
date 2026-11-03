@@ -251,8 +251,11 @@
 
 <style>
 	/* The colour as a small round swatch. A bare colour input grew to the
-	   control's full width on a phone, a bar across the pane. */
-	.pd-swatch {
+	   control's full width on a phone, a bar across the pane; the selector
+	   outranks Obsidian's mobile rule for inputs in a setting's control. */
+	.setting-item-control > input.pd-swatch {
+		appearance: none;
+		min-width: 0;
 		flex: none;
 		width: 28px;
 		height: 28px;

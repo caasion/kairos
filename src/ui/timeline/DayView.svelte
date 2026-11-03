@@ -346,6 +346,20 @@
 	// header it was clipped, which in a phone's sidebar drawer left a sliver
 	// that scrolled. Placed from the navigator, kept on screen.
 	let calendarStyle = $state("");
+	let calendarEl = $state<HTMLDivElement>();
+	// Portaled, the calendar is outside the view, so the view's own click
+	// handling can't close it: a press anywhere outside it and the date does.
+	$effect(() => {
+		if (!showCalendar) return;
+		const doc = dateNavRef?.ownerDocument ?? document;
+		const onPress = (e: PointerEvent) => {
+			const t = e.target as Node | null;
+			if (t && (calendarEl?.contains(t) || dateNavRef?.contains(t))) return;
+			showCalendar = false;
+		};
+		doc.addEventListener("pointerdown", onPress, true);
+		return () => doc.removeEventListener("pointerdown", onPress, true);
+	});
 	function placeCalendar() {
 		const r = dateNavRef?.getBoundingClientRect();
 		if (!r) return;
@@ -1338,7 +1352,7 @@
 			{/if}
 
 			{#if showCalendar}
-				<Popover placement="portal" style={calendarStyle}>
+				<Popover placement="portal" style={calendarStyle} bind:el={calendarEl}>
 					<Datepicker
 						inline
 						bind:value={calendarValue}
