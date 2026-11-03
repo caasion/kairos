@@ -88,10 +88,13 @@
 		// (see taskDrag's `hitTestGridGroup`): `dropGroup` is the one a live drag
 		// would land in (a block line, or "unscheduled"), and `unscheduledSlot`
 		// shows an empty Unscheduled group to drop into while a drag is live.
+		// `dropLine` is the group that draws the drop line under its last task,
+		// where a drop would append (see gridModel's `gridDropLine`).
 		blockGroups: BlockGroup[];
 		chipFor?: (task: ResolvedTask) => string | undefined;
 		date?: ISODate;
 		dropGroup?: number | "unscheduled";
+		dropLine?: number | "unscheduled";
 		unscheduledSlot?: boolean;
 		// Add a new task to a group's block (its "+").
 		onCreateInBlock?: (block: Block) => void;
@@ -137,6 +140,7 @@
 		chipFor,
 		date,
 		dropGroup,
+		dropLine,
 		unscheduledSlot = false,
 		onCreateInBlock,
 		isBlockLinked,
@@ -475,6 +479,9 @@
 			{#each group.tasks as task, j (task.source.path + ":" + task.source.line)}
 				{@render taskItem(task, at + j)}
 			{/each}
+			{#if dropLine === dropKey(group)}
+				<div class="kairos-drop-line grid-cell-drop-line"></div>
+			{/if}
 			{#if isUnscheduledBlock(group.block)}
 				{@render draftTail()}
 			{:else if draftOpen && draftBlock === group.block.source.line && onDraftSubmit && onDraftClose}
@@ -504,6 +511,9 @@
 			data-grid-drop-date={date}
 		>
 			<div class="grid-cell-group-header grid-cell-block-header unscheduled">Unscheduled</div>
+			{#if dropLine === "unscheduled"}
+				<div class="kairos-drop-line grid-cell-drop-line"></div>
+			{/if}
 		</div>
 	{/if}
 
@@ -747,6 +757,10 @@
 	}
 	.grid-cell-block-group.drop-target .grid-cell-block-header {
 		color: var(--text-normal);
+	}
+	/* The drop line under the group's last task, clear of the group's outline. */
+	.grid-cell-drop-line {
+		margin: 1px var(--size-4-1) var(--size-4-1);
 	}
 	/* The empty Unscheduled slot shown during a drag: a dashed outline so it
 	   reads as a place to drop, not a group with tasks. */

@@ -582,3 +582,51 @@ export function blockDropAssociation(
 	}
 	return dropAssociation(target, owner, snap);
 }
+
+/** A Grid block group, as a drop names it: its block's line, or Unscheduled. */
+export type GroupKey = number | "unscheduled";
+
+/** What a Grid task drag is over: a block group, or a cell outside any group. */
+export type GridDropOver =
+	| { kind: "group"; date: ISODate; group: GroupKey; sameRow: boolean }
+	| { kind: "cell"; date: ISODate };
+
+/** The task a Grid drag holds, as far as where it lands is concerned. */
+export interface GridDragFrom {
+	date: ISODate;
+	/** The group it sits in now. */
+	group: GroupKey;
+	/** Ctrl/Cmd held: a copy lands, and the task stays where it is. */
+	duplicate: boolean;
+}
+
+/**
+ * True when releasing on a block group changes nothing: the task's own group,
+ * on its own day, in the row it already shows in, and not a copy.
+ */
+export function isNoOpGroupDrop(
+	from: GridDragFrom,
+	over: { date: ISODate; group: GroupKey; sameRow: boolean },
+): boolean {
+	return (
+		!from.duplicate &&
+		over.sameRow &&
+		over.date === from.date &&
+		over.group === from.group
+	);
+}
+
+/**
+ * The group that draws the drop line for a Grid task drag, the way a timeline
+ * block does (#71), or undefined for none. Grid drops append, so the line
+ * goes under the group's last task.
+ *
+ *   over a block group   that group, unless the drop there changes nothing
+ *   over a cell          its Unscheduled, when the task lands there: from
+ *                        another day, or a copy. A cell on the task's own day
+ *                        only re-files it, and it stays in its block.
+ */
+export function gridDropLine(from: GridDragFrom, over: GridDropOver): GroupKey | undefined {
+	if (over.kind === "group") return isNoOpGroupDrop(from, over) ? undefined : over.group;
+	return over.date !== from.date || from.duplicate ? "unscheduled" : undefined;
+}

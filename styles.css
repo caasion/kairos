@@ -551,6 +551,17 @@ body {
 	color: var(--color-orange, var(--interactive-accent));
 }
 
+/* ── Drop line ──
+   Where a dragged task would land in a list of tasks: between two rows, or
+   under the last. Drawn by a timeline block and a Grid block group, for drags
+   from any view. */
+.kairos-drop-line {
+	height: 0;
+	border-top: 2px solid var(--interactive-accent);
+	margin: -1px 0;
+	pointer-events: none;
+}
+
 /* ── Drop preview on a timeline (Day view, Week columns) ──
    Where a task released over empty time would land: a new block of the default
    length. Shared because the Day view and each Week column draw it, for drags
