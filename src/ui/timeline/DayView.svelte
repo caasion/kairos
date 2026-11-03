@@ -345,6 +345,17 @@
 	let showCalendar = $state(false);
 	let calendarValue = $state<Date>(dateFromISO(todayISO()));
 	let dateNavRef = $state<HTMLDivElement>();
+	// The calendar is portaled over the page, under the date: inside the
+	// header it was clipped, which in a phone's sidebar drawer left a sliver
+	// that scrolled. Placed from the navigator, kept on screen.
+	let calendarStyle = $state("");
+	function placeCalendar() {
+		const r = dateNavRef?.getBoundingClientRect();
+		if (!r) return;
+		const width = 296;
+		const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+		calendarStyle = `top: ${Math.round(r.bottom + 6)}px; left: ${Math.round(left)}px;`;
+	}
 
 	// A human-friendly header label, e.g. "Thu, Jul 31". The ISO date remains the
 	// source of truth; this is display only.
@@ -472,6 +483,7 @@
 	// Ctrl/Cmd+click the date label opens (creating if needed) that day's note.
 	async function openDayNote(event: MouseEvent) {
 		if (!(event.ctrlKey || event.metaKey)) {
+			if (!showCalendar) placeCalendar();
 			showCalendar = !showCalendar;
 			return;
 		}
@@ -1366,7 +1378,7 @@
 						e.stopPropagation();
 						void openDayNote(e);
 					}}
-					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions, app)}
 				>
 					{dateLabel}
 				</button>
@@ -1385,13 +1397,13 @@
 			{/if}
 
 			{#if showCalendar}
-				<div class="calendar-popup">
+				<Popover placement="portal" style={calendarStyle}>
 					<Datepicker
 						inline
 						bind:value={calendarValue}
 						onselect={onCalendarSelect}
 					/>
-				</div>
+				</Popover>
 			{/if}
 		</div>
 		<!-- The day's menu, also on the date's right-click; the same one the
@@ -1400,7 +1412,7 @@
 			label="Day actions"
 			icon="more-horizontal"
 			size="m"
-			onclick={(e) => showDayMenu(e, date, routineActions)}
+			onclick={(e) => showDayMenu(e, date, routineActions, app)}
 		/>
 
 		<span class="day-header-spacer"></span>
@@ -1939,12 +1951,6 @@
 	}
 
 	/* The inline calendar drops below the date label. */
-	.calendar-popup {
-		position: absolute;
-		top: calc(100% + 6px);
-		left: 0;
-		z-index: 100;
-	}
 
 	.day-header-spacer {
 		flex: 1;

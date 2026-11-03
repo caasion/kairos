@@ -4,17 +4,30 @@
 // button on each header, which shows the menu is there. The Day view's tab ⋯
 // menu adds the same items.
 
-import { Menu } from "obsidian";
+import { Menu, TFile } from "obsidian";
+import type { App } from "obsidian";
 import type { ISODate } from "../types";
 import type { RoutineActions } from "../routines/routinesFeed";
-import { todayISO } from "../dayNote";
+import { ensureNoteForDate, todayISO } from "../dayNote";
 
 /** Add the day's items to `menu`. Past days keep their routines as they were. */
 export function addDayMenuItems(
 	menu: Menu,
 	date: ISODate,
 	actions: Pick<RoutineActions, "regenerate">,
+	app?: App,
 ): void {
+	// What Ctrl/Cmd+click on the date does, for touch, where there's no
+	// modifier. Makes the note if the day has none yet.
+	if (app) {
+		menu.addItem((item) =>
+			item
+				.setTitle("Open daily note")
+				.setIcon("file-text")
+				.setSection("open")
+				.onClick(() => void openDailyNote(app, date)),
+		);
+	}
 	const past = date < todayISO();
 	menu.addItem((item) =>
 		item
@@ -34,11 +47,12 @@ export function showDayMenu(
 	event: MouseEvent,
 	date: ISODate,
 	actions: Pick<RoutineActions, "regenerate">,
+	app?: App,
 ): void {
 	event.preventDefault();
 	event.stopPropagation();
 	const menu = new Menu();
-	addDayMenuItems(menu, date, actions);
+	addDayMenuItems(menu, date, actions, app);
 	const button = event.type === "click" ? (event.currentTarget as HTMLElement | null) : null;
 	if (button) {
 		const r = button.getBoundingClientRect();
@@ -46,4 +60,11 @@ export function showDayMenu(
 	} else {
 		menu.showAtMouseEvent(event);
 	}
+}
+
+/** Open the day's note in a new tab, making it if it doesn't exist yet. */
+async function openDailyNote(app: App, date: ISODate): Promise<void> {
+	const path = await ensureNoteForDate(date);
+	const file = app.vault.getAbstractFileByPath(path);
+	if (file instanceof TFile) await app.workspace.getLeaf("tab").openFile(file);
 }

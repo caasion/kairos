@@ -48,14 +48,17 @@
 	import Tag from "../components/Tag.svelte";
 	import AssocGroup from "../components/AssocGroup.svelte";
 	import IconButton from "../components/IconButton.svelte";
+	import { intoViewHeader } from "../actions/viewHeader";
 
 	interface Props {
 		app: App;
 		index: KairosIndex;
 		openBacklogFiltered: (names: string[], label: string) => void;
+		/** The tab's header, which the filters and buttons move into. */
+		viewHeader?: HTMLElement;
 	}
 
-	let { app, index, openBacklogFiltered }: Props = $props();
+	let { app, index, openBacklogFiltered, viewHeader }: Props = $props();
 
 	// ── The feed ──
 	let feed = $state<ProjectsDomains>({
@@ -501,8 +504,9 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="projects-view" onclick={handleClickOutside}>
-	<div class="pv-header">
-		<span class="pv-title">Projects &amp; domains</span>
+	<!-- In the tab's header, like the other views' bars: the tab already names
+	     the page, so there's no title of its own. -->
+	<div class="pv-header" use:intoViewHeader={viewHeader}>
 		<span class="pv-spacer"></span>
 
 		<SegmentedControl
@@ -743,11 +747,6 @@
 		gap: 8px;
 		padding: 10px 14px 8px;
 		flex-shrink: 0;
-	}
-	.pv-title {
-		font-size: 15px;
-		font-weight: 700;
-		color: var(--text-normal);
 	}
 	.pv-spacer {
 		flex: 1;

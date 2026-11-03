@@ -40,7 +40,7 @@
 	{/if}
 {/snippet}
 
-<div class="date-card-wrap">
+<div class="date-card-wrap" class:has-badges={!!badges}>
 	{#if onclick}
 		<button class="date-card is-button" class:today {title} {onclick} oncontextmenu={onmenu}>{@render face()}</button>
 	{:else}
@@ -82,6 +82,13 @@
 		border-bottom: 1px solid var(--background-modifier-border);
 		padding: var(--size-4-2) var(--size-4-2) var(--size-4-3) var(--size-4-3);
 		height: 100%;
+	}
+	/* On touch a narrow card's badges covered its date, so the card keeps a
+	   strip for them under the value. */
+	@media (pointer: coarse) {
+		.date-card-wrap.has-badges .date-card {
+			padding-bottom: calc(var(--size-4-3) + 22px);
+		}
 	}
 	.date-card.is-button {
 		cursor: pointer;

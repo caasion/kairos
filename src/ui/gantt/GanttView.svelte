@@ -842,6 +842,19 @@
 
 		<span class="gc-spacer"></span>
 
+		<!-- On a narrow screen the four tabs don't fit beside the date, so they
+		     become one dropdown (a phone shows its own picker for it). -->
+		<select
+			class="dropdown interval-select"
+			aria-label="Interval"
+			value={interval}
+			onchange={(e) => setInterval(e.currentTarget.value as Interval)}
+			onclick={(e) => e.stopPropagation()}
+		>
+			{#each INTERVALS as iv}
+				<option value={iv}>{INTERVAL_LABEL[iv]}</option>
+			{/each}
+		</select>
 		<div class="interval-tabs">
 			{#each INTERVALS as iv}
 				<button
@@ -1192,6 +1205,17 @@
 		top: calc(100% + 6px);
 		left: 0;
 		z-index: 100;
+	}
+	.interval-select {
+		display: none;
+	}
+	@media (max-width: 600px) {
+		.interval-tabs {
+			display: none;
+		}
+		.interval-select {
+			display: block;
+		}
 	}
 	.interval-tabs {
 		display: flex;

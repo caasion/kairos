@@ -1559,7 +1559,7 @@
 						if (e.ctrlKey || e.metaKey) void openDayNote(date);
 						else showDay(date);
 					}}
-					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions, app)}
 				>
 					<span class="dow-label">{dowLabel(date)}</span>
 					<span class="date-number">{dayNumber(date)}</span>
@@ -1575,7 +1575,7 @@
 					<IconButton
 						label="Day actions"
 						icon="more-horizontal"
-						onclick={(e) => showDayMenu(e, date, routineActions)}
+						onclick={(e) => showDayMenu(e, date, routineActions, app)}
 					/>
 				</div>
 				<!-- The day's lists as badges, bottom-right of its date cell:
