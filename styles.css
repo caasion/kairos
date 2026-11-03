@@ -594,6 +594,13 @@ body {
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
+/* A moved block's new time, under its title. */
+.kairos-drop-preview-time {
+	display: block;
+	font-size: var(--kairos-text-meta);
+	color: var(--text-muted);
+	white-space: nowrap;
+}
 
 /* ── Header bar in the tab header (src/ui/actions/viewHeader.ts) ──
    The Week, Grid and Timeline views move their header bar (date navigator,
