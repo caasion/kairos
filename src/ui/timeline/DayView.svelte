@@ -78,7 +78,6 @@
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
 	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
 	import { pressOnBlockChild, startAfterHold } from "../actions/touchHold";
-	import IconButton from "../components/IconButton.svelte";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		type Gesture,

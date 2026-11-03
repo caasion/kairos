@@ -215,4 +215,5 @@ Kairos is desktop-first. On a phone or tablet:
 - To copy a task instead of moving it, tap **⋯** → **Duplicate**, then drag the copy.
 - To open a task's or block's project or domain note, tap **⋯** → **Open note**.
 - Tap "N more" to grow a block, and tap a routines pill to open it.
+- In the Timeline, tap a bar to select it, then drag its edges or tap **⋯** above it for its menu. To start a stretch, tap **⋯** on the row's label → **Add a stretch from today**.
 - The Grid's row menus are still right-click only.
