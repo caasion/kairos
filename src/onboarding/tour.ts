@@ -103,6 +103,9 @@ export class Tour {
 				void this.save({ ...this.state, status: "dismissed" });
 			}
 			if (this.state.status === "active") this.run();
+			// A new install opens the Day view once, so the welcome has
+			// something to start from (on a phone nothing opens it otherwise).
+			else if (this.state.status === "unseen") void this.plugin.activateView();
 			else this.maybeWelcome();
 		});
 		this.plugin.registerEvent(
@@ -175,6 +178,9 @@ export class Tour {
 		const step = resumeStep(this.state.step, !!this.state.block);
 		if (step !== this.state.step) void this.save({ ...this.state, step });
 
+		// On a phone the Day view is a drawer: bring it up for the steps in it.
+		if (Platform.isMobile && !this.dayVisible()) void this.plugin.activateView();
+
 		this.popover = new TourPopover(activeDocument);
 		this.unsubDate = this.plugin.links.dayDate$.subscribe((date) => {
 			this.shownDate = date;
@@ -182,9 +188,17 @@ export class Tour {
 			this.render();
 		});
 		this.beginStep();
+		// The next frame is booked first, so one frame that throws (a view
+		// mid-teardown, say) doesn't stop the card following its target.
+		let reported = false;
 		const tick = () => {
-			this.position();
 			this.frame = window.requestAnimationFrame(tick);
+			try {
+				this.position();
+			} catch (err) {
+				if (!reported) console.error("Kairos tour:", err);
+				reported = true;
+			}
 		};
 		this.frame = window.requestAnimationFrame(tick);
 	}
