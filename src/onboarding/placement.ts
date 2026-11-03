@@ -90,6 +90,9 @@ export function dockPopover(
 	const width = Math.max(0, area.width - inset * 2);
 	const top = area.top + inset;
 	const covers = anchor !== null && anchor.top < top + height + inset && anchor.top + anchor.height > top;
-	if (!covers) return { left, top, width, side: "top" };
+	// An anchor as tall as the view (the timeline, to make a block on) is
+	// covered wherever the strip goes; under the header it hides the least.
+	const huge = anchor !== null && anchor.height > area.height / 2;
+	if (!covers || huge) return { left, top, width, side: "top" };
 	return { left, top: Math.max(top, area.top + area.height - height - inset), width, side: "bottom" };
 }
