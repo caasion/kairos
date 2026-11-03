@@ -8,7 +8,9 @@ import {
 	cellTasks,
 	dayStatus,
 	dropAssociation,
+	gridDropLine,
 	intensityChange,
+	isNoOpGroupDrop,
 	intensityOn,
 	intentionChange,
 	ownerRowKey,
@@ -556,6 +558,52 @@ describe("dropAssociation", () => {
 
 	it("is undefined with no target row", () => {
 		expect(dropAssociation(undefined, proj("Groceries"), s)).toBeUndefined();
+	});
+});
+
+describe("gridDropLine: where a Grid drag draws its drop line (#71)", () => {
+	const TUE = "2026-11-03";
+	const WED = "2026-11-04";
+	// A task in the block on line 5 of Tuesday's note.
+	const from = { date: TUE, group: 5, duplicate: false };
+
+	it("lines a block group on another day", () => {
+		expect(gridDropLine(from, { kind: "group", date: WED, group: 9, sameRow: true })).toBe(9);
+	});
+
+	it("lines another block, or Unscheduled, on the task's own day", () => {
+		expect(gridDropLine(from, { kind: "group", date: TUE, group: 12, sameRow: true })).toBe(12);
+		expect(
+			gridDropLine(from, { kind: "group", date: TUE, group: "unscheduled", sameRow: true }),
+		).toBe("unscheduled");
+	});
+
+	it("draws nothing on the task's own group, where a drop changes nothing", () => {
+		expect(gridDropLine(from, { kind: "group", date: TUE, group: 5, sameRow: true })).toBeUndefined();
+	});
+
+	it("lines its own group when the drop re-files it to another row, or copies it", () => {
+		expect(gridDropLine(from, { kind: "group", date: TUE, group: 5, sameRow: false })).toBe(5);
+		expect(
+			gridDropLine({ ...from, duplicate: true }, { kind: "group", date: TUE, group: 5, sameRow: true }),
+		).toBe(5);
+	});
+
+	it("lines the Unscheduled of a cell on another day, where a cell drop lands", () => {
+		expect(gridDropLine(from, { kind: "cell", date: WED })).toBe("unscheduled");
+	});
+
+	it("lines a cell on its own day only for a copy: a move just re-files the task in its block", () => {
+		expect(gridDropLine(from, { kind: "cell", date: TUE })).toBeUndefined();
+		expect(gridDropLine({ ...from, duplicate: true }, { kind: "cell", date: TUE })).toBe("unscheduled");
+	});
+
+	it("isNoOpGroupDrop matches the group a Grid drop skips writing", () => {
+		const own = { date: TUE, group: 5, sameRow: true };
+		expect(isNoOpGroupDrop(from, own)).toBe(true);
+		expect(isNoOpGroupDrop({ ...from, group: "unscheduled" }, { ...own, group: "unscheduled" })).toBe(true);
+		expect(isNoOpGroupDrop(from, { ...own, date: WED })).toBe(false);
+		expect(isNoOpGroupDrop(from, { ...own, group: "unscheduled" })).toBe(false);
 	});
 });
 

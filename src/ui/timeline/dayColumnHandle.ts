@@ -22,6 +22,7 @@ export interface DayColumnHandle {
 	cancelPointer(): void;
 	handlePointerMove(event: PointerEvent): boolean;
 	handlePointerUp(): { block: Block; time: TimeRange } | null;
+	movePreview(): TimeRange | null;
 	commitLocalMove(block: Block, time: TimeRange): void;
 	removeBlockLocally(block: Block): void;
 	currentBlocks(): Block[];

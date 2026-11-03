@@ -20,7 +20,7 @@
 // block is a target, not just its task strip — via the `data-block-line`
 // fallback. Append is signalled with a large index the caller's insert clamps.
 
-import type { Block, ResolvedTask, Task } from "../../types";
+import type { Block, ISODate, ResolvedTask, Task, TimeRange } from "../../types";
 import type { TimelineDrop } from "../../taskDrop";
 import {
   dropRange,
@@ -65,6 +65,29 @@ export interface BlockDragState {
   label: string;
   // Ctrl/Cmd held → drop a copy instead of moving (see TaskDragState).
   duplicate: boolean;
+}
+
+/** A block moving to another Week column, as the column it would land in draws it. */
+export interface IncomingBlock {
+  date: ISODate;
+  label: string;
+  time: TimeRange;
+}
+
+/**
+ * Where a block moved in the Week view would land on another day (#71): that
+ * day, the block's title, and the time it keeps. Null while the pointer is over
+ * the block's own day or no column, or before the move has a time, so the
+ * source column then draws the block itself as it always has.
+ */
+export function incomingBlock(
+  fromDate: ISODate,
+  overDate: ISODate | null,
+  block: Block,
+  time: TimeRange | null,
+): IncomingBlock | null {
+  if (!overDate || overDate === fromDate || !time) return null;
+  return { date: overDate, label: block.title, time };
 }
 
 /** A resolved drop position: which block, and the insertion index within it. */
