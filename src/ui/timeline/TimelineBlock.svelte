@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { icon as drawIcon } from "../actions/icon";
   import type {
     Association,
     Block,
@@ -956,6 +957,19 @@
       start("resize-bottom", e);
     }}
   ></div>
+  <!-- Touch only, on a selected block: a grip that drags the whole block at
+       once, without the hold a press on the block needs. -->
+  {#if selected}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="tl-move-grip"
+      aria-label="Drag to move"
+      use:drawIcon={"move"}
+      onpointerdown={(e) => {
+        e.stopPropagation();
+        start("move", e);
+      }}
+    ></div>
   {/if}
 </div>
 
@@ -1047,6 +1061,11 @@
     padding: 2px 6px;
   }
 
+  /* The move grip is for touch; a mouse drags the block itself. */
+  .tl-move-grip {
+    display: none;
+  }
+
   /* ── Resize edges ── */
   .tl-resize {
     position: absolute;
@@ -1107,6 +1126,28 @@
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
+    }
+    /* The move grip: a round handle on the block's right edge, half
+       outside it, where the band leaves room. */
+    .tl-move-grip {
+      position: absolute;
+      top: 50%;
+      right: -14px;
+      transform: translateY(-50%);
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--interactive-accent);
+      color: var(--text-on-accent);
+      box-shadow:
+        0 0 0 2px var(--background-primary),
+        var(--shadow-s);
+      touch-action: none;
+      --icon-size: 16px;
     }
     /* A block whose hold matured lifts, so the finger knows it can move. */
     .tl-block.dragging .tl-content {
