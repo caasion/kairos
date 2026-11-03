@@ -908,7 +908,7 @@
 					e.stopPropagation();
 					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
 				}}
-				onmenu={(e: MouseEvent) => showDayMenu(e, date, routineActions)}
+				onmenu={(e: MouseEvent) => showDayMenu(e, date, routineActions, app)}
 			>
 				{#snippet badges()}
 				<!-- The day's lists as badges on its header — Unscheduled,

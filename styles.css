@@ -711,3 +711,32 @@ body {
 	/* Extra inset for a project under its domain. */
 	--kairos-row-label-indent: 14px;
 }
+
+/* The Timeline on a phone: each row's label becomes a narrow tab with its
+   name running up the side, like a notebook's, so the plot gets the width.
+   The name is capped so a long one doesn't make its row tall; the rest is in
+   the label's card (tap it). */
+@media (pointer: coarse) and (max-width: 600px) {
+	body .gantt-wrap {
+		--kairos-row-label-width: 40px;
+	}
+	body .gantt-wrap .gantt-label {
+		padding: 6px 0;
+		justify-content: center;
+	}
+	body .gantt-wrap .gantt-label .row-label-text {
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
+		max-height: 88px;
+	}
+	body .gantt-wrap .gantt-label .row-label-name {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	body .gantt-wrap .gantt-label .row-label-note,
+	body .gantt-wrap .gantt-label .row-label-pips,
+	body .gantt-wrap .gantt-label .row-label-icon {
+		display: none;
+	}
+}
