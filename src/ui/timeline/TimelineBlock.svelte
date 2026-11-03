@@ -959,7 +959,7 @@
   ></div>
   <!-- Touch only, on a selected block: a grip that drags the whole block at
        once, without the hold a press on the block needs. -->
-  {#if selected}
+  {#if selected && !readonly}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="tl-move-grip"
@@ -970,6 +970,7 @@
         start("move", e);
       }}
     ></div>
+  {/if}
   {/if}
 </div>
 
