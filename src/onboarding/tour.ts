@@ -265,7 +265,7 @@ export class Tour {
 		// A block was just made: from now on watch its day, not the shown one.
 		if (this.watchTarget() !== this.watchedDate) return this.watchDay();
 		const ctx: StepContext = {
-			dayOpen: this.plugin.app.workspace.getLeavesOfType(KAIROS_VIEW_TYPE).length > 0,
+			dayOpen: this.dayVisible(),
 			tracked: this.state.block,
 			current: this.current,
 			atStepStart: this.atStepStart,
@@ -333,6 +333,14 @@ export class Tour {
 		const body = Platform.isMobile && step.bodyMobile ? step.bodyMobile : step.body;
 
 		const actions: PopoverAction[] = [];
+		// On a phone the Day view is a drawer that's easily swiped shut; the
+		// steps that happen in it bring it back.
+		if (step.id !== "open-day" && step.anchor !== "none" && Platform.isMobile && !this.dayVisible()) {
+			actions.push({
+				label: "Open the Day view",
+				onClick: () => void this.plugin.activateView(),
+			});
+		}
 		if (step.id === "open-day") {
 			actions.push({
 				label: "Open it for me",
@@ -381,7 +389,52 @@ export class Tour {
 	}
 
 	private position() {
-		this.popover?.position(this.anchorRect(this.step.anchor));
+		// Closing or opening the Day view (a phone's drawer) changes what the
+		// card offers, so it redraws.
+		const visible = this.dayVisible();
+		if (visible !== this.lastDayVisible) {
+			this.lastDayVisible = visible;
+			this.render();
+			this.evaluate();
+		}
+		const anchor = this.anchorRect(this.step.anchor);
+		if (!Platform.isMobile) return this.popover?.position(anchor);
+		this.popover?.position(anchor, this.dockArea(), this.typing());
+	}
+
+	/** Whether the Day view shows: a tab that's in front, or a sidebar (a phone's drawer) that's open. */
+	private dayVisible(): boolean {
+		const { workspace } = this.plugin.app;
+		return workspace.getLeavesOfType(KAIROS_VIEW_TYPE).some((leaf) => {
+			const root = leaf.getRoot();
+			if (root === workspace.rightSplit && workspace.rightSplit.collapsed) return false;
+			if (root === workspace.leftSplit && workspace.leftSplit.collapsed) return false;
+			const r = leaf.view.containerEl.getBoundingClientRect();
+			return isVisible(r) && r.right > 0 && r.left < activeWindow.innerWidth;
+		});
+	}
+	private lastDayVisible: boolean | null = null;
+
+	/**
+	 * On a phone, where the docked card goes: the Day view's content below its
+	 * header when it shows, else the whole window, cut to what the keyboard
+	 * leaves visible.
+	 */
+	private dockArea(): Rect {
+		const win = activeWindow;
+		const vv = win.visualViewport;
+		const screen: Rect = vv
+			? { left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height }
+			: { left: 0, top: 0, width: win.innerWidth, height: win.innerHeight };
+		const leaf = this.dayVisible() ? this.plugin.app.workspace.getLeavesOfType(KAIROS_VIEW_TYPE)[0] : undefined;
+		const content = leaf?.view.containerEl.querySelector(".view-content")?.getBoundingClientRect();
+		return (content && isVisible(content) && intersect(content, screen)) || screen;
+	}
+
+	/** Whether a text field has focus: the person is typing a name. */
+	private typing(): boolean {
+		const el = activeDocument.activeElement;
+		return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable);
 	}
 
 	private anchorRect(kind: AnchorKind): Rect | null {

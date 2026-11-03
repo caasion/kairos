@@ -678,6 +678,31 @@ body {
 	gap: var(--size-4-2);
 	margin-top: var(--size-4-3);
 }
+/* A phone (tour.ts, dockPopover): a strip across the top of the view, under
+   its header, or across the bottom when what it points at is up there. While
+   the person types it shrinks to its head line: the progress, the step's name
+   and the close button. */
+.kairos-tour-card.is-docked {
+	box-shadow: var(--shadow-s);
+}
+.kairos-tour-head-title {
+	display: none;
+	flex: 1;
+	margin-inline-start: var(--size-4-2);
+	font-weight: var(--font-semibold);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.kairos-tour-card.is-compact {
+	padding-block: var(--size-4-1);
+}
+.kairos-tour-card.is-compact .kairos-tour-head-title {
+	display: block;
+}
+.kairos-tour-card.is-compact :is(.kairos-tour-title, .kairos-tour-body, .kairos-tour-actions) {
+	display: none;
+}
 .kairos-tour-welcome-note {
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);

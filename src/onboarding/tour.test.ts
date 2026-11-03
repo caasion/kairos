@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { intersect, placePopover } from "./placement";
+import { dockPopover, intersect, placePopover } from "./placement";
 import {
 	findExact,
 	findNewBlock,
@@ -182,5 +182,23 @@ describe("intersect", () => {
 			height: 5,
 		});
 		expect(intersect({ left: 0, top: 0, width: 1, height: 1 }, { left: 5, top: 5, width: 1, height: 1 })).toBeNull();
+	});
+});
+
+describe("dockPopover", () => {
+	const area = { left: 0, top: 100, width: 390, height: 600 };
+
+	it("spans the top of the view, inset", () => {
+		expect(dockPopover(null, 120, area)).toEqual({ left: 6, top: 106, width: 378, side: "top" });
+	});
+
+	it("moves to the bottom when the anchor is under the top strip", () => {
+		const placed = dockPopover({ left: 50, top: 150, width: 100, height: 30 }, 120, area);
+		expect(placed.side).toBe("bottom");
+		expect(placed.top).toBe(100 + 600 - 120 - 6);
+	});
+
+	it("stays at the top when the anchor is below it", () => {
+		expect(dockPopover({ left: 50, top: 400, width: 100, height: 30 }, 120, area).side).toBe("top");
 	});
 });
