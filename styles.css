@@ -150,6 +150,13 @@ body .kairos-touch-selected > .kairos-action-bar {
 	bottom: calc(100% + 4px);
 	z-index: var(--layer-popover);
 }
+/* A selected timeline block has resize handles just outside its edges
+   (TimelineBlock.svelte): its bar rises above the top one. */
+@media (pointer: coarse) {
+	body .tl-block.selected.kairos-touch-selected > .kairos-action-bar {
+		bottom: calc(100% + 28px);
+	}
+}
 @media (pointer: coarse) {
 	body .kairos-action-bar > button {
 		min-width: 32px;
