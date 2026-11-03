@@ -23,15 +23,30 @@
 	let text = $state("");
 	let inputEl = $state<HTMLInputElement>();
 
+	// What was last added, and when. A phone keyboard can hand the same text
+	// over twice: "Go" arrives as Enter while the word is still being composed,
+	// the row adds it and empties, then the keyboard commits the word back into
+	// the field and closing it blurs the row, which added it again. The same
+	// text again within a moment is that echo, not a second task.
+	let last: { text: string; at: number } | null = null;
+	const ECHO_MS = 1000;
+
 	function submit(): boolean {
 		const next = text.trim();
 		text = "";
+		if (inputEl) inputEl.value = "";
 		if (next === "") return false;
+		const now = Date.now();
+		if (last && last.text === next && now - last.at < ECHO_MS) return true;
+		last = { text: next, at: now };
 		onSubmit(next);
 		return true;
 	}
 
 	function onKeydown(e: KeyboardEvent) {
+		// Enter that ends a composition (an accent, a phone keyboard's word)
+		// belongs to the keyboard; the next Enter adds the task.
+		if (e.isComposing) return;
 		if (e.key === "Enter") {
 			e.preventDefault();
 			if (!submit()) onClose();
