@@ -14,6 +14,7 @@
 
 	import { autogrow, singleLine } from "../actions/autogrow";
 	import { longpress } from "../actions/longpress";
+	import { HOLD_TO_DRAG_MS } from "../actions/touchHold";
 	import { movedPastSlop, peek, peekIfTruncated } from "../actions/peek";
 
 	interface Props {
@@ -182,7 +183,7 @@
 				beginEdit();
 			}
 		}}
-		use:longpress={400}
+		use:longpress={HOLD_TO_DRAG_MS}
 		use:hold
 		use:peek={{ text, touch: false }}
 	>

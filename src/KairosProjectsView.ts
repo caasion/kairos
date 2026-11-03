@@ -1,3 +1,4 @@
+import { findViewHeader } from "./ui/actions/viewHeader";
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import type { Component } from "svelte";
@@ -45,6 +46,7 @@ export class KairosProjectsView extends ItemView {
 				index: this.plugin.indexAdapter.index,
 				openBacklogFiltered: (names: string[], label: string) =>
 					void this.plugin.openBacklogFiltered(names, label),
+				viewHeader: findViewHeader(this.containerEl),
 			},
 		});
 	}

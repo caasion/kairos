@@ -67,3 +67,33 @@ export function stepAnchor(
 ): ISODate {
 	return shiftDays(anchor, width * steps);
 }
+
+// ── Fitting the window to the view (spec decision 139) ──
+// Neither the Week view nor the Grid had a minimum column width, so on a phone
+// seven days squeezed to about 44px each. With "Fit days to the width" on, the
+// window is however many days fit at a minimum width, up to seven.
+
+/**
+ * The narrowest a Week view day column gets: room for a block's title on two
+ * lines and its date card's badges. A portrait phone shows two days.
+ */
+export const WEEK_MIN_COLUMN_PX = 140;
+/** The narrowest a Grid day column gets: room for a cell's tasks to read. */
+export const GRID_MIN_COLUMN_PX = 140;
+/** The most days a fitted window shows, as the default span does. */
+export const MAX_FIT_DAYS = 7;
+
+/**
+ * The window that fits `width` px of day columns at `minColumn` px each: its
+ * size (1–7 days), and how many of those come before today (one once three or
+ * more fit, as the default window has; none when only one or two do, so today
+ * is first). Null while the width isn't measured yet.
+ */
+export function fitWindow(
+	width: number,
+	minColumn: number,
+): { before: number; size: number } | null {
+	if (!(width > 0) || !(minColumn > 0)) return null;
+	const size = Math.max(1, Math.min(MAX_FIT_DAYS, Math.floor(width / minColumn)));
+	return { before: size >= 3 ? 1 : 0, size };
+}

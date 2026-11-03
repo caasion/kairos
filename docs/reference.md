@@ -201,6 +201,28 @@ status:
 | Double-click a bar | Edit its intention |
 | Right-click a project's row label | **Show on domain's row** / **Give its own row** |
 
+## Touch
+
+Tested on Android; iOS and iPadOS haven't been tested yet. The guide's [Use Kairos on mobile](guide.md#use-kairos-on-mobile) explains each one.
+
+| Gesture | What it does |
+|---|---|
+| Tap a task or block | Select it and show its actions above it |
+| Tap a selected task or block | Edit its text |
+| Tap **⋯** in a selected row's actions | Its menu (what right-click opens on desktop) |
+| Press and hold empty time, then drag | Make a block (Day and Week views) |
+| Press and hold a block's title, then drag | Move the block |
+| Drag the round handle on a selected block | Move the block, without a hold |
+| Drag the handle above or below a selected block | Resize it |
+| Press and hold a task, then drag | Move the task |
+| **⋯** → **Duplicate** | Copy a task (Ctrl/Cmd while dropping, on desktop) |
+| **⋯** → **Open note** | Open the project's or domain's note (Ctrl/Cmd+click, on desktop) |
+| **⋯** beside a date → **Open daily note** | Open that day's note (Ctrl/Cmd+click the date, on desktop) |
+| Swipe sideways on the Week view or the Grid | The next or previous day |
+| Gear → **Select several blocks** | Tap blocks to select several (Shift or Ctrl/Cmd+click, on desktop) |
+| Tap a Timeline bar | Select it; drag its edges, or **⋯** above it for its menu |
+| **⋯** on a Timeline row label → **Add a stretch from today** | Start a stretch (a click on empty time, on desktop) |
+
 ## Commands
 
 - Open day view
@@ -212,6 +234,7 @@ status:
 - Open routines view
 - Apply routines to this day
 - Regenerate routines for this day
+- Start tour: a short guided tour that plans a piece of your day
 
 ## Settings
 
@@ -221,9 +244,10 @@ Find these in **Settings → Kairos**. Some are also in a view's gear menu.
 |---|---|---|
 | Timeline start hour | 6 | The first hour shown in the Day and Week views. |
 | Timeline end hour | 24 | The last hour shown. |
-| Timeline hour height | 60 | Pixels per hour. |
-| Days before today | 1 | How many past days the Week view and Grid show. |
-| Days after today | 5 | How many future days the Week view and Grid show. |
+| Timeline hour height | 60 | Pixels per hour. On a touch screen an hour is at least 120. |
+| Fit days to the width | On | The Week view and Grid show as many days as fit, up to seven, with one before today once three fit. Turned off when you set the days below. |
+| Days before today | 1 | How many past days the Week view and Grid show, when not fitting to the width. |
+| Days after today | 5 | How many future days the Week view and Grid show, when not fitting to the width. |
 | Show unscheduled tasks in the grid | On | Show each day's tasks without a time in the Grid's cells. Off, they're listed behind the Unscheduled badge on the day's header. |
 | Line under every row | Off | Draw a line under every Grid row, including between a domain and its projects. |
 | Shade every other row | Off | Tint every other Grid row, so a row is easier to follow across the days. |

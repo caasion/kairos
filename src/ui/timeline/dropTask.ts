@@ -49,3 +49,26 @@ export async function dropTaskOnTimeline(
 	commitTaskDrop(index, outcome);
 	return true;
 }
+
+/**
+ * Put a copy of `task` right after it in its block, keeping its own
+ * association: the task menu's **Duplicate**, touch's stand-in for a
+ * Ctrl/Cmd-drop (spec decision 129). The copy is then dragged where it goes.
+ */
+export function duplicateTask(
+	index: KairosIndex,
+	date: ISODate,
+	owner: Block,
+	task: Task,
+): Promise<boolean> {
+	const at = owner.tasks.findIndex((t) => t.source.line === task.source.line);
+	return dropTaskOnTimeline(
+		index,
+		date,
+		owner,
+		task,
+		{ kind: "block", date, blockLine: owner.source.line, index: at + 1 },
+		{ duplicate: true },
+		task.assoc ?? null,
+	);
+}

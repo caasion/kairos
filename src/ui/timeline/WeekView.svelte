@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { App } from "obsidian";
+	import { coarsePointer } from "../actions/pickerPlace";
 	import { onMount } from "svelte";
 	import type { Readable } from "svelte/store";
 	import type { KairosSettings } from "../../settings";
@@ -62,13 +63,21 @@
 	import StepArrows from "../components/StepArrows.svelte";
 	import { geometryFromSettings } from "./layout";
 	import {
-		anchorFor,
+		fitWindow,
+		WEEK_MIN_COLUMN_PX,
 		clampSpan,
 		stepAnchor,
 		windowDates,
 		windowWidth,
 	} from "./weekWindow";
 	import { intoViewHeader } from "../actions/viewHeader";
+	import { swipeDays } from "../actions/swipeDays";
+	import IconButton from "../components/IconButton.svelte";
+	import { holdingDrag } from "../actions/touchHold";
+	import { shiftDays } from "../../gantt/ganttUtils";
+
+	/** The hour gutter's width (`.week-gutter-spacer`), left of the days. */
+	const GUTTER_PX = 46;
 
 	interface Props {
 		app: App;
@@ -119,7 +128,8 @@
 	let resolve = $state<Resolver>(() => ({ displayName: "", resolved: false }));
 
 	// Shared vertical geometry — one time axis for the whole week.
-	const geo = $derived(geometryFromSettings(settings));
+	// On a phone hours are drawn taller, so short blocks can be tapped.
+	const geo = $derived(geometryFromSettings(settings, { coarse: coarsePointer(window) }));
 
 	// ── The week window ──
 	// Default window is [today − before, today + after] from settings. It's still
@@ -127,9 +137,15 @@
 	// snaps back to the settings-defined window around today. All of the day
 	// arithmetic lives in weekWindow.ts so it can be unit-tested at every span.
 
-	const before = $derived(clampSpan(settings.weekDaysBefore));
-	const after = $derived(clampSpan(settings.weekDaysAfter));
-	const windowSize = $derived(windowWidth(before, after)); // inclusive of today
+	// With "Fit days to the width" on, the window is as many days as fit the
+	// columns' width (weekWindow.ts, spec decision 139); off, the settings' span.
+	let scrollWidth = $state(0);
+	const fit = $derived(
+		settings.fitDaysToWidth ? fitWindow(scrollWidth - GUTTER_PX, WEEK_MIN_COLUMN_PX) : null,
+	);
+	const before = $derived(fit ? fit.before : clampSpan(settings.weekDaysBefore));
+	const after = $derived(fit ? fit.size - 1 - fit.before : clampSpan(settings.weekDaysAfter));
+	const windowSize = $derived(fit ? fit.size : windowWidth(before, after)); // inclusive of today
 
 	// The window's first day, pinned only once the user navigates. While it's
 	// null we're on the settings-defined default, which is *derived* from today
@@ -137,7 +153,7 @@
 	// window computed from a span it no longer has.
 	let pinnedAnchor = $state<ISODate | null>(null);
 	const atDefault = $derived(pinnedAnchor === null);
-	const anchor = $derived(pinnedAnchor ?? anchorFor(todayISO(), before));
+	const anchor = $derived(pinnedAnchor ?? shiftDays(todayISO(), -before));
 
 	const dates = $derived(windowDates(anchor, windowSize));
 
@@ -181,7 +197,27 @@
 	const windowStepLabel = $derived(`${windowSize} days`);
 	function stepWindow(dir: 1 | -1, big: boolean) {
 		const next = stepAnchor(anchor, big ? windowSize : 1, dir);
-		pinnedAnchor = next === anchorFor(todayISO(), before) ? null : next;
+		pinnedAnchor = next === shiftDays(todayISO(), -before) ? null : next;
+		closeAssocPicker();
+		closeBlockPicker();
+	}
+
+	// Touch has no Shift or Ctrl/Cmd to select several blocks: the header's
+	// Select toggle stands in (spec decision 138). Off clears every column.
+	let selectMode = $state(false);
+	function toggleSelectMode() {
+		selectMode = !selectMode;
+		if (!selectMode) for (const date of dates) columns[date]?.clearSelection();
+	}
+	function deleteSelectedEverywhere() {
+		for (const date of dates) {
+			if (columns[date]?.hasSelection()) columns[date].deleteSelection();
+		}
+	}
+
+	// A sideways swipe on the days (actions/swipeDays.ts): one day at a time.
+	function swipeBy(days: number) {
+		pinnedAnchor = shiftDays(anchor, days);
 		closeAssocPicker();
 		closeBlockPicker();
 	}
@@ -207,14 +243,14 @@
 		lastFocusNonce = req.nonce;
 		if (initial || !settings.followGrid || dragFromDate !== null) return;
 		if (dates.includes(req.date)) return;
-		pinnedAnchor = anchorFor(req.date, before);
+		pinnedAnchor = shiftDays(req.date, -before);
 		closeAssocPicker();
 		closeBlockPicker();
 	}
 
 	function jumpTo(date: ISODate) {
 		// Place the jumped-to date where today sits in the default window.
-		pinnedAnchor = anchorFor(date, before);
+		pinnedAnchor = shiftDays(date, -before);
 		showCalendar = false;
 		closeAssocPicker();
 		closeBlockPicker();
@@ -285,8 +321,10 @@
 	function setDaysBefore(value: number): number {
 		if (Number.isNaN(value)) return before;
 		const v = clampSpan(value);
+		// Choosing a span means not fitting to the width.
 		updateSettings((s) => {
 			s.weekDaysBefore = v;
+			s.fitDaysToWidth = false;
 		});
 		return v;
 	}
@@ -295,6 +333,7 @@
 		const v = clampSpan(value);
 		updateSettings((s) => {
 			s.weekDaysAfter = v;
+			s.fitDaysToWidth = false;
 		});
 		return v;
 	}
@@ -867,6 +906,19 @@
 					gap="m"
 					style="top: calc(100% + 6px); right: 0; min-width: 170px;"
 				>
+					<!-- Touch only (pointer: coarse): select several blocks by tapping
+					     them, where Shift and Ctrl/Cmd don't exist (spec decision 138). -->
+					<label class="controls-field controls-touch-only">
+						<span class="controls-label">Select several blocks</span>
+						<input
+							type="checkbox"
+							checked={selectMode}
+							onchange={() => {
+								toggleSelectMode();
+								showControls = false;
+							}}
+						/>
+					</label>
 					<label class="controls-field">
 						<span class="controls-label">Start hour</span>
 						<input type="number" class="controls-input" min="0" max="23" value={geo.startHour} onchange={(e) => commitNumber(e.currentTarget, setStartHour)} />
@@ -892,6 +944,15 @@
 		</div>
 	</div>
 
+	<!-- Select mode's bar, under the header while it's on (touch only). -->
+	{#if selectMode}
+		<div class="select-bar">
+			<span class="select-bar-label">Tap blocks to select them</span>
+			<IconButton label="Delete selected blocks" icon="trash-2" onclick={deleteSelectedEverywhere} />
+			<button class="select-bar-done" onclick={toggleSelectMode}>Done</button>
+		</div>
+	{/if}
+
 	<!-- Column titles row, aligned with the columns below (offset by the gutter). -->
 	<div class="week-colheads">
 		<HourGutter {geo} corner />
@@ -908,7 +969,7 @@
 					e.stopPropagation();
 					if (e.ctrlKey || e.metaKey) columns[date]?.openNote();
 				}}
-				onmenu={(e: MouseEvent) => showDayMenu(e, date, routineActions)}
+				onmenu={(e: MouseEvent) => showDayMenu(e, date, routineActions, app)}
 			>
 				{#snippet badges()}
 				<!-- The day's lists as badges on its header — Unscheduled,
@@ -1012,7 +1073,12 @@
 		</div>
 	{/if}
 
-	<div class="week-scroll" data-drag-scroll>
+	<div
+		class="week-scroll"
+		data-drag-scroll
+		bind:clientWidth={scrollWidth}
+		use:swipeDays={{ onSwipe: swipeBy, busy: () => dragBlock !== null || dragPreview !== null || holdingDrag() }}
+	>
 		<div class="week-body">
 			<!-- Shared hour gutter + grid lines span the full column strip. -->
 			<HourGutter {geo} />
@@ -1033,6 +1099,7 @@
 					>
 						<DayColumn
 							bind:this={columns[date]}
+							{selectMode}
 							{app}
 							{index}
 							{date}
@@ -1227,6 +1294,48 @@
 		display: flex;
 		flex-shrink: 0;
 		padding: 0 calc(10px + var(--wv-scrollbar, 0px)) 0 10px;
+	}
+
+	/* Touch only: the select-mode switch in the gear popover. On a phone the
+	   hour range is in that popover too, so the header drops it for room. */
+	.controls-touch-only {
+		display: none;
+	}
+	@media (pointer: coarse) {
+		.controls-touch-only {
+			display: flex;
+		}
+		.day-range-label {
+			display: none;
+		}
+		.week-header {
+			gap: 2px;
+			padding-inline: 4px;
+		}
+		/* The date navigator gives way (and scrolls sideways if it must), so
+		   the gear stays in view when "Today" joins the header. */
+		.week-header .day-nav {
+			flex: 0 1 auto;
+			min-width: 0;
+			overflow-x: auto;
+			scrollbar-width: none;
+		}
+		.week-header .controls-wrap {
+			flex-shrink: 0;
+		}
+	}
+	.select-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 10px;
+		border-bottom: 1px solid var(--background-modifier-border);
+		background: var(--background-secondary);
+		flex-shrink: 0;
+	}
+	.select-bar-label {
+		flex: 1;
+		color: var(--text-muted);
 	}
 
 	/* The "Left open on …" heading inside a day's Inbox list. */

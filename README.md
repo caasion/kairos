@@ -61,4 +61,4 @@ The [Getting started guide](docs/getting-started.md) walks through your first da
 - [Guide](docs/guide.md): how to do things in each view.
 - [Reference](docs/reference.md): the markdown format, every mouse and keyboard shortcut, and all settings.
 
-Kairos is desktop-first. It runs on mobile, but some actions need a right-click or a keyboard.
+Kairos works on phones and tablets with touch: tap a task or block to select it, tap **⋯** for everything its right-click menu has, and press and hold to drag. See [Use Kairos on mobile](docs/guide.md#use-kairos-on-mobile). It has been tested on Android; iOS and iPadOS haven't been tested yet.

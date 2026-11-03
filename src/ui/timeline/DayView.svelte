@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { coarsePointer } from "../actions/pickerPlace";
 	import { TFile } from "obsidian";
 	import type { App } from "obsidian";
 	import { onMount } from "svelte";
@@ -76,7 +77,8 @@
 	} from "./taskDrag";
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
-	import { dropTaskOnTimeline } from "./dropTask";
+	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
+	import { pressOnBlockChild, pressOnMoveGrip, startAfterHold } from "../actions/touchHold";
 	import type { DragPreview, FocusRequest, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		type Gesture,
@@ -201,7 +203,8 @@
 	}
 
 	// Geometry follows the persisted hour-range / zoom settings, live.
-	const geo = $derived(geometryFromSettings(settings));
+	// On a phone hours are drawn taller, so short blocks can be tapped.
+	const geo = $derived(geometryFromSettings(settings, { coarse: coarsePointer(window) }));
 	const hours = $derived(visibleHours(geo));
 	const bodyHeight = $derived(gridHeight(geo));
 
@@ -342,6 +345,31 @@
 	let showCalendar = $state(false);
 	let calendarValue = $state<Date>(dateFromISO(todayISO()));
 	let dateNavRef = $state<HTMLDivElement>();
+	// The calendar is portaled over the page, under the date: inside the
+	// header it was clipped, which in a phone's sidebar drawer left a sliver
+	// that scrolled. Placed from the navigator, kept on screen.
+	let calendarStyle = $state("");
+	let calendarEl = $state<HTMLDivElement>();
+	// Portaled, the calendar is outside the view, so the view's own click
+	// handling can't close it: a press anywhere outside it and the date does.
+	$effect(() => {
+		if (!showCalendar) return;
+		const doc = dateNavRef?.ownerDocument ?? document;
+		const onPress = (e: PointerEvent) => {
+			const t = e.target as Node | null;
+			if (t && (calendarEl?.contains(t) || dateNavRef?.contains(t))) return;
+			showCalendar = false;
+		};
+		doc.addEventListener("pointerdown", onPress, true);
+		return () => doc.removeEventListener("pointerdown", onPress, true);
+	});
+	function placeCalendar() {
+		const r = dateNavRef?.getBoundingClientRect();
+		if (!r) return;
+		const width = 296;
+		const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+		calendarStyle = `top: ${Math.round(r.bottom + 6)}px; left: ${Math.round(left)}px;`;
+	}
 
 	// A human-friendly header label, e.g. "Thu, Jul 31". The ISO date remains the
 	// source of truth; this is display only.
@@ -469,6 +497,7 @@
 	// Ctrl/Cmd+click the date label opens (creating if needed) that day's note.
 	async function openDayNote(event: MouseEvent) {
 		if (!(event.ctrlKey || event.metaKey)) {
+			if (!showCalendar) placeCalendar();
 			showCalendar = !showCalendar;
 			return;
 		}
@@ -948,8 +977,14 @@
 		event: PointerEvent,
 	) {
 		const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-
-		if (additive) {
+		// Select mode (touch, spec decision 138): a tap adds a block, a tap on a
+		// selected one takes it out, and a hold on one drags them all.
+		let started = false;
+		if (selectMode && mode === "move" && selection.has(block)) {
+			untapOnRelease(event, block, () => started);
+		} else if (selectMode && mode === "move") {
+			selection = new Set([...selection, block]);
+		} else if (additive) {
 			const next = new Set(selection);
 			if (next.has(block)) next.delete(block);
 			else next.add(block);
@@ -963,27 +998,77 @@
 		const targets =
 			mode === "move" && selection.size > 0 ? [...selection] : [block];
 
-		gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
-		capturePointer(event);
-	}
- 
-	// Pressed on empty canvas: begin a create gesture and clear any selection.
-	function onCanvasPointerDown(event: PointerEvent) {
-		if (event.button !== 0) return;
-		// Ignore presses that landed on a block (those bubble here after their own
-		// handler ran); a block press sets `gesture` already.
-		if (gesture) return;
-		selection = new Set();
-		gesture = beginCreateGesture(canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
-		capturePointer(event);
+		// The canvas sees this press next (it bubbles); it isn't empty time.
+		blockPressed = true;
+		const el = event.currentTarget as Element | null;
+		const begin = () => {
+			started = true;
+			gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
+			capturePointer(el, event);
+		};
+		// A resize handle shows only on a selected block and starts at once; a
+		// move on touch waits for a hold, so a swipe over a block scrolls.
+		// A resize handle, or the move grip, shows only on a selected block and
+		// starts at once.
+		if (mode !== "move" || pressOnMoveGrip(event.target)) begin();
+		else if (event.pointerType === "mouse" || !pressOnBlockChild(event.target)) {
+			startAfterHold(event, () => {
+				// A task's own hold may have matured first and started its drag.
+				if (!taskDrag) begin();
+			});
+		}
 	}
 
-	function capturePointer(event: PointerEvent) {
-		(event.currentTarget as Element | null)?.setPointerCapture?.(event.pointerId);
+	// In select mode, a selected block pressed and released without a drag
+	// leaves the selection.
+	function untapOnRelease(press: PointerEvent, block: Block, dragged: () => boolean) {
+		const win = (press.target as Node | null)?.ownerDocument?.defaultView ?? window;
+		const up = (e: PointerEvent) => {
+			if (e.pointerId !== press.pointerId) return;
+			win.removeEventListener("pointerup", up);
+			win.removeEventListener("pointercancel", up);
+			if (e.type === "pointerup" && !dragged()) {
+				const next = new Set(selection);
+				next.delete(block);
+				selection = next;
+			}
+		};
+		win.addEventListener("pointerup", up);
+		win.addEventListener("pointercancel", up);
+	}
+
+	// Touch has no Shift or Ctrl/Cmd to select several blocks: the header's
+	// Select toggle stands in (spec decision 138). Off clears the selection.
+	let selectMode = $state(false);
+	function toggleSelectMode() {
+		selectMode = !selectMode;
+		if (!selectMode) selection = new Set();
+	}
+
+	// Set by a block press, so the canvas leaves that press alone.
+	let blockPressed = false;
+
+	// Pressed on empty canvas: begin a create gesture and clear any selection.
+	// On touch the create waits for a hold (startAfterHold).
+	function onCanvasPointerDown(event: PointerEvent) {
+		const onBlock = blockPressed;
+		blockPressed = false;
+		if (event.button !== 0) return;
+		if (onBlock || gesture) return;
+		selection = new Set();
+		const el = event.currentTarget as Element | null;
+		startAfterHold(event, () => {
+			gesture = beginCreateGesture(canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
+			capturePointer(el, event);
+		});
+	}
+
+	function capturePointer(el: Element | null, event: PointerEvent) {
+		el?.setPointerCapture?.(event.pointerId);
 	}
 
 	function onPointerMove(event: PointerEvent) {
@@ -1302,12 +1387,13 @@
 				<button
 					class="day-date"
 					class:today={isToday}
+					data-kairos-tour="day-date"
 					title="Click to pick a date · Ctrl+click to open the daily note"
 					onclick={(e) => {
 						e.stopPropagation();
 						void openDayNote(e);
 					}}
-					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions, app)}
 				>
 					{dateLabel}
 				</button>
@@ -1326,13 +1412,13 @@
 			{/if}
 
 			{#if showCalendar}
-				<div class="calendar-popup">
+				<Popover placement="portal" style={calendarStyle} bind:el={calendarEl}>
 					<Datepicker
 						inline
 						bind:value={calendarValue}
 						onselect={onCalendarSelect}
 					/>
-				</div>
+				</Popover>
 			{/if}
 		</div>
 		<!-- The day's menu, also on the date's right-click; the same one the
@@ -1341,7 +1427,7 @@
 			label="Day actions"
 			icon="more-horizontal"
 			size="m"
-			onclick={(e) => showDayMenu(e, date, routineActions)}
+			onclick={(e) => showDayMenu(e, date, routineActions, app)}
 		/>
 
 		<span class="day-header-spacer"></span>
@@ -1383,6 +1469,19 @@
 					gap="m"
 					style="top: calc(100% + 6px); right: 0; min-width: 170px;"
 				>
+					<!-- Touch only (pointer: coarse): select several blocks by tapping
+					     them, where Shift and Ctrl/Cmd don't exist (spec decision 138). -->
+					<label class="controls-field controls-touch-only">
+						<span class="controls-label">Select several blocks</span>
+						<input
+							type="checkbox"
+							checked={selectMode}
+							onchange={() => {
+								toggleSelectMode();
+								showControls = false;
+							}}
+						/>
+					</label>
 					<label class="controls-field">
 						<span class="controls-label">Start hour</span>
 						<input
@@ -1421,6 +1520,15 @@
 			{/if}
 		</div>
 	</div>
+
+	<!-- Select mode's bar, under the header while it's on (touch only). -->
+	{#if selectMode}
+		<div class="select-bar">
+			<span class="select-bar-label">{selection.size === 0 ? "Tap blocks to select them" : `${selection.size} selected`}</span>
+			<IconButton label="Delete selected blocks" icon="trash-2" onclick={() => void deleteSelected()} />
+			<button class="select-bar-done" onclick={toggleSelectMode}>Done</button>
+		</div>
+	{/if}
 
 	<!-- Each tray list, rendered in its pill's hover peek or, toggled on with a
 	     click, in the view under the strip. -->
@@ -1612,6 +1720,7 @@
 				<div
 					class="day-canvas"
 					class:creating={gesture?.mode === "create"}
+					data-kairos-tour="day-canvas"
 					data-tl-date={date}
 					data-tl-start-hour={geo.startHour}
 					data-tl-end-hour={geo.endHour}
@@ -1655,6 +1764,7 @@
 							onSetNoteText={handleSetNoteText}
 							onMoveTaskToBacklog={(owner, task) =>
 								void handleMoveTaskToBacklog(owner, task)}
+							onDuplicateTask={(owner, task) => void duplicateTask(index, date, owner, task)}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
 							onNestTask={openBlockPicker}
@@ -1857,12 +1967,6 @@
 	}
 
 	/* The inline calendar drops below the date label. */
-	.calendar-popup {
-		position: absolute;
-		top: calc(100% + 6px);
-		left: 0;
-		z-index: 100;
-	}
 
 	.day-header-spacer {
 		flex: 1;
@@ -1902,6 +2006,48 @@
 	}
 
 	/* "Follow the grid" is on: the link icon takes the accent. */
+	/* Touch only: the select-mode switch in the gear popover. On a phone the
+	   hour range is in that popover too, so the header drops it for room. */
+	.controls-touch-only {
+		display: none;
+	}
+	@media (pointer: coarse) {
+		.controls-touch-only {
+			display: flex;
+		}
+		.day-range-label {
+			display: none;
+		}
+		.day-header {
+			gap: 2px;
+			padding-inline: 4px;
+		}
+		/* The date navigator gives way (and scrolls sideways if it must), so
+		   the gear stays in view when "Today" joins the header. */
+		.day-header .day-nav {
+			flex: 0 1 auto;
+			min-width: 0;
+			overflow-x: auto;
+			scrollbar-width: none;
+		}
+		.day-header .controls-wrap {
+			flex-shrink: 0;
+		}
+	}
+	.select-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 10px;
+		border-bottom: 1px solid var(--background-modifier-border);
+		background: var(--background-secondary);
+		flex-shrink: 0;
+	}
+	.select-bar-label {
+		flex: 1;
+		color: var(--text-muted);
+	}
+
 	.follow-btn.on {
 		color: var(--interactive-accent);
 		border-color: var(--interactive-accent);

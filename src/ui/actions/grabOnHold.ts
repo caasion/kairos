@@ -12,6 +12,7 @@
 
 import { longpress } from "./longpress";
 import { movedPastSlop } from "./peek";
+import { HOLD_TO_DRAG_MS } from "./touchHold";
 
 /** Controls inside a draggable header whose presses are their own. */
 export const HOLD_EXEMPT_SELECTOR = ".kairos-action-bar, input, textarea";
@@ -61,7 +62,7 @@ export function grabOnHold(node: HTMLElement, onGrab: OnGrab) {
 		};
 	};
 	const hold = longpress(node, {
-		duration: 400,
+		duration: HOLD_TO_DRAG_MS,
 		onLongpress: matured,
 		ignore: (e) => pressOnControl(e.target),
 	});

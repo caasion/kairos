@@ -3,9 +3,13 @@ import type { ISODate } from "../../types";
 import {
 	anchorFor,
 	clampSpan,
+	fitWindow,
+	GRID_MIN_COLUMN_PX,
+	MAX_FIT_DAYS,
 	stepAnchor,
 	windowDates,
 	windowWidth,
+	WEEK_MIN_COLUMN_PX,
 } from "./weekWindow";
 
 // Every (before, after) the sliders can produce is 1–7 on each side; these are
@@ -223,5 +227,24 @@ describe("jumping to a date", () => {
 				defaultWindow(TODAY, before, after),
 			);
 		}
+	});
+});
+
+describe("fitWindow", () => {
+	it("is null until the width is measured", () => {
+		expect(fitWindow(0, 100)).toBeNull();
+		expect(fitWindow(Number.NaN, 100)).toBeNull();
+	});
+	it("shows one day, starting today, on a narrow phone", () => {
+		expect(fitWindow(190, GRID_MIN_COLUMN_PX)).toEqual({ before: 0, size: 1 });
+	});
+	it("shows two days from today when two fit", () => {
+		expect(fitWindow(300, WEEK_MIN_COLUMN_PX)).toEqual({ before: 0, size: 2 });
+	});
+	it("keeps a day before today once three fit", () => {
+		expect(fitWindow(430, WEEK_MIN_COLUMN_PX)).toEqual({ before: 1, size: 3 });
+	});
+	it("never shows more than seven", () => {
+		expect(fitWindow(2400, WEEK_MIN_COLUMN_PX)).toEqual({ before: 1, size: MAX_FIT_DAYS });
 	});
 });

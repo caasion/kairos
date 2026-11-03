@@ -134,12 +134,37 @@ textarea.kairos-inline-input:is(:hover, :focus, :focus-visible, :active) {
 	opacity: var(--kairos-action-bar-opacity, 0.96);
 	pointer-events: auto;
 }
-/* Touch has no pointer to track: show the bar on the row's (sticky) hover
-   after a tap. */
-@media (hover: none) {
-	:hover > .kairos-action-bar {
-		opacity: var(--kairos-action-bar-opacity, 0.96);
-		pointer-events: auto;
+/* Touch has no pointer to track: a first tap selects the row
+   (src/ui/actions/touchSelect.ts), which wakes its bar through the awake class
+   and outlines the row. The bar's buttons, and the ⋯ that opens the row's
+   menu, grow to a finger's size. */
+.kairos-touch-selected {
+	outline: 1px solid var(--interactive-accent);
+	outline-offset: -1px;
+}
+.kairos-touch-menu {
+	order: 99;
+}
+/* A selected row's bar sits just above it, not over it: the row is what a
+   second tap edits and a hold drags, and on a short block an overlaid bar
+   covered its title and its resize handle. `body` outranks a component's
+   own scoped bar position. */
+body .kairos-touch-selected > .kairos-action-bar {
+	top: auto;
+	bottom: calc(100% + 4px);
+	z-index: var(--layer-popover);
+}
+/* A selected timeline block has resize handles just outside its edges
+   (TimelineBlock.svelte): its bar rises above the top one. */
+@media (pointer: coarse) {
+	body .tl-block.selected.kairos-touch-selected > .kairos-action-bar {
+		bottom: calc(100% + 28px);
+	}
+}
+@media (pointer: coarse) {
+	body .kairos-action-bar > button {
+		min-width: 32px;
+		min-height: 32px;
 	}
 }
 
@@ -584,6 +609,105 @@ body {
 	text-overflow: ellipsis;
 }
 
+/* ── Guided tour (src/onboarding/) ──
+   The ring circles what a step points at; the card sits beside it. Both are
+   `fixed` on the body and moved every frame by the tour. Below menus and
+   modals, so a right-click menu or the welcome covers them. The ring never
+   takes the pointer: the person acts on the very thing it circles. */
+.kairos-tour-ring {
+	position: fixed;
+	z-index: var(--layer-popover);
+	border: 2px solid var(--interactive-accent);
+	border-radius: var(--radius-m);
+	box-shadow: 0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+	pointer-events: none;
+	animation: kairos-tour-pulse 1.6s ease-in-out infinite;
+}
+.kairos-tour-ring.is-hidden {
+	display: none;
+}
+@keyframes kairos-tour-pulse {
+	50% {
+		box-shadow: 0 0 0 8px color-mix(in srgb, var(--interactive-accent) 10%, transparent);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.kairos-tour-ring {
+		animation: none;
+	}
+}
+.kairos-tour-card {
+	position: fixed;
+	z-index: var(--layer-popover);
+	box-sizing: border-box;
+	width: min(300px, calc(100vw - 16px));
+	padding: var(--size-4-3) var(--size-4-4);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-l);
+	font-size: var(--font-ui-small);
+	color: var(--text-normal);
+}
+.kairos-tour-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 20px;
+}
+.kairos-tour-progress {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+.kairos-tour-close {
+	padding: 2px;
+}
+.kairos-tour-title {
+	margin: var(--size-4-1) 0;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+}
+.kairos-tour-body {
+	margin-bottom: var(--size-4-2);
+	line-height: var(--line-height-normal);
+}
+.kairos-tour-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: var(--size-4-2);
+	margin-top: var(--size-4-3);
+}
+/* A phone (tour.ts, dockPopover): a strip across the top of the view, under
+   its header, or across the bottom when what it points at is up there. While
+   the person types it shrinks to its head line: the progress, the step's name
+   and the close button. */
+.kairos-tour-card.is-docked {
+	box-shadow: var(--shadow-s);
+}
+.kairos-tour-head-title {
+	display: none;
+	flex: 1;
+	margin-inline-start: var(--size-4-2);
+	font-weight: var(--font-semibold);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.kairos-tour-card.is-compact {
+	padding-block: var(--size-4-1);
+}
+.kairos-tour-card.is-compact .kairos-tour-head-title {
+	display: block;
+}
+.kairos-tour-card.is-compact :is(.kairos-tour-title, .kairos-tour-body, .kairos-tour-actions) {
+	display: none;
+}
+.kairos-tour-welcome-note {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
 /* ── Header bar in the tab header (src/ui/actions/viewHeader.ts) ──
    The Week, Grid and Timeline views move their header bar (date navigator,
    settings) into Obsidian's tab header, in place of the tab's title. The
@@ -710,4 +834,78 @@ body {
 	--kairos-row-label-pad-right: 10px;
 	/* Extra inset for a project under its domain. */
 	--kairos-row-label-indent: 14px;
+}
+
+/* ── Phone layout (pointer: coarse) ──
+   A Week view date card too narrow for its badges' counts keeps only their
+   icons, so they stop covering the date. */
+body .col-head-wrap {
+	container-type: inline-size;
+}
+@container (max-width: 160px) {
+	body .col-badges .hb-count {
+		display: none;
+	}
+}
+/* The Grid on a phone: each row's label becomes a narrow tab with its name
+   running up the side, like a notebook's, so the day column gets the width.
+   The description, pips and icons are in the label's card (tap it). */
+@media (pointer: coarse) and (max-width: 600px) {
+	body .grid-view {
+		--kairos-row-label-width: 40px;
+	}
+	body .grid-view .grid-rowlabel {
+		padding: 6px 0;
+		justify-content: center;
+		align-items: center;
+	}
+	body .grid-view .grid-rowlabel .row-label-text {
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
+		max-height: 100%;
+	}
+	body .grid-view .grid-rowlabel .row-label-name {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	body .grid-view .grid-rowlabel .row-label-note,
+	body .grid-view .grid-rowlabel .row-label-pips,
+	body .grid-view .grid-rowlabel .row-label-icon {
+		display: none;
+	}
+}
+
+/* The Timeline on a phone: each row's label becomes a narrow tab with its
+   name running up the side, like a notebook's, so the plot gets the width.
+   The name is capped so a long one doesn't make its row tall; the rest is in
+   the label's card (tap it). */
+@media (pointer: coarse) and (max-width: 600px) {
+	body .gantt-wrap {
+		--kairos-row-label-width: 40px;
+	}
+	/* A column: the name, then anything else the row carries (its ⋯) under
+	   it. No indent for a project; the accent stripe still groups it. */
+	body .gantt-wrap .gantt-label,
+	body .gantt-wrap .gantt-label.indent {
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: 6px 0;
+	}
+	body .gantt-wrap .gantt-label .row-label-text {
+		writing-mode: vertical-rl;
+		transform: rotate(180deg);
+		max-height: 88px;
+	}
+	body .gantt-wrap .gantt-label .row-label-name {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	body .gantt-wrap .gantt-label .row-label-note,
+	body .gantt-wrap .gantt-label .row-label-pips,
+	body .gantt-wrap .gantt-label .row-label-icon {
+		display: none;
+	}
 }

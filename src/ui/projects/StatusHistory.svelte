@@ -189,8 +189,13 @@
 <div class="setting-group">
 	<div class="setting-item setting-item-heading">
 		<div class="setting-item-info"><div class="setting-item-name">Status history</div></div>
-		<div class="setting-item-control">
-			<button disabled={readonly} onclick={addMenu}>Add change</button>
+		<!-- A frameless Kairos button that keeps to its label: a plain button
+		     in a settings row stretched to the pane's full width on a phone. -->
+		<div class="setting-item-control sh-add">
+			<IconButton label="Add change" disabled={readonly} onclick={addMenu}>
+				<span class="sh-add-icon" use:icon={"plus"}></span>
+				<span class="sh-add-label">Add change</span>
+			</IconButton>
 		</div>
 	</div>
 	<div class="setting-items kairos-tl" class:is-readonly={readonly}>
@@ -320,6 +325,16 @@
 {/if}
 
 <style>
+	.sh-add {
+		flex: none;
+		width: auto;
+	}
+	.sh-add-icon {
+		display: inline-flex;
+	}
+	.sh-add-label {
+		margin-inline-start: var(--size-2-2);
+	}
 	.kairos-tl {
 		display: flex;
 		flex-direction: column;

@@ -39,7 +39,7 @@ export class KairosView extends ItemView {
 		super.onPaneMenu(menu, source);
 		const date = this.date;
 		if (!date) return;
-		addDayMenuItems(menu, date, this.plugin.routinesFeed.actions());
+		addDayMenuItems(menu, date, this.plugin.routinesFeed.actions(), this.app);
 	}
 
 	async onOpen() {

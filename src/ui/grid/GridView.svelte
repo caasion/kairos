@@ -48,7 +48,18 @@
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { hitTestGridCell, hitTestGridGroup, hitTestTimeline, type BlockDragState, type GridDropSlot, type GridGroupDrop, type TaskDragState } from "../timeline/taskDrag";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
-	import { dropTaskOnTimeline } from "../timeline/dropTask";
+	import { dropTaskOnTimeline, duplicateTask } from "../timeline/dropTask";
+	import { fitWindow, GRID_MIN_COLUMN_PX } from "../timeline/weekWindow";
+	import { swipeDays } from "../actions/swipeDays";
+
+	/**
+	 * The row-label column's width (`--kairos-row-label-width`), left of the
+	 * days: 180px, or a 40px tab on a phone (styles.css). Read from the view.
+	 */
+	function rowLabelPx(): number {
+		const v = viewEl ? parseFloat(getComputedStyle(viewEl).getPropertyValue("--kairos-row-label-width")) : NaN;
+		return Number.isFinite(v) ? v : 180;
+	}
 	import {
 		blockLit,
 		hoverBlockTarget,
@@ -198,9 +209,15 @@
 	function clampSpan(n: number): number {
 		return Math.max(1, Math.min(7, Math.floor(n)));
 	}
-	const before = $derived(clampSpan(settings.weekDaysBefore));
-	const after = $derived(clampSpan(settings.weekDaysAfter));
-	const windowSize = $derived(before + after + 1);
+	// With "Fit days to the width" on, the window is as many days as fit the
+	// columns' width (weekWindow.ts, spec decision 139); off, the settings' span.
+	let scrollWidth = $state(0);
+	const fit = $derived(
+		settings.fitDaysToWidth ? fitWindow(scrollWidth - rowLabelPx(), GRID_MIN_COLUMN_PX) : null,
+	);
+	const before = $derived(fit ? fit.before : clampSpan(settings.weekDaysBefore));
+	const after = $derived(fit ? fit.size - 1 - fit.before : clampSpan(settings.weekDaysAfter));
+	const windowSize = $derived(fit ? fit.size : before + after + 1);
 
 	let anchor = $state<ISODate>(shiftISO(todayISO(), -clampSpan(1)));
 	let atDefault = $state(true);
@@ -1226,14 +1243,17 @@
 	let showControls = $state(false);
 	let controlsRef = $state<HTMLDivElement>();
 
+	// Choosing a span means not fitting to the width.
 	function setDaysBefore(value: number) {
 		updateSettings((s) => {
 			s.weekDaysBefore = clampSpan(value);
+			s.fitDaysToWidth = false;
 		});
 	}
 	function setDaysAfter(value: number) {
 		updateSettings((s) => {
 			s.weekDaysAfter = clampSpan(value);
+			s.fitDaysToWidth = false;
 		});
 	}
 
@@ -1539,7 +1559,7 @@
 						if (e.ctrlKey || e.metaKey) void openDayNote(date);
 						else showDay(date);
 					}}
-					oncontextmenu={(e) => showDayMenu(e, date, routineActions)}
+					oncontextmenu={(e) => showDayMenu(e, date, routineActions, app)}
 				>
 					<span class="dow-label">{dowLabel(date)}</span>
 					<span class="date-number">{dayNumber(date)}</span>
@@ -1555,7 +1575,7 @@
 					<IconButton
 						label="Day actions"
 						icon="more-horizontal"
-						onclick={(e) => showDayMenu(e, date, routineActions)}
+						onclick={(e) => showDayMenu(e, date, routineActions, app)}
 					/>
 				</div>
 				<!-- The day's lists as badges, bottom-right of its date cell:
@@ -1610,7 +1630,12 @@
 		{/each}
 	</div>
 
-	<div class="grid-scroll" data-drag-scroll>
+	<div
+		class="grid-scroll"
+		data-drag-scroll
+		bind:clientWidth={scrollWidth}
+		use:swipeDays={{ onSwipe: stepWindow, busy: () => taskDrag !== null || blockDrag !== null }}
+	>
 		<div
 			class="grid-table"
 			class:row-lines={settings.gridRowLines}
@@ -1680,6 +1705,7 @@
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
+								onDuplicate={(task) => void duplicateTask(index, task.date, task.block, task)}
 								onCreate={() => onCreate(row, date)}
 								draftOpen={draftInCell(row, date)}
 								draftBlock={draftInCell(row, date) ? draft?.block : undefined}

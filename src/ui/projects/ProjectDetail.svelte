@@ -226,7 +226,9 @@
 						</div>
 						<div class="setting-item-control">
 							<input
+								class="pd-swatch"
 								type="color"
+								aria-label="Domain color"
 								value={domain.color || "#888888"}
 								onchange={(e) => setDomainColor(index, domain, e.currentTarget.value)}
 							/>
@@ -248,6 +250,29 @@
 </div>
 
 <style>
+	/* The colour as a small round swatch. A bare colour input grew to the
+	   control's full width on a phone, a bar across the pane; the selector
+	   outranks Obsidian's mobile rule for inputs in a setting's control. */
+	.setting-item-control > input.pd-swatch {
+		appearance: none;
+		min-width: 0;
+		flex: none;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: none;
+		cursor: pointer;
+		overflow: hidden;
+	}
+	.pd-swatch::-webkit-color-swatch-wrapper {
+		padding: 0;
+	}
+	.pd-swatch::-webkit-color-swatch {
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 50%;
+	}
 	.kairos-detail {
 		display: flex;
 		flex-direction: column;

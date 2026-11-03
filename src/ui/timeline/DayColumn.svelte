@@ -25,7 +25,8 @@
 	} from "./taskDrag";
 	import { startDragScroll, type DragScroll } from "../dragScroll";
 	import { newBlockLabel, type TimelineDrop } from "../../taskDrop";
-	import { dropTaskOnTimeline } from "./dropTask";
+	import { dropTaskOnTimeline, duplicateTask } from "./dropTask";
+	import { pressOnBlockChild, pressOnMoveGrip, startAfterHold } from "../actions/touchHold";
 	import type { DragPreview, HoverTarget, ViewLinks } from "../../viewLinks";
 	import {
 		dateFromISO,
@@ -89,6 +90,8 @@
 		// `takeBlock`/`isDropTarget` as needed. Returns nothing — the column keeps
 		// previewing vertically until `onPointerUp` resolves the drop.
 		onCrossDayGrab?: (date: ISODate, block: Block, event: PointerEvent) => void;
+		/** Select mode (touch): a tap adds or removes a block (spec decision 138). */
+		selectMode?: boolean;
 		// Open the association picker on a block the moment it is created
 		// (settings.askAssocOnBlockCreate). The parent owns the picker, so this is
 		// just the flag telling us to ask for it.
@@ -117,6 +120,7 @@
 		onNestTask,
 		backlogPath,
 		onCrossDayGrab,
+		selectMode = false,
 		askAssocOnCreate = false,
 		showUnscheduled = true,
 		onUnscheduledChange,
@@ -517,7 +521,14 @@
 		event: PointerEvent,
 	) {
 		const additive = event.shiftKey || event.metaKey || event.ctrlKey;
-		if (additive) {
+		// Select mode (touch, spec decision 138): a tap adds a block, a tap on a
+		// selected one takes it out, and a hold on one drags them all.
+		let started = false;
+		if (selectMode && mode === "move" && selection.has(block)) {
+			untapOnRelease(event, block, () => started);
+		} else if (selectMode && mode === "move") {
+			selection = new Set([...selection, block]);
+		} else if (additive) {
 			const next = new Set(selection);
 			if (next.has(block)) next.delete(block);
 			else next.add(block);
@@ -528,24 +539,66 @@
 
 		const targets =
 			mode === "move" && selection.size > 0 ? [...selection] : [block];
-		gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
+		// The canvas sees this press next (it bubbles); it isn't empty time.
+		blockPressed = true;
+		const begin = () => {
+			started = true;
+			gesture = beginBlockGesture(mode, targets, canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
 
-		// A single-block move is the only gesture that can leave the column, so
-		// only then do we hand the parent a chance to track a cross-day drop.
-		if (mode === "move" && targets.length === 1) {
-			onCrossDayGrab?.(date, block, event);
+			// A single-block move is the only gesture that can leave the column, so
+			// only then do we hand the parent a chance to track a cross-day drop.
+			if (mode === "move" && targets.length === 1) {
+				onCrossDayGrab?.(date, block, event);
+			}
+		};
+		// A resize handle shows only on a selected block and starts at once; a
+		// move on touch waits for a hold, so a swipe over a block scrolls.
+		// A resize handle, or the move grip, shows only on a selected block and
+		// starts at once.
+		if (mode !== "move" || pressOnMoveGrip(event.target)) begin();
+		else if (event.pointerType === "mouse" || !pressOnBlockChild(event.target)) {
+			startAfterHold(event, () => {
+				// A task's own hold may have matured first and started its drag.
+				if (!taskDrag) begin();
+			});
 		}
 	}
 
+	// In select mode, a selected block pressed and released without a drag
+	// leaves the selection.
+	function untapOnRelease(press: PointerEvent, block: Block, dragged: () => boolean) {
+		const win = (press.target as Node | null)?.ownerDocument?.defaultView ?? window;
+		const up = (e: PointerEvent) => {
+			if (e.pointerId !== press.pointerId) return;
+			win.removeEventListener("pointerup", up);
+			win.removeEventListener("pointercancel", up);
+			if (e.type === "pointerup" && !dragged()) {
+				const next = new Set(selection);
+				next.delete(block);
+				selection = next;
+			}
+		};
+		win.addEventListener("pointerup", up);
+		win.addEventListener("pointercancel", up);
+	}
+
+	// Set by a block press, so the canvas leaves that press alone.
+	let blockPressed = false;
+
+	// On touch the create waits for a hold (startAfterHold).
 	function onCanvasPointerDown(event: PointerEvent) {
+		const onBlock = blockPressed;
+		blockPressed = false;
 		if (event.button !== 0) return;
-		if (gesture) return;
+		if (onBlock || gesture) return;
 		selection = new Set();
-		gesture = beginCreateGesture(canvasOffset(event), geo);
-		gestureOriginY = event.clientY;
-		gestureMoved = false;
+		startAfterHold(event, () => {
+			gesture = beginCreateGesture(canvasOffset(event), geo);
+			gestureOriginY = event.clientY;
+			gestureMoved = false;
+		});
 	}
 
 	// ── Task drag-to-nest ──
@@ -962,6 +1015,7 @@
 				onNestTask={openBlockPicker}
 				onMoveTaskToBacklog={(owner, task) =>
 					void handleMoveTaskToBacklog(owner, task)}
+				onDuplicateTask={(owner, task) => void duplicateTask(index, date, owner, task)}
 				onTaskGrab={onTaskGrab}
 				{dragTaskLine}
 				{dropSlot}

@@ -6,7 +6,7 @@ Tasks and blocks keep their actions in their top-right corner. Point at a task o
 
 ## Plan a day (Day and Week views)
 
-The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side; set how many with the gear in the tab's header (**Days before today**, **Days after today**). The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
+The Day view shows one day and opens in the right sidebar. The Week view shows several days side by side: as many as fit the view, up to seven. To choose the number yourself, set **Days before today** and **Days after today** with the gear in the tab's header. The date navigator and the gear sit in the tab's header in the Week, Grid and Timeline views.
 
 **Move through dates**
 
@@ -202,9 +202,48 @@ In the Grid, each row's label shows its current intensity, and a small marker sh
 
 ## Use Kairos on mobile
 
-Kairos is desktop-first. On a phone or tablet:
+Kairos works with touch on phones and tablets. It has been tested on Android; iOS and iPadOS haven't been tested yet, so tell us what you find there.
 
-- Tap a checkbox to change it; press and hold it to cancel the task.
-- Tap text to edit it; press and hold, then move, to drag a task.
-- Tap "N more" to grow a block, and tap a routines pill to open it.
-- Some actions are only in right-click menus, so they aren't available on touch yet: **Move to backlog** and the Grid's row menus.
+### Touch gestures
+
+| To | On touch |
+|---|---|
+| Select a task or block | Tap it. Its actions appear just above it. |
+| Edit its text | Tap it again. |
+| Open its menu (right-click on desktop) | Tap **⋯** at the end of its actions. |
+| Make a block | Press and hold empty time in the Day or Week view, then drag down. |
+| Move a block | Tap it and drag the round handle on its right edge, or press and hold its title and drag. |
+| Resize a block | Tap it, then drag the handle above or below it. |
+| Move a task | Press and hold it, then drag it into another block, or onto empty time to make a block holding it. |
+| Copy a task instead of moving it (Ctrl/Cmd on desktop) | **⋯** → **Duplicate**, then drag the copy. |
+| Open a project's or domain's note (Ctrl/Cmd+click on desktop) | **⋯** → **Open note**. |
+| Open a day's note | Tap **⋯** beside the date → **Open daily note**. |
+| Change a task's status | Tap its checkbox; press and hold it to cancel the task. |
+| Move to the next or previous day | Swipe sideways on the Week view or the Grid, or use the arrows. |
+
+When a hold is long enough to drag, the phone buzzes (on Android) and the block lifts, so you know you can move. A quick swipe that starts on a block scrolls, and never moves it.
+
+### Select several blocks
+
+Shift and Ctrl/Cmd don't exist on touch. Instead, open the gear in the Day or Week view's header and turn on **Select several blocks**. Tap blocks to add them to the selection or take them out, and press and hold one to move them all. The bar under the header deletes them, and **Done** ends it.
+
+### How the views fit a phone
+
+- The Day view opens in the right sidebar, which is a drawer on a phone.
+- With **Fit days to the width** on (the default), the Week view and the Grid show as many days as fit. On a portrait phone, the Week view shows two days and the Grid one or two.
+- Hours are drawn at least 120px tall on touch, so a 15-minute block is big enough to tap.
+- In the Grid and the Timeline, the project and domain labels become narrow tabs with the name running up the side. Tap one for its details.
+- Tapping the Day view's date opens the calendar over the view.
+
+### The Timeline on touch
+
+Tap a bar to select it. Its edges become handles you can drag, and **⋯** above it opens its menu: intention, intensity, the dates, split and delete. A tap on an empty row doesn't start a stretch on touch; to start one, tap **⋯** on the row's label → **Add a stretch from today**. On a narrow screen the Week, Month, Quarter and Year choices are one dropdown in the header.
+
+### Take the tour
+
+Open the command palette and run **Kairos: Start tour**. On a phone the tour opens the Day view for you, and its card sits at the top of the Day view, out of the way of what it points at. While you type, the card shrinks to one line.
+
+### Not on touch yet
+
+The Grid's row menus (Change domain, Show on domain's row) are still right-click only.
+

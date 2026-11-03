@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { icon as drawIcon } from "../actions/icon";
   import type {
     Association,
     Block,
@@ -62,6 +63,8 @@
 		// travels along so the parent can locate the task and lift its inherited
 		// association before dropping it.
 		onMoveTaskToBacklog: (owner: Block, task: Task) => void;
+		/** Put a copy of a task right after it (the task menu's Duplicate). */
+		onDuplicateTask?: (owner: Block, task: Task) => void;
 		// A long-press on a task body began a drag-to-nest gesture. The parent (the
 		// canvas owner) takes over window pointer tracking, previews a drop slot,
 		// and commits the nest on release. Reports the source block + task + press.
@@ -123,6 +126,7 @@
 		onEditTaskAssoc,
 		onNestTask,
 		onMoveTaskToBacklog,
+		onDuplicateTask,
 		onTaskGrab,
 		dragTaskLine,
 		dropSlot,
@@ -289,16 +293,30 @@
   // A short block can't show its task chips; collapse to a compact look.
   const compact = $derived(height < 44);
 
+  // The title, time and association take a mouse press for themselves, so a
+  // click edits or opens them instead of starting a move. A touch press goes on
+  // to the block: it selects it, and a move there waits for a hold
+  // (touchHold.ts), so a tap still reaches the text.
+  function keepPressForTouch(event: PointerEvent) {
+    if (event.pointerType === "mouse") event.stopPropagation();
+  }
+
   function start(
     mode: "move" | "resize-top" | "resize-bottom",
     event: PointerEvent,
   ) {
     // Only the primary button drives gestures; ignore right/middle clicks.
     if (readonly || event.button !== 0) return;
-    // A move or resize works on the block's real size.
-    collapse();
+    // A move or resize works on the block's real size. A touch move waits for
+    // a hold, and shrinking at the press would shift the block under the
+    // finger, so the tap's click landed on whatever moved there: it shrinks
+    // once the drag starts (the effect below).
+    if (event.pointerType === "mouse" || mode !== "move") collapse();
     onGestureStart?.(mode, block, event);
   }
+  $effect(() => {
+    if (dragging) collapse();
+  });
 
   // ── Title editing (single click, in place) ──────────────────────
 
@@ -385,9 +403,11 @@
   // ── Showing every task ──
   // A block shows as many of its tasks as fit. When they don't all fit, the
   // last row it has room for becomes a "N more" row, centred at the bottom of
-  // the task list; a block with room for one row or less shows only that row
-  // ("N tasks"), a compact block a small pill beside its title, and a block
-  // with no room for a row that pill on its time line. Pointing at
+  // the task list; a block with room for just one row shows its first task and
+  // puts "N more" on its time line, a compact block a small pill beside its
+  // title, and a block with no room for a row that pill on its time line. The
+  // first task stays in sight wherever it fits, so a short block doesn't look
+  // empty. Pointing at
   // it (mouse) or tapping it (touch) makes the block itself grow down until all
   // its tasks fit, over whatever is below, and shrink back once the pointer
   // leaves the block. It stays the same block: same width, same look.
@@ -431,10 +451,13 @@
   );
   // During a drag every block shows all its rows: they are the drop slots.
   const overflowing = $derived(!dragActive && rowCount > capacity);
-  const room = $derived(overflowing && !expanded ? Math.max(0, capacity - 1) : rowCount);
+  // Room for one row: it goes to the first task, and "N more" to the time line.
+  const oneRow = $derived(!compact && capacity === 1 && overflowing && !expanded);
+  const shownRows = $derived(oneRow ? 1 : Math.max(0, capacity - 1));
+  const room = $derived(overflowing && !expanded ? shownRows : rowCount);
   const shownChips = $derived(chips.slice(0, room));
   const shownNotes = $derived(notes.slice(0, Math.max(0, room - chips.length)));
-  const hiddenCount = $derived(overflowing ? rowCount - Math.max(0, capacity - 1) : 0);
+  const hiddenCount = $derived(overflowing ? rowCount - shownRows : 0);
   // What's hidden: tasks (they come first) when no note is, notes when no task
   // is, else both.
   const hiddenNoun = $derived.by(() => {
@@ -444,13 +467,15 @@
     return "items";
   });
   const moreLabel = $derived(
-    capacity <= 1 ? `${hiddenCount} ${hiddenNoun}` : `${hiddenCount} more`,
+    capacity === 0 ? `${hiddenCount} ${hiddenNoun}` : `${hiddenCount} more`,
   );
   // A compact block that grows lays out like a full one, so its tasks show.
   const compactLayout = $derived(compact && !expanded);
   // A full block with no room for even one row: the list under its time line is
   // clipped to nothing, so the pill goes on the time line instead.
-  const metaPill = $derived(!compactLayout && capacity === 0 && overflowing && !expanded);
+  const metaPill = $derived(
+    oneRow || (!compactLayout && capacity === 0 && overflowing && !expanded),
+  );
 
   function cancelExpandTimer() {
     window.clearTimeout(expandTimer);
@@ -540,6 +565,7 @@
       onAddNote: () => beginNoteAdd(),
       onEditAssoc: () => requestEditAssoc(),
       onDelete: () => onDelete(block),
+      onOpenNote: block.assoc ? () => onNavigate(block.assoc!) : undefined,
     });
     menu.showAtMouseEvent(event);
   }
@@ -556,6 +582,7 @@
     class:meta={variant === "meta"}
     style={variant === "row" ? `height: ${rowHeight}px;` : undefined}
     bind:this={moreEl}
+    data-kairos-tap-through
     aria-label={`Show all ${rowCount} rows`}
     aria-expanded={expanded}
     onpointerdown={(e) => e.stopPropagation()}
@@ -566,9 +593,14 @@
       expand();
     }}
   >
-    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    {#if variant === "row"}{@render chevron()}{/if}
     {moreLabel}
+    {#if variant !== "row"}{@render chevron()}{/if}
   </button>
+{/snippet}
+
+{#snippet chevron()}
+  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 {/snippet}
 
 <!-- One task chip. -->
@@ -586,6 +618,7 @@
     onNest={(rect) => onNestTask(block, task, rect)}
     nestLabel="Move to another block"
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
+    onDuplicate={!readonly && onDuplicateTask ? () => onDuplicateTask(block, task) : undefined}
     onRepeat={readonly ? undefined : () => requestRepeat(task, block)}
     onGrab={readonly
       ? undefined
@@ -636,7 +669,7 @@
     onHoverLeave?.(blockTarget);
     onBlockLeave(e);
   }}
-  use:actionZone={{ layout: "stack" }}
+  use:actionZone={{ layout: "stack", menu: true }}
 >
   <!-- Resize edges. Placed directly at the outer edge of tl-block -->
   {#if !readonly}
@@ -747,9 +780,10 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <span
           class="tl-title"
+          data-kairos-tour="block-title"
           role="textbox"
           tabindex="0"
-          onpointerdown={(e) => e.stopPropagation()}
+          onpointerdown={keepPressForTouch}
           onclick={beginTitleEdit}
           use:peek={{ text: block.title }}
         >{block.title}</span>
@@ -785,7 +819,7 @@
             class="tl-time kairos-meta kairos-meta-label"
             role="button"
             tabindex="0"
-            onpointerdown={(e) => e.stopPropagation()}
+            onpointerdown={keepPressForTouch}
             onclick={beginTimeEdit}
           >{timeLabel}</span>
         {/if}
@@ -806,7 +840,7 @@
             class="kairos-meta"
             class:is-linked={r.resolved}
             title={r.resolved ? "Ctrl+click to open" : undefined}
-            onpointerdown={(e) => e.stopPropagation()}
+            onpointerdown={keepPressForTouch}
             onclick={(e) => {
               if (e.ctrlKey || e.metaKey) {
                 e.stopPropagation();
@@ -936,6 +970,20 @@
       start("resize-bottom", e);
     }}
   ></div>
+  <!-- Touch only, on a selected block: a grip that drags the whole block at
+       once, without the hold a press on the block needs. -->
+  {#if selected && !readonly}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="tl-move-grip"
+      aria-label="Drag to move"
+      use:drawIcon={"move"}
+      onpointerdown={(e) => {
+        e.stopPropagation();
+        start("move", e);
+      }}
+    ></div>
+  {/if}
   {/if}
 </div>
 
@@ -1027,6 +1075,11 @@
     padding: 2px 6px;
   }
 
+  /* The move grip is for touch; a mouse drags the block itself. */
+  .tl-move-grip {
+    display: none;
+  }
+
   /* ── Resize edges ── */
   .tl-resize {
     position: absolute;
@@ -1044,6 +1097,77 @@
 
   .tl-resize-bottom {
     bottom: 0;
+  }
+
+  /* Touch (spec decision 136): an unselected block has no resize edge, so a
+     swipe that starts on it scrolls. A selected one gets handles a finger
+     can hold, 24px tall, just outside its edges with the grip always shown:
+     inside, they covered the title of a short block, which a tap there then
+     missed. Its action bar rises above the top handle (styles.css). */
+  @media (pointer: coarse) {
+    .tl-resize {
+      pointer-events: none;
+    }
+    .tl-block.selected .tl-resize {
+      pointer-events: auto;
+      height: 24px;
+    }
+    .tl-block.selected .tl-resize-top {
+      top: -24px;
+    }
+    .tl-block.selected .tl-resize-bottom {
+      bottom: -24px;
+    }
+    .tl-block.selected .tl-resize::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 44px;
+      height: 8px;
+      border-radius: var(--kairos-radius-s);
+      background: var(--interactive-accent);
+      box-shadow:
+        0 0 0 2px var(--background-primary),
+        var(--shadow-s);
+    }
+    /* Narrow phone columns: a title wraps onto a second line rather than
+       being cut to its first few letters. */
+    .tl-title {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    /* The move grip: a round handle on the block's right edge, half
+       outside it, where the band leaves room. */
+    .tl-move-grip {
+      position: absolute;
+      top: 50%;
+      right: -14px;
+      transform: translateY(-50%);
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--interactive-accent);
+      color: var(--text-on-accent);
+      box-shadow:
+        0 0 0 2px var(--background-primary),
+        var(--shadow-s);
+      touch-action: none;
+      --icon-size: 16px;
+    }
+    /* A block whose hold matured lifts, so the finger knows it can move. */
+    .tl-block.dragging .tl-content {
+      transform: scale(1.03);
+      box-shadow: var(--shadow-l);
+    }
   }
 
   /* A faint grab affordance on the edge when hovering the block. */
@@ -1224,25 +1348,34 @@
     color: var(--text-normal);
     background: var(--background-modifier-hover);
   }
-  /* Beside a compact block's title: a small pill right after the text. Its
-     fill is translucent, so it takes the block's tint (hover, selection,
-     linked) instead of sitting on it as an opaque patch. */
+  /* Beside a compact block's title: a small pill right after the text, in the
+     accent colour with its chevron after the label, so it reads as something
+     to open, not a label. Its fill is translucent, so it takes the block's
+     tint (hover, selection, linked) instead of sitting on it as an opaque
+     patch. */
   .tl-more.pill {
     flex-shrink: 0;
     width: auto;
     height: 16px;
-    padding: 0 6px;
+    padding: 0 4px 0 6px;
     border-radius: 8px;
     font-size: 10px;
+    color: var(--text-accent);
     background: var(--background-modifier-hover);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
   }
-  .tl-more.pill:hover {
-    background: var(--background-modifier-active-hover);
+  .tl-more.pill:hover,
+  .tl-more.meta:hover {
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+    box-shadow: inset 0 0 0 1px var(--interactive-accent);
   }
   /* On the time line: one more item after the association, styled like it
-     (same size, muted, no fill) and separated by the same dot. */
+     (same size, no fill, but in the accent colour) and separated by the same
+     dot. */
   .tl-more.meta {
     flex-shrink: 0;
+    color: var(--text-accent);
     width: auto;
     height: auto;
     padding: 1px 3px;
