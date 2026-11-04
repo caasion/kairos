@@ -614,21 +614,21 @@
     resolved={tr}
     color={tr?.color}
     onNavigate={() => task.owner && onNavigate(task.owner)}
-    onEditAssoc={(rect) => onEditTaskAssoc(block, task, rect)}
-    onNest={(rect) => onNestTask(block, task, rect)}
+    onEditAssoc={(rect: DOMRect) => onEditTaskAssoc(block, task, rect)}
+    onNest={(rect: DOMRect) => onNestTask(block, task, rect)}
     nestLabel="Move to another block"
     onMoveToBacklog={() => onMoveTaskToBacklog(block, task)}
     onDuplicate={!readonly && onDuplicateTask ? () => onDuplicateTask(block, task) : undefined}
     onRepeat={readonly ? undefined : () => requestRepeat(task, block)}
     onGrab={readonly
       ? undefined
-      : (e) => {
+      : (e: PointerEvent) => {
           collapse();
           onTaskGrab(block, task, e);
         }}
-    onSetStatus={(t, status) => onSetTaskStatus(block, t, status)}
-    onSetText={(t, text) => onSetTaskText(block, t, text)}
-    onDelete={(t) => onDeleteTask(block, t)}
+    onSetStatus={(t: Task, status: TaskStatus) => onSetTaskStatus(block, t, status)}
+    onSetText={(t: Task, text: string) => onSetTaskText(block, t, text)}
+    onDelete={(t: Task) => onDeleteTask(block, t)}
     highlight={taskHighlight(hover, task, block) === "task" ? "task" : null}
     onHoverChange={(on: boolean) => chipHover(task, on)}
   />
@@ -902,7 +902,7 @@
             <DraftTask
               color={accentColor}
               placeholder="New task"
-              onSubmit={(text) => onAddTask(block, text)}
+              onSubmit={(text: string) => onAddTask(block, text)}
               onClose={() => (addingTask = false)}
             />
           {/if}

@@ -907,7 +907,7 @@
 						</div>
 						<!-- Touch only (pointer: coarse): the row's menu. -->
 						<span class="gantt-touch-more">
-							<IconButton label="Row actions" icon="more-horizontal" onclick={(e) => openRowMenu(e, row)} />
+							<IconButton label="Row actions" icon="more-horizontal" onclick={(e: MouseEvent) => openRowMenu(e, row)} />
 						</span>
 					</div>
 				{/each}
@@ -1045,7 +1045,7 @@
 									     dropped on a bar too narrow to hold them beside a label. -->
 									{#if box.width >= 40}
 										<span class="gantt-pips">
-											<IntensityBars level={span.intensity} onpick={(level) => setIntensity(row, span, level)} />
+											<IntensityBars level={span.intensity} onpick={(level: number | undefined) => setIntensity(row, span, level)} />
 										</span>
 									{/if}
 									{#if editingKey === key}
@@ -1075,7 +1075,7 @@
 									{#if selected}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<span class="gantt-touch-more gantt-bar-more" onpointerdown={(e) => e.stopPropagation()}>
-											<IconButton label="More actions" icon="more-horizontal" onclick={(e) => openMenu(e, row, span)} />
+											<IconButton label="More actions" icon="more-horizontal" onclick={(e: MouseEvent) => openMenu(e, row, span)} />
 										</span>
 									{/if}
 									<!-- Right edge: drag to move the end date, or (open-ended) to set one. -->

@@ -27,6 +27,7 @@
 		Task,
 		TaskStatus,
 	} from "../../types";
+	import type { Routine } from "../../routines/routinesFile";
 	import {
 		addTaskToBlock,
 		addTaskToUnscheduled,
@@ -1449,13 +1450,13 @@
 				showAssociation={false}
 				resolved={r}
 				onNavigate={() => task.owner && onNavigate(task.owner)}
-				onEditAssoc={(rect) => openTaskAssoc(task, rect)}
-				onNest={(rect) => openBlockPicker(task, rect)}
+				onEditAssoc={(rect: DOMRect) => openTaskAssoc(task, rect)}
+				onNest={(rect: DOMRect) => openBlockPicker(task, rect)}
 				onMoveToBacklog={() => onMoveToBacklog(task)}
-				onSetStatus={(_t, status) => onSetStatus(task, status)}
-				onSetText={(_t, text) => onSetText(task, text)}
+				onSetStatus={(_t: Task, status: TaskStatus) => onSetStatus(task, status)}
+				onSetText={(_t: Task, text: string) => onSetText(task, text)}
 				onDelete={() => onDelete(task)}
-				onGrab={(e) => onTaskGrab(task, e)}
+				onGrab={(e: PointerEvent) => onTaskGrab(task, e)}
 				highlight={highlightOf(task)}
 				onHoverChange={(on: boolean) => onTaskHover(task, on)}
 			/>
@@ -1498,7 +1499,7 @@
 				{entry}
 				resolved={entry.assoc ? resolve(entry.assoc) : undefined}
 				showAssociation={false}
-				onInsert={(e) => onNudgeInsert(e, date)}
+				onInsert={(e: BacklogEntry) => onNudgeInsert(e, date)}
 				onResurfaceTomorrow={onNudgeResurfaceTomorrow}
 				onResurfaceAt={onNudgeResurfaceAt}
 				{onNavigate}
@@ -1636,7 +1637,7 @@
 					<IconButton
 						label="Day actions"
 						icon="more-horizontal"
-						onclick={(e) => showDayMenu(e, date, routineActions, app)}
+						onclick={(e: MouseEvent) => showDayMenu(e, date, routineActions, app)}
 					/>
 				</div>
 				<!-- The day's lists as badges, bottom-right of its date cell:
@@ -1675,7 +1676,7 @@
 								variant="pill"
 								label={dayLabel(date)}
 								showAddAll={!settings.autoApplyRoutines}
-								onAdd={(rs) => {
+								onAdd={(rs: Routine[]) => {
 									focusDay(date);
 									routineActions.insert(date, rs);
 								}}
@@ -1766,7 +1767,7 @@
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
-								onDuplicate={(task) => void duplicateTask(index, task.date, task.block, task)}
+								onDuplicate={(task: ResolvedTask) => void duplicateTask(index, task.date, task.block, task)}
 								onCreate={() => onCreate(row, date)}
 								draftOpen={draftInCell(row, date)}
 								draftBlock={draftInCell(row, date) ? draft?.block : undefined}
@@ -1813,7 +1814,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
@@ -1823,7 +1824,7 @@
 
 {#if blockPickerTask && blockPickerAnchor}
 	<BlockPicker
-		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
+		colorOf={(o: BlockOption) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}

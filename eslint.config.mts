@@ -97,16 +97,6 @@ export default defineConfig(
 		// only: these rules stay errors in .ts files.
 		files: SVELTE_FILES,
 		rules: {
-			// Mostly `any` leaking across component boundaries: typescript-eslint
-			// cannot see a child component's prop types (svelte2tsx is not in
-			// the loop), so callback params such as `onGrab={(e) => ...}` and
-			// bind:this instances are `any`. Datepicker.svelte has genuinely
-			// untyped $props().
-			'@typescript-eslint/no-unsafe-argument': 'warn',
-			'@typescript-eslint/no-unsafe-assignment': 'warn',
-			'@typescript-eslint/no-unsafe-call': 'warn',
-			'@typescript-eslint/no-unsafe-member-access': 'warn',
-			'@typescript-eslint/no-unsafe-return': 'warn',
 			'@typescript-eslint/no-unnecessary-type-assertion': 'warn',
 			'@typescript-eslint/no-floating-promises': 'warn',
 			'@typescript-eslint/await-thenable': 'warn',

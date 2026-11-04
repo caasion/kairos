@@ -16,6 +16,7 @@
 		TaskStatus,
 		TimeRange,
 	} from "../../types";
+	import type { Routine } from "../../routines/routinesFile";
 	import {
 		copyBlockIntoDay,
 		deleteBlock,
@@ -1383,7 +1384,7 @@
 	     Obsidian's header look in place (kairos-header-bar is-native). -->
 	<div class="day-header kairos-header-bar is-native">
 		<div class="day-nav" bind:this={dateNavRef}>
-			<StepArrows small="a day" onstep={(dir) => stepDay(dir)}>
+			<StepArrows small="a day" onstep={(dir: 1 | -1) => stepDay(dir)}>
 				<button
 					class="day-date"
 					class:today={isToday}
@@ -1427,7 +1428,7 @@
 			label="Day actions"
 			icon="more-horizontal"
 			size="m"
-			onclick={(e) => showDayMenu(e, date, routineActions, app)}
+			onclick={(e: MouseEvent) => showDayMenu(e, date, routineActions, app)}
 		/>
 
 		<span class="day-header-spacer"></span>
@@ -1554,15 +1555,15 @@
 					showAssociation={false}
 					resolved={r}
 					onNavigate={() => task.owner && onNavigate(task.owner)}
-					onEditAssoc={(rect) => openTaskAssocPicker(block, task, rect)}
-					onNest={(rect) => openBlockPicker(block, task, rect)}
+					onEditAssoc={(rect: DOMRect) => openTaskAssocPicker(block, task, rect)}
+					onNest={(rect: DOMRect) => openBlockPicker(block, task, rect)}
 					onMoveToBacklog={() =>
 						void handleMoveTaskToBacklog(block, task)}
 					onRepeat={() => requestRepeat(task, block)}
-					onSetStatus={(_t, status) => handleSetTaskStatus(block, task, status)}
-					onSetText={(_t, text) => handleSetTaskText(block, task, text)}
+					onSetStatus={(_t: Task, status: TaskStatus) => handleSetTaskStatus(block, task, status)}
+					onSetText={(_t: Task, text: string) => handleSetTaskText(block, task, text)}
 					onDelete={(_t) => handleDeleteTask(block, task)}
-					onGrab={(e) => onTaskGrab(block, task, e)}
+					onGrab={(e: PointerEvent) => onTaskGrab(block, task, e)}
 					highlight={isLinked(task) ? "task" : null}
 					onHoverChange={(on: boolean) => taskHover(task, on)}
 				/>
@@ -1614,7 +1615,7 @@
 					size="m"
 					label={dayLabel(date)}
 					showAddAll={!settings.autoApplyRoutines}
-					onAdd={(rs) => routineActions.insert(date, rs)}
+					onAdd={(rs: Routine[]) => routineActions.insert(date, rs)}
 					onAddAll={() => routineActions.addAll(date)}
 				/>
 			{/if}
@@ -1762,9 +1763,9 @@
 							onAddTask={handleAddTask}
 							onAddNote={handleAddNote}
 							onSetNoteText={handleSetNoteText}
-							onMoveTaskToBacklog={(owner, task) =>
+							onMoveTaskToBacklog={(owner: Block, task: Task) =>
 								void handleMoveTaskToBacklog(owner, task)}
-							onDuplicateTask={(owner, task) => void duplicateTask(index, date, owner, task)}
+							onDuplicateTask={(owner: Block, task: Task) => void duplicateTask(index, date, owner, task)}
 							onEditAssoc={openAssocPicker}
 							onEditTaskAssoc={openTaskAssocPicker}
 							onNestTask={openBlockPicker}
@@ -1804,7 +1805,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
@@ -1814,7 +1815,7 @@
 
 {#if blockPickerTarget && blockPickerAnchor}
 	<BlockPicker
-		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
+		colorOf={(o: BlockOption) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}

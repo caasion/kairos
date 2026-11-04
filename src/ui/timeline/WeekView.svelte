@@ -11,7 +11,9 @@
 		Block,
 		ISODate,
 		Task,
+		TaskStatus,
 	} from "../../types";
+	import type { Routine } from "../../routines/routinesFile";
 	import type { TimeRange } from "../../types";
 	import { addTaskToUnscheduled, moveBlockAcrossDays, setTaskStatus } from "../../writer";
 	import { nextDraftLine } from "../../draftLine";
@@ -793,7 +795,7 @@
 				assoc={group.assoc}
 				resolved={group.resolved}
 				count={group.items.length}
-				onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+				onNavigate={(assoc: Association) => navigateToAssociation(app, resolve(assoc))}
 				onAddText={(text: string) => addUnscheduled(date, text, group.assoc)}
 				addLabel="Add a task here"
 			>
@@ -807,14 +809,14 @@
 				showAssociation={false}
 				resolved={r}
 				onNavigate={() => task.owner && columns[date]?.navigateAssoc(task.owner)}
-				onEditAssoc={(rect) => columns[date]?.editTaskAssoc(block, task, rect)}
-				onNest={(rect) => columns[date]?.nestTask(block, task, rect)}
+				onEditAssoc={(rect: DOMRect) => columns[date]?.editTaskAssoc(block, task, rect)}
+				onNest={(rect: DOMRect) => columns[date]?.nestTask(block, task, rect)}
 				onMoveToBacklog={() => columns[date]?.moveToBacklog(block, task)}
 				onRepeat={() => requestRepeat(task, block)}
-				onSetStatus={(_t, status) => columns[date]?.setTaskStatus(block, task, status)}
-				onSetText={(_t, text) => columns[date]?.setTaskText(block, task, text)}
+				onSetStatus={(_t: Task, status: TaskStatus) => columns[date]?.setTaskStatus(block, task, status)}
+				onSetText={(_t: Task, text: string) => columns[date]?.setTaskText(block, task, text)}
 				onDelete={(_t) => columns[date]?.deleteTask(block, task)}
-				onGrab={(e) => columns[date]?.grabTask(block, task, e)}
+				onGrab={(e: PointerEvent) => columns[date]?.grabTask(block, task, e)}
 				highlight={stripLinked(task) ? "task" : null}
 				onHoverChange={(on: boolean) => stripHover(task, on)}
 			/>
@@ -847,17 +849,17 @@
 			assoc={group.assoc}
 			resolved={group.resolved}
 			count={group.items.length}
-			onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+			onNavigate={(assoc: Association) => navigateToAssociation(app, resolve(assoc))}
 		>
 		{#each group.items as entry (entry.source.line)}
 			<BacklogNudge
 				{entry}
 				resolved={entry.assoc ? resolve(entry.assoc) : undefined}
 				showAssociation={false}
-				onInsert={(e) => onNudgeInsert(e, date)}
+				onInsert={(e: BacklogEntry) => onNudgeInsert(e, date)}
 				onResurfaceTomorrow={onNudgeResurfaceTomorrow}
 				onResurfaceAt={onNudgeResurfaceAt}
-				onNavigate={(assoc) => navigateToAssociation(app, resolve(assoc))}
+				onNavigate={(assoc: Association) => navigateToAssociation(app, resolve(assoc))}
 			/>
 		{/each}
 		</AssocGroup>
@@ -1015,7 +1017,7 @@
 								variant="pill"
 								label={dayLabel(date)}
 								showAddAll={!settings.autoApplyRoutines}
-								onAdd={(rs) => routineActions.insert(date, rs)}
+								onAdd={(rs: Routine[]) => routineActions.insert(date, rs)}
 								onAddAll={() => routineActions.addAll(date)}
 							/>
 						{/if}
@@ -1138,7 +1140,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
@@ -1162,7 +1164,7 @@
 
 {#if blockPickerTarget && blockPickerAnchor}
 	<BlockPicker
-		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
+		colorOf={(o: BlockOption) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}
