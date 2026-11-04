@@ -114,6 +114,23 @@ export default defineConfig(
 		},
 	},
 	{
+		// "Kairos" is the plugin's name, a proper noun that keeps its capital.
+		// Options are restated in full because a rule override replaces them.
+		files: [TS_GLOB],
+		rules: {
+			'obsidianmd/ui/sentence-case': [
+				'warn',
+				{ enforceCamelCaseLower: true, ignoreWords: ['Kairos'] },
+			],
+		},
+	},
+	{
+		// Tests and the vitest config run in Node and never ship in main.js,
+		// so Node built-ins are fine there.
+		files: ['**/*.test.ts', 'vitest.config.mts'],
+		rules: { 'obsidianmd/no-nodejs-modules': 'off' },
+	},
+	{
 		// Unit tests run in plain Node (no `window`), driven by vitest fake timers.
 		files: ['**/*.test.ts'],
 		rules: { 'obsidianmd/prefer-window-timers': 'off' },
