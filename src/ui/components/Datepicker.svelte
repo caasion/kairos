@@ -6,11 +6,62 @@
 -->
 
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, type Snippet } from "svelte";
+  import type { HTMLInputAttributes } from "svelte/elements";
   import { fade } from "svelte/transition";
   import { parse, isValid, addDays, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isWithinInterval } from "date-fns";
   import Popover from "./Popover.svelte";
   import Portal from "./Portal.svelte";
+
+  type DateRange = { from?: Date; to?: Date };
+  type Classes = Partial<
+    Record<
+      "button" | "titleVariant" | "nav" | "polite" | "monthButton" | "grid" | "columnHeader" | "dayButton" | "actionButtons" | "actionSlot",
+      string
+    >
+  >;
+  interface ActionSlotArgs {
+    selectedDate: Date | DateRange | undefined;
+    handleClear: () => void;
+    handleApply: () => void;
+    close: () => void;
+  }
+  interface Props {
+    value?: Date;
+    defaultDate?: Date | null;
+    range?: boolean;
+    rangeFrom?: Date;
+    rangeTo?: Date;
+    availableFrom?: Date | null;
+    availableTo?: Date | null;
+    locale?: string;
+    translationLocale?: string;
+    firstDayOfWeek?: number;
+    dateFormat?: Intl.DateTimeFormatOptions;
+    placeholder?: string;
+    openEndedLabel?: string;
+    rangeSeparator?: string;
+    disabled?: boolean;
+    required?: boolean;
+    inputClass?: string;
+    inline?: boolean;
+    autohide?: boolean;
+    showActionButtons?: boolean;
+    title?: string;
+    onselect?: (value: Date) => void;
+    onrangeselect?: (value: DateRange) => void;
+    onclear?: () => void;
+    onapply?: (value: Date | DateRange) => void;
+    btnClass?: string;
+    showToggleButton?: boolean;
+    inputmode?: HTMLInputElement["inputMode"];
+    classes?: Classes;
+    class?: string;
+    elementRef?: HTMLInputElement;
+    actionSlot?: Snippet<[ActionSlotArgs]>;
+    inputProps?: HTMLInputAttributes;
+    anchorElement?: HTMLElement;
+  }
 
   let {
     value = $bindable(),
@@ -35,18 +86,19 @@
     showActionButtons = false,
     title = "",
     onselect = undefined,
+    onrangeselect = undefined,
     onclear = undefined,
     onapply = undefined,
     btnClass = "",
     showToggleButton = true,
-    inputmode = "none" as HTMLInputElement["inputMode"],
+    inputmode = "none",
     classes = {},
     class: className = "",
     elementRef = $bindable(),
     actionSlot = undefined,
     inputProps = {},
-    anchorElement = undefined as HTMLElement | undefined,
-  } = $props();
+    anchorElement = undefined,
+  }: Props = $props();
 
   const cx = (...values: Array<string | undefined | null | false>) => values.filter(Boolean).join(" ");
   const normalizeFirstDayOfWeek = (day: number): 0 | 1 | 2 | 3 | 4 | 5 | 6 => ((((day % 7) + 7) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6);
@@ -59,23 +111,17 @@
   // If translationLocale is not explicitly provided, it will default to the value of locale. This ensures reactivity as both are directly exposed as props.
   const finalTranslationLocale = $derived(translationLocale ?? locale);
 
-  let isOpen: boolean = $state(false);
-  $effect(() => {
-    isOpen = inline;
-  });
+  let isOpen: boolean = $derived(inline);
 
   export function open() {
     if (!isOpen) {
       isOpen = true;
-      updatePortalPosition();
+      void updatePortalPosition();
     }
   }
   let showMonthSelector: boolean = $state(false);
   let datepickerContainerElement: HTMLDivElement;
-  let currentMonth: Date = $state(new Date());
-  $effect(() => {
-    currentMonth = value || defaultDate || new Date();
-  });
+  let currentMonth: Date = $derived(value || defaultDate || new Date());
   let focusedDate: Date | null = null;
   let calendarRef = $state<HTMLDivElement>();
   let portalStyle: string = $state("");
@@ -188,7 +234,7 @@
       } else {
         rangeTo = day;
       }
-      onselect?.({ from: rangeFrom, to: rangeTo });
+      onrangeselect?.({ from: rangeFrom, to: rangeTo });
     } else {
       value = day;
       onselect?.(value);
@@ -216,8 +262,8 @@
             ? inputValue.split(" -> ")
             : [];
       if (parts.length === 2) {
-        const parsedFrom = tryParseDate(parts[0].trim());
-        const parsedToInput = parts[1].trim();
+        const parsedFrom = tryParseDate((parts[0] ?? "").trim());
+        const parsedToInput = (parts[1] ?? "").trim();
         const isOpenEnded = parsedToInput.toLowerCase() === openEndedLabel.toLowerCase();
         const parsedTo = isOpenEnded ? undefined : tryParseDate(parsedToInput);
 
@@ -228,7 +274,7 @@
             rangeFrom = parsedFrom;
             rangeTo = undefined;
           }
-          onselect?.({ from: rangeFrom, to: rangeTo });
+          onrangeselect?.({ from: rangeFrom, to: rangeTo });
           return;
         } else {
           elementRef?.setCustomValidity(`Please enter date range in format: ${getDateFormatPattern()}${rangeSeparator}${getDateFormatPattern()} (or ${openEndedLabel})`);
@@ -260,7 +306,7 @@
       if (isValid(parsedDate)) {
         return parsedDate;
       }
-    } catch (error) {
+    } catch {
       // Continue to next strategy
     }
 
@@ -283,7 +329,7 @@
         if (isValid(parsedDate)) {
           return parsedDate;
         }
-      } catch (error) {
+      } catch {
         // Continue to next format
       }
     }
@@ -293,7 +339,7 @@
       if (isValid(nativeDate) && !isNaN(nativeDate.getTime())) {
         return nativeDate;
       }
-    } catch (error) {
+    } catch {
       // Continue
     }
 
@@ -429,7 +475,7 @@
     }
 
     // Use finalTranslationLocale for aria-label
-    setTimeout(() => {
+    window.setTimeout(() => {
       const focusedButton = calendarRef?.querySelector(
         `button[aria-label="${focusedDate!.toLocaleDateString(finalTranslationLocale, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}"]`
       ) as HTMLButtonElement | null;
@@ -498,7 +544,7 @@
         <button
           type="button"
           class={cx("holos-datepicker-toggle", btnClass, classes?.button)}
-          onclick={() => { isOpen = !isOpen; if (isOpen) updatePortalPosition(); }}
+          onclick={() => { isOpen = !isOpen; if (isOpen) void updatePortalPosition(); }}
           {disabled}
           aria-label={isOpen ? "Close date picker" : "Open date picker"}
         >
@@ -516,7 +562,7 @@
         class={cx("holos-datepicker-input", !showToggleButton && "holos-datepicker-input-no-toggle", inputClass)}
         {placeholder}
         value={range ? formatRangeValue(rangeFrom, rangeTo) : formatDate(value)}
-        onfocus={() => { isOpen = true; updatePortalPosition(); }}
+        onfocus={() => { isOpen = true; void updatePortalPosition(); }}
         onchange={handleInputChangeWithDateFns}
         onkeydown={handleInputKeydown}
         {disabled}

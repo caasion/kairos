@@ -3,9 +3,9 @@
   clipping/stacking context of the component that mounts it. Ported from Holos.
 -->
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
 
-  let { target = "body", children }: { target?: string; children: any } = $props();
+  let { target = "body", children }: { target?: string; children: Snippet } = $props();
 
   let portalTarget: Element | null = null;
   let portalEl: HTMLDivElement | undefined = $state();
