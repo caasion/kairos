@@ -654,7 +654,6 @@
 </div>
 
 {#snippet projectRow(project: Project, disabled: boolean)}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- When the parent domain is inactive its projects are read-only history:
 	     the row dims and its rename / context-menu / action buttons go inert. -->
 	<!-- The name button is the keyboard way in; the row is the bigger target. -->

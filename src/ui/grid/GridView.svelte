@@ -83,7 +83,6 @@
 		dropAssociation,
 		gridDropLine,
 		isNoOpGroupDrop,
-		ownerRowKey,
 		sourceKey,
 		rolledUpProjectOf,
 		rolledUpProjects,
@@ -631,11 +630,6 @@
 		navigateToAssociation(app, resolve(assoc));
 	}
 
-	// Jump to a nested task's block in the Day view (badge click).
-	function onReveal(task: ResolvedTask) {
-		reveal(task.date, task.block.source.line);
-	}
-
 	// A "+" opens a field in its cell for the new task instead of making a
 	// "New task" at once (DraftTask), so nothing is made until it has a name.
 	// A block's own "+" opens it in that block (`block`, its line).
@@ -694,9 +688,9 @@
 	// A group's "+" (grouping on): a field for a new task in that block, filed
 	// under the row it was added from. Unscheduled's adds to Unscheduled, like
 	// the cell's "+".
-	async function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
+	function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
 		if (isUnscheduledBlock(block)) {
-			await onCreate(row, date);
+			onCreate(row, date);
 			return;
 		}
 		focusDay(date);
@@ -1364,8 +1358,13 @@
 	let viewEl = $state<HTMLDivElement>();
 	function measureScrollbar(el: HTMLElement) {
 		const probe = createDiv();
-		probe.style.cssText =
-			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+		probe.setCssProps({
+			position: "absolute",
+			top: "-9999px",
+			width: "100px",
+			height: "100px",
+			overflow: "scroll",
+		});
 		el.appendChild(probe);
 		const width = probe.offsetWidth - probe.clientWidth;
 		probe.remove();
@@ -1509,7 +1508,6 @@
 	{/each}
 {/snippet}
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
 	<div class="grid-header" use:intoViewHeader={viewHeader}>
@@ -1763,7 +1761,6 @@
 								onDelete={onDelete}
 								onEditAssoc={openTaskAssoc}
 								{onNavigate}
-								{onReveal}
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
@@ -1791,7 +1788,7 @@
 								dropGroup={dropGroupOn(date, row)}
 								dropLine={dropLineOn(date, row)}
 								unscheduledSlot={wantsUnscheduledSlot(cell, inactive, date, row)}
-								onCreateInBlock={(block: Block) => void onCreateInBlock(row, date, block)}
+								onCreateInBlock={(block: Block) => onCreateInBlock(row, date, block)}
 								{isBlockLinked}
 								{onBlockHover}
 							/>

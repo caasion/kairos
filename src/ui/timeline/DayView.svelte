@@ -18,7 +18,6 @@
 	} from "../../types";
 	import type { Routine } from "../../routines/routinesFile";
 	import {
-		copyBlockIntoDay,
 		deleteBlock,
 		deleteBlocks,
 		makeBlock,
@@ -1127,7 +1126,7 @@
 		}
 		// Selection is intentionally preserved — the dragged block stays selected,
 		// so it keeps focus and its handles.
-		await writeToDisk();
+		writeToDisk();
 	}
 
 	async function commitCreate(range: TimeRange) {
@@ -1148,7 +1147,7 @@
 		// later edit to this block land on that one instead.
 		const block = makeBlock(range, path, undefined, nextDraftLine());
 		blocks = [...blocks, block]; // growing the array doesn't reorder existing ones
-		await writeToDisk();
+		writeToDisk();
 		if (settings.askAssocOnBlockCreate) askAssocFor(block);
 	}
 
@@ -1263,7 +1262,7 @@
 		const doomed = [...selection];
 		selection = new Set();
 		blocks = deleteBlocks(blocks, doomed);
-		await writeToDisk();
+		writeToDisk();
 	}
 
 	function isEditableTarget(target: EventTarget | null): boolean {
@@ -1370,7 +1369,6 @@
 	});
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- tabindex lets the view receive the X / Delete / Escape keys for the
      current block selection. -->

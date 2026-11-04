@@ -60,7 +60,6 @@
 		holdLanded?: boolean;
 		onLanded?: () => void;
 		// Jump to this task's block in the Day view.
-		onReveal: (task: ResolvedTask) => void;
 		// Jump to a block in the Day view (its header's ctrl+click).
 		onRevealBlock: (block: Block) => void;
 		// Open the block picker to change a nested task's parent block, anchored at
@@ -127,7 +126,6 @@
 		onDraftClose,
 		holdLanded = false,
 		onLanded,
-		onReveal,
 		onRevealBlock,
 		onNest,
 		onMoveToBacklog,
