@@ -652,7 +652,7 @@
 			intensity: value,
 		};
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
-		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+		else editProjectStatusRecord(index, live.entity, span.start, next);
 	}
 	// The bar's fill, as a share of the project colour: 10% a level, so 5 is 50%
 	// and the label stays readable over it. 0 and unset fill nothing.
@@ -679,7 +679,7 @@
 		if (!live) return;
 		const next = { date: span.start, status: "active" as LifecycleState, note: editingText.trim() };
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
-		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+		else editProjectStatusRecord(index, live.entity, span.start, next);
 	}
 	function cancelEditDesc() {
 		editingKey = null;
@@ -732,7 +732,7 @@
 		const start = todayISO();
 		const note = boundaryNote(live.entity.history, start);
 		if (live.isDomain) setDomainStatus(index, live.entity as Domain, start, "active", note);
-		else setProjectStatus(index, live.entity as Project, start, "active", note);
+		else setProjectStatus(index, live.entity, start, "active", note);
 	}
 
 	function openMenu(e: MouseEvent, row: GanttRow, span: Span) {
