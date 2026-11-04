@@ -178,7 +178,7 @@ function entryRecord(date: ISODate, value: unknown): StatusRecord | null {
 function padDateKey(key: string): ISODate | null {
 	const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(key);
 	if (!m) return null;
-	const [, y, mo, d] = m as unknown as [string, string, string, string];
+	const [, y = "", mo = "", d = ""] = m;
 	const month = Number(mo);
 	const day = Number(d);
 	if (month < 1 || month > 12 || day < 1 || day > 31) return null;
