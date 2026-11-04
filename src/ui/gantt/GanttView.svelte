@@ -14,7 +14,6 @@
 
 	import { onMount, tick } from "svelte";
 	import { Menu } from "obsidian";
-	import type { App } from "obsidian";
 	import type { Unsubscriber } from "svelte/store";
 	import type { Domain, ISODate, LifecycleState, Project, StatusRecord } from "../../types";
 	import type { KairosIndex, ProjectsDomains } from "../../index";
@@ -85,7 +84,6 @@
 	import { rowLabelInfo, type RowLabelInfo } from "../components/rowLabel";
 
 	interface Props {
-		app: App;
 		index: KairosIndex;
 		// The leaf's tab header, which the header bar moves into.
 		viewHeader?: HTMLElement;
@@ -652,7 +650,7 @@
 			intensity: value,
 		};
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
-		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+		else editProjectStatusRecord(index, live.entity, span.start, next);
 	}
 	// The bar's fill, as a share of the project colour: 10% a level, so 5 is 50%
 	// and the label stays readable over it. 0 and unset fill nothing.
@@ -679,7 +677,7 @@
 		if (!live) return;
 		const next = { date: span.start, status: "active" as LifecycleState, note: editingText.trim() };
 		if (live.isDomain) editDomainStatusRecord(index, live.entity as Domain, span.start, next);
-		else editProjectStatusRecord(index, live.entity as Project, span.start, next);
+		else editProjectStatusRecord(index, live.entity, span.start, next);
 	}
 	function cancelEditDesc() {
 		editingKey = null;
@@ -732,7 +730,7 @@
 		const start = todayISO();
 		const note = boundaryNote(live.entity.history, start);
 		if (live.isDomain) setDomainStatus(index, live.entity as Domain, start, "active", note);
-		else setProjectStatus(index, live.entity as Project, start, "active", note);
+		else setProjectStatus(index, live.entity, start, "active", note);
 	}
 
 	function openMenu(e: MouseEvent, row: GanttRow, span: Span) {
@@ -851,12 +849,12 @@
 			onchange={(e) => setInterval(e.currentTarget.value as Interval)}
 			onclick={(e) => e.stopPropagation()}
 		>
-			{#each INTERVALS as iv}
+			{#each INTERVALS as iv (iv)}
 				<option value={iv}>{INTERVAL_LABEL[iv]}</option>
 			{/each}
 		</select>
 		<div class="interval-tabs">
-			{#each INTERVALS as iv}
+			{#each INTERVALS as iv (iv)}
 				<button
 					class="interval-tab"
 					class:active={interval === iv}
@@ -907,7 +905,7 @@
 						</div>
 						<!-- Touch only (pointer: coarse): the row's menu. -->
 						<span class="gantt-touch-more">
-							<IconButton label="Row actions" icon="more-horizontal" onclick={(e) => openRowMenu(e, row)} />
+							<IconButton label="Row actions" icon="more-horizontal" onclick={(e: MouseEvent) => openRowMenu(e, row)} />
 						</span>
 					</div>
 				{/each}
@@ -933,13 +931,13 @@
 				     on a day boundary) reads against a labeled line — no off-by-one. -->
 				<div class="gantt-header" style:height={`${HEADER_HEIGHT}px`}>
 					<div class="gantt-header-coarse" style:height={`${HEADER_COARSE_HEIGHT}px`}>
-						{#each header.coarse as c}
+						{#each header.coarse as c, i (i)}
 							<span class="gantt-coarse-label" style:left={`${c.labelX}px`}>{c.label}</span>
 							<span class="gantt-coarse-sep" style:left={`${c.gridX}px`}></span>
 						{/each}
 					</div>
 					<div class="gantt-header-fine" style:height={`${HEADER_FINE_HEIGHT}px`} style:top={`${HEADER_COARSE_HEIGHT}px`}>
-						{#each header.fine as f}
+						{#each header.fine as f, i (i)}
 							<!-- Label sits *on* the boundary line (its day's start), so a bar
 							     edge lands on the labeled date. The leftmost tick (gridX≈0)
 							     left-aligns so it isn't clipped off the plot edge. -->
@@ -948,10 +946,10 @@
 					</div>
 				</div>
 				<!-- Fine gridlines at column boundaries; coarse boundaries drawn heavier. -->
-				{#each header.fine as f}
+				{#each header.fine as f, i (i)}
 					<div class="gantt-gridline" style:left={`${f.gridX}px`} style:top={`${HEADER_HEIGHT}px`} style:height={`${contentHeight - HEADER_HEIGHT}px`}></div>
 				{/each}
-				{#each header.coarse as c}
+				{#each header.coarse as c, i (i)}
 					<div class="gantt-gridline coarse" style:left={`${c.gridX}px`} style:top={`${HEADER_COARSE_HEIGHT}px`} style:height={`${contentHeight - HEADER_COARSE_HEIGHT}px`}></div>
 				{/each}
 
@@ -1045,7 +1043,7 @@
 									     dropped on a bar too narrow to hold them beside a label. -->
 									{#if box.width >= 40}
 										<span class="gantt-pips">
-											<IntensityBars level={span.intensity} onpick={(level) => setIntensity(row, span, level)} />
+											<IntensityBars level={span.intensity} onpick={(level: number | undefined) => setIntensity(row, span, level)} />
 										</span>
 									{/if}
 									{#if editingKey === key}
@@ -1075,7 +1073,7 @@
 									{#if selected}
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<span class="gantt-touch-more gantt-bar-more" onpointerdown={(e) => e.stopPropagation()}>
-											<IconButton label="More actions" icon="more-horizontal" onclick={(e) => openMenu(e, row, span)} />
+											<IconButton label="More actions" icon="more-horizontal" onclick={(e: MouseEvent) => openMenu(e, row, span)} />
 										</span>
 									{/if}
 									<!-- Right edge: drag to move the end date, or (open-ended) to set one. -->

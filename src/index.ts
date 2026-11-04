@@ -282,7 +282,16 @@ export function daySignature(blocks: Block[]): string {
 	return JSON.stringify(blocks.map(blockSig));
 }
 
-function blockSig(b: Block): unknown {
+type TaskSig = [string, Block["tasks"][number]["status"], [string, string] | null, string | null];
+type BlockSig = [
+	[number, number] | null,
+	string,
+	[string, string] | null,
+	string | null,
+	TaskSig[],
+];
+
+function blockSig(b: Block): BlockSig {
 	return [
 		b.time ? [b.time.start, b.time.end] : null,
 		b.title,
@@ -292,7 +301,7 @@ function blockSig(b: Block): unknown {
 	];
 }
 
-function taskSig(t: Block["tasks"][number]): unknown {
+function taskSig(t: Block["tasks"][number]): TaskSig {
 	return [
 		t.text,
 		t.status,
@@ -332,6 +341,9 @@ export interface IndexDeps {
 	now(): number;
 	settings: IndexPaths;
 	writeDebounceMs: number;
+	/** Run `fn` after `ms`; returns a canceller. Injected so the engine stays free of
+	 *  `window` (it runs under plain Node in tests) yet popout-window safe in Obsidian. */
+	schedule(fn: () => void, ms: number): () => void;
 }
 
 /**
@@ -406,10 +418,10 @@ export class KairosIndex {
 	// view's derived store folds this in so a project/domain edit (which changes
 	// row set, names, or colors) re-derives the grid even when no day changed.
 	private structureVersion: Writable<number> = writable(0);
-	private writeTimers = new Map<ISODate, ReturnType<typeof setTimeout>>();
+	private writeTimers = new Map<ISODate, () => void>();
 	// The single global backlog file has one debounced write timer of its own,
 	// keyed by nothing (there is only one backlog).
-	private backlogWriteTimer?: ReturnType<typeof setTimeout>;
+	private cancelBacklogWrite?: () => void;
 
 	constructor(private deps: IndexDeps) {
 		this.resolverStore.set(this.makeResolver());
@@ -1033,9 +1045,9 @@ export class KairosIndex {
 	}
 
 	private scheduleBacklogWrite(): void {
-		if (this.backlogWriteTimer) clearTimeout(this.backlogWriteTimer);
-		this.backlogWriteTimer = setTimeout(() => {
-			this.backlogWriteTimer = undefined;
+		this.cancelBacklogWrite?.();
+		this.cancelBacklogWrite = this.deps.schedule(() => {
+			this.cancelBacklogWrite = undefined;
 			void this.writeBacklog();
 		}, this.deps.writeDebounceMs);
 	}
@@ -1052,19 +1064,19 @@ export class KairosIndex {
 
 	private scheduleWrite(date: ISODate, path: string): void {
 		const existing = this.writeTimers.get(date);
-		if (existing) clearTimeout(existing);
+		existing?.();
 
 		// Capture the heading now, at edit time. If the user changes the
 		// schedule-heading setting during the debounce window, this write still
 		// splices against the heading the note actually has, so it replaces the
 		// existing section rather than appending a mismatched second one.
 		const heading = this.deps.settings.scheduleHeading;
-		const timer = setTimeout(() => {
+		const cancel = this.deps.schedule(() => {
 			this.writeTimers.delete(date);
 			void this.writeDay(date, path, heading);
 		}, this.deps.writeDebounceMs);
 
-		this.writeTimers.set(date, timer);
+		this.writeTimers.set(date, cancel);
 	}
 
 	/**
@@ -1096,10 +1108,10 @@ export class KairosIndex {
 
 	/** Cancel timers so unload/stop leaks nothing. */
 	dispose(): void {
-		for (const t of this.writeTimers.values()) clearTimeout(t);
+		for (const cancel of this.writeTimers.values()) cancel();
 		this.writeTimers.clear();
-		if (this.backlogWriteTimer) clearTimeout(this.backlogWriteTimer);
-		this.backlogWriteTimer = undefined;
+		this.cancelBacklogWrite?.();
+		this.cancelBacklogWrite = undefined;
 	}
 
 	// ── store plumbing ──

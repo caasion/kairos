@@ -194,6 +194,12 @@ describe("deriveLookups", () => {
 
 // ─── live index: stores, optimistic edit, echo-dedup ───────────
 
+/** Node stand-in for the adapter's window-timer `schedule` (fake timers drive it). */
+const timeoutSchedule: IndexDeps["schedule"] = (fn, ms) => {
+	const id = setTimeout(fn, ms);
+	return () => clearTimeout(id);
+};
+
 describe("KairosIndex", () => {
 	let writes: { path: string; content: string }[];
 	let deps: IndexDeps;
@@ -211,6 +217,7 @@ describe("KairosIndex", () => {
 			now: () => 1000,
 			settings: PATHS,
 			writeDebounceMs: 500,
+			schedule: timeoutSchedule,
 		};
 	});
 
@@ -289,6 +296,7 @@ describe("KairosIndex", () => {
 			now: () => 1000,
 			settings: PATHS,
 			writeDebounceMs: 500,
+			schedule: timeoutSchedule,
 		};
 		const idx = new KairosIndex(spliceDeps);
 		const path = dayPath("2026-07-31");
@@ -322,6 +330,7 @@ describe("KairosIndex", () => {
 			now: () => 1000,
 			settings: mutablePaths,
 			writeDebounceMs: 500,
+			schedule: timeoutSchedule,
 		};
 		const idx = new KairosIndex(capDeps);
 		const path = dayPath("2026-07-31");
@@ -363,6 +372,7 @@ describe("KairosIndex", () => {
 				now: () => 1000,
 				settings: PATHS,
 				writeDebounceMs: 500,
+				schedule: timeoutSchedule,
 			},
 			read: () => file,
 		};
@@ -591,6 +601,7 @@ describe("KairosIndex project/domain stores", () => {
 		now: () => 1000,
 		settings: PATHS,
 		writeDebounceMs: 500,
+		schedule: timeoutSchedule,
 	};
 
 	it("seeds a project and exposes it via the project store", () => {
@@ -677,6 +688,7 @@ describe("KairosIndex projectsDomains feed", () => {
 		now: () => 1000,
 		settings: PATHS,
 		writeDebounceMs: 500,
+		schedule: timeoutSchedule,
 	};
 
 	function seeded() {
@@ -768,6 +780,7 @@ describe("KairosIndex backlog", () => {
 			now: () => 1000,
 			settings: PATHS,
 			writeDebounceMs: 500,
+			schedule: timeoutSchedule,
 		};
 	});
 

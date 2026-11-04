@@ -103,7 +103,7 @@
 		const assoc =
 			group.kind === "none"
 				? undefined
-				: ({ kind: group.kind, id: group.name } as Association);
+				: ({ kind: group.kind, id: group.name });
 		const draft: BacklogEntry = {
 			// A unique negative line per freshly-created entry, from the plugin-wide
 			// allocator: a local counter restarts at its seed on every mount, and a
@@ -305,7 +305,7 @@
 				tone="accent"
 				label={filter.label}
 				title="Filtered to {filter.label} — click to clear"
-				onclick={(e) => { e.stopPropagation(); filter = null; }}
+				onclick={(e: MouseEvent) => { e.stopPropagation(); filter = null; }}
 			>
 				<span class="filter-x" use:icon={"x"}></span>
 			</Pill>
@@ -460,7 +460,7 @@
 									<ItemText
 										text={entry.text}
 										lines={2}
-										onCommit={(text) => finishEdit(entry, text)}
+										onCommit={(text: string) => finishEdit(entry, text)}
 										bind:editing={
 											() => isEditing(entry),
 											(on) => (on ? startEdit(entry) : stopEdit(entry))
@@ -486,7 +486,7 @@
 {#if pickerEntry && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerEntry.assoc}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

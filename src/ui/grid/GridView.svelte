@@ -27,6 +27,7 @@
 		Task,
 		TaskStatus,
 	} from "../../types";
+	import type { Routine } from "../../routines/routinesFile";
 	import {
 		addTaskToBlock,
 		addTaskToUnscheduled,
@@ -82,7 +83,6 @@
 		dropAssociation,
 		gridDropLine,
 		isNoOpGroupDrop,
-		ownerRowKey,
 		sourceKey,
 		rolledUpProjectOf,
 		rolledUpProjects,
@@ -630,11 +630,6 @@
 		navigateToAssociation(app, resolve(assoc));
 	}
 
-	// Jump to a nested task's block in the Day view (badge click).
-	function onReveal(task: ResolvedTask) {
-		reveal(task.date, task.block.source.line);
-	}
-
 	// A "+" opens a field in its cell for the new task instead of making a
 	// "New task" at once (DraftTask), so nothing is made until it has a name.
 	// A block's own "+" opens it in that block (`block`, its line).
@@ -649,7 +644,7 @@
 	function pulse(date: ISODate) {
 		window.clearTimeout(pulseTimer);
 		pulsed = null;
-		requestAnimationFrame(() => {
+		window.requestAnimationFrame(() => {
 			pulsed = date;
 			pulseTimer = window.setTimeout(() => (pulsed = null), 900);
 		});
@@ -693,9 +688,9 @@
 	// A group's "+" (grouping on): a field for a new task in that block, filed
 	// under the row it was added from. Unscheduled's adds to Unscheduled, like
 	// the cell's "+".
-	async function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
+	function onCreateInBlock(row: GridRow, date: ISODate, block: Block) {
 		if (isUnscheduledBlock(block)) {
-			await onCreate(row, date);
+			onCreate(row, date);
 			return;
 		}
 		focusDay(date);
@@ -917,7 +912,7 @@
 		// Resolve the target row's association from the drop's row key.
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
-		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
+		if (targetRow && isCellInactive(targetRow, drop.date)) return;
 		// A different row re-files the task to that row's association (null =
 		// unassigned, clear it). The row it already renders on keeps its own
 		// association — on a rolled-up domain row that's the task's project, not
@@ -932,8 +927,8 @@
 		// the source task untouched. Same-day and cross-day collapse to one path —
 		// the source day is never modified, so we only write the target day.
 		if (drag.duplicate) {
-			const targetDay = dayOf(drop.date as ISODate);
-			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetDay = dayOf(drop.date);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 			const targetBlocks = targetDay?.blocks ?? [];
 			const next = copyTaskIntoDay(
 				targetBlocks,
@@ -942,7 +937,7 @@
 				nextDraftLine(),
 				newAssoc,
 			);
-			commit(drop.date as ISODate, targetPath, next);
+			commit(drop.date, targetPath, next);
 			return;
 		}
 
@@ -990,8 +985,8 @@
 
 		// Cross-day move: remove from source, append to target day's Unscheduled
 		// with the target row's association applied.
-		const targetDay = dayOf(drop.date as ISODate);
-		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+		const targetDay = dayOf(drop.date);
+		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 		const targetBlocks = targetDay?.blocks ?? [];
 		const { from, to } = moveTaskAcrossDays(
 			sourceDay.blocks,
@@ -1006,7 +1001,7 @@
 			drag.task.date,
 			sourceDay.path,
 			from,
-			drop.date as ISODate,
+			drop.date,
 			targetPath,
 			to,
 		);
@@ -1114,7 +1109,7 @@
 		stopDragScroll();
 		if (!drop) return;
 
-		const sourceDate = drag.sourceDate as ISODate;
+		const sourceDate = drag.sourceDate;
 		const sourceDay = dayOf(sourceDate);
 		if (!sourceDay || sourceDay.path === null) return;
 
@@ -1123,7 +1118,7 @@
 		// does the row it was lifted from, which may only be a label row).
 		const targetRow = rows.find((r) => r.key === drop.rowKey);
 		// Never drop into a read-only history cell (row inactive/archived that day).
-		if (targetRow && isCellInactive(targetRow, drop.date as ISODate)) return;
+		if (targetRow && isCellInactive(targetRow, drop.date)) return;
 		const target = snapshot
 			? blockDropAssociation(targetRow, drag.sourceRowKey, drag.block.assoc, snapshot)
 			: undefined;
@@ -1134,8 +1129,8 @@
 		// onto the target day, leaving the source block in place. Same-day and
 		// cross-day both just append a copy to the target — never touch the source.
 		if (drag.duplicate) {
-			const targetDay = dayOf(drop.date as ISODate);
-			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+			const targetDay = dayOf(drop.date);
+			const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 			const targetBlocks = targetDay?.blocks ?? [];
 			const next = copyBlockIntoDay(
 				targetBlocks,
@@ -1144,7 +1139,7 @@
 				undefined, // keep existing time
 				newAssoc,
 			);
-			commit(drop.date as ISODate, targetPath, next);
+			commit(drop.date, targetPath, next);
 			return;
 		}
 
@@ -1157,8 +1152,8 @@
 		}
 
 		// Cross-day: move the whole block (time, title, children) to the target day.
-		const targetDay = dayOf(drop.date as ISODate);
-		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date as ISODate));
+		const targetDay = dayOf(drop.date);
+		const targetPath = targetDay?.path ?? (await ensureNoteForDate(drop.date));
 		const targetBlocks = targetDay?.blocks ?? [];
 		const { from, to } = moveBlockAcrossDays(
 			sourceDay.blocks,
@@ -1172,7 +1167,7 @@
 			sourceDate,
 			sourceDay.path,
 			from,
-			drop.date as ISODate,
+			drop.date,
 			targetPath,
 			to,
 		);
@@ -1362,9 +1357,14 @@
 	// the root — to stay column-aligned with the body below.
 	let viewEl = $state<HTMLDivElement>();
 	function measureScrollbar(el: HTMLElement) {
-		const probe = document.createElement("div");
-		probe.style.cssText =
-			"position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+		const probe = createDiv();
+		probe.setCssProps({
+			position: "absolute",
+			top: "-9999px",
+			width: "100px",
+			height: "100px",
+			overflow: "scroll",
+		});
 		el.appendChild(probe);
 		const width = probe.offsetWidth - probe.clientWidth;
 		probe.remove();
@@ -1449,13 +1449,13 @@
 				showAssociation={false}
 				resolved={r}
 				onNavigate={() => task.owner && onNavigate(task.owner)}
-				onEditAssoc={(rect) => openTaskAssoc(task, rect)}
-				onNest={(rect) => openBlockPicker(task, rect)}
+				onEditAssoc={(rect: DOMRect) => openTaskAssoc(task, rect)}
+				onNest={(rect: DOMRect) => openBlockPicker(task, rect)}
 				onMoveToBacklog={() => onMoveToBacklog(task)}
-				onSetStatus={(_t, status) => onSetStatus(task, status)}
-				onSetText={(_t, text) => onSetText(task, text)}
+				onSetStatus={(_t: Task, status: TaskStatus) => onSetStatus(task, status)}
+				onSetText={(_t: Task, text: string) => onSetText(task, text)}
 				onDelete={() => onDelete(task)}
-				onGrab={(e) => onTaskGrab(task, e)}
+				onGrab={(e: PointerEvent) => onTaskGrab(task, e)}
 				highlight={highlightOf(task)}
 				onHoverChange={(on: boolean) => onTaskHover(task, on)}
 			/>
@@ -1498,7 +1498,7 @@
 				{entry}
 				resolved={entry.assoc ? resolve(entry.assoc) : undefined}
 				showAssociation={false}
-				onInsert={(e) => onNudgeInsert(e, date)}
+				onInsert={(e: BacklogEntry) => onNudgeInsert(e, date)}
 				onResurfaceTomorrow={onNudgeResurfaceTomorrow}
 				onResurfaceAt={onNudgeResurfaceAt}
 				{onNavigate}
@@ -1508,7 +1508,6 @@
 	{/each}
 {/snippet}
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="grid-view" bind:this={viewEl} onclick={handleClickOutside} onkeydown={onKeyDown} tabindex="-1">
 	<div class="grid-header" use:intoViewHeader={viewHeader}>
@@ -1636,7 +1635,7 @@
 					<IconButton
 						label="Day actions"
 						icon="more-horizontal"
-						onclick={(e) => showDayMenu(e, date, routineActions, app)}
+						onclick={(e: MouseEvent) => showDayMenu(e, date, routineActions, app)}
 					/>
 				</div>
 				<!-- The day's lists as badges, bottom-right of its date cell:
@@ -1675,7 +1674,7 @@
 								variant="pill"
 								label={dayLabel(date)}
 								showAddAll={!settings.autoApplyRoutines}
-								onAdd={(rs) => {
+								onAdd={(rs: Routine[]) => {
 									focusDay(date);
 									routineActions.insert(date, rs);
 								}}
@@ -1762,11 +1761,10 @@
 								onDelete={onDelete}
 								onEditAssoc={openTaskAssoc}
 								{onNavigate}
-								{onReveal}
 								onRevealBlock={(block: Block) => reveal(date, block.source.line)}
 								onNest={openBlockPicker}
 								{onMoveToBacklog}
-								onDuplicate={(task) => void duplicateTask(index, task.date, task.block, task)}
+								onDuplicate={(task: ResolvedTask) => void duplicateTask(index, task.date, task.block, task)}
 								onCreate={() => onCreate(row, date)}
 								draftOpen={draftInCell(row, date)}
 								draftBlock={draftInCell(row, date) ? draft?.block : undefined}
@@ -1790,7 +1788,7 @@
 								dropGroup={dropGroupOn(date, row)}
 								dropLine={dropLineOn(date, row)}
 								unscheduledSlot={wantsUnscheduledSlot(cell, inactive, date, row)}
-								onCreateInBlock={(block: Block) => void onCreateInBlock(row, date, block)}
+								onCreateInBlock={(block: Block) => onCreateInBlock(row, date, block)}
 								{isBlockLinked}
 								{onBlockHover}
 							/>
@@ -1813,7 +1811,7 @@
 {#if pickerTarget && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={pickerCurrent}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}
@@ -1823,7 +1821,7 @@
 
 {#if blockPickerTask && blockPickerAnchor}
 	<BlockPicker
-		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
+		colorOf={(o: BlockOption) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={blockPickerOptions}
 		anchor={blockPickerAnchor}
 		onPick={onPickBlock}

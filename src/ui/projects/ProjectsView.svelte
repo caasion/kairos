@@ -87,7 +87,7 @@
 	}
 
 	function passesFilter(e: Project | Domain): boolean {
-		return filter.has(statusOf(e) as Filter);
+		return filter.has(statusOf(e));
 	}
 
 	// Active entities always sort above non-active ones (inactive/archived sink to
@@ -147,7 +147,7 @@
 			return;
 		}
 		if (isDomain) void renameDomain(index, e as Domain, next);
-		else void renameProject(index, e as Project, next);
+		else void renameProject(index, e, next);
 	}
 
 	// ── Status ──
@@ -178,7 +178,7 @@
 	): boolean {
 		if (next === statusOf(e)) return false;
 		if (isDomain) setDomainStatus(index, e as Domain, todayISO(), next);
-		else setProjectStatus(index, e as Project, todayISO(), next);
+		else setProjectStatus(index, e, todayISO(), next);
 		if (ask) askWhy(e, isDomain, next);
 		return true;
 	}
@@ -221,7 +221,7 @@
 		if (!live || !rec) return;
 		const next = { date, status: rec.status, note: rec.note ?? "", why };
 		if (isDomain) editDomainStatusRecord(index, live as Domain, date, next);
-		else editProjectStatusRecord(index, live as Project, date, next);
+		else editProjectStatusRecord(index, live, date, next);
 	}
 
 	// ── Selection: the one shown in the detail pane ──
@@ -391,7 +391,7 @@
 		openBacklogFiltered(names, row.domain.name);
 	}
 	function backlogForSelected(e: Project | Domain, isDomain: boolean) {
-		if (!isDomain) return backlogForProject(e as Project);
+		if (!isDomain) return backlogForProject(e);
 		const row = domainRows.find((r) => r.domain === e);
 		if (row) backlogForDomain(row);
 		else openBacklogFiltered([e.name], e.name);
@@ -442,7 +442,7 @@
 			allowEmpty: true,
 			onSubmit: (desc) => {
 				if (isDomain) setDomainDescription(index, e as Domain, desc);
-				else setProjectDescription(index, e as Project, desc);
+				else setProjectDescription(index, e, desc);
 			},
 		}).open();
 	}
@@ -642,7 +642,7 @@
 				onOpenFile={() => openNote(e)}
 				onBacklog={() => backlogForSelected(e, isDomain)}
 				onMenu={(ev: MouseEvent) =>
-					isDomain ? openDomainMenu(e as Domain, ev) : openProjectMenu(e as Project, ev)}
+					isDomain ? openDomainMenu(e as Domain, ev) : openProjectMenu(e, ev)}
 				onBack={() => (selected = null)}
 			/>
 			{/key}
@@ -654,7 +654,6 @@
 </div>
 
 {#snippet projectRow(project: Project, disabled: boolean)}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<!-- When the parent domain is inactive its projects are read-only history:
 	     the row dims and its rename / context-menu / action buttons go inert. -->
 	<!-- The name button is the keyboard way in; the row is the bigger target. -->

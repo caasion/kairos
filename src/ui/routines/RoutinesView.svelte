@@ -297,7 +297,7 @@
 			title="Put it in a block, so it has a time"
 			onclick={(e) => {
 				e.stopPropagation();
-				const row = (e.currentTarget as HTMLElement).closest(".k-task") ?? (e.currentTarget as HTMLElement);
+				const row = (e.currentTarget as HTMLElement).closest(".k-task") ?? e.currentTarget;
 				openSchedule(t, groupRoutines, row.getBoundingClientRect());
 			}}
 		>
@@ -318,15 +318,15 @@
 			inherited={!t.assoc && t.inherited !== undefined}
 			resolved={ra}
 			onNavigate={() => assoc && navigateToAssociation(app, resolve(assoc))}
-			onEditAssoc={(rect) => openAssoc(t, rect)}
-			onNest={(rect) => openSchedule(t, groupRoutines, rect)}
+			onEditAssoc={(rect: DOMRect) => openAssoc(t, rect)}
+			onNest={(rect: DOMRect) => openSchedule(t, groupRoutines, rect)}
 			nestLabel={t.home === undefined ? "Nest under block" : "Move to another block"}
 			meta={t.home === undefined ? scheduleLink : undefined}
 			onRepeat={() => changeRule(t)}
 			repeatLabel="Change when it repeats"
 			trailing={paused ? "Paused" : undefined}
 			onSetStatus={() => {}}
-			onSetText={(_task, text) => setName(t, text)}
+			onSetText={(_task: Task, text: string) => setName(t, text)}
 			onDelete={() => void remove(t)}
 		/>
 	</div>
@@ -396,10 +396,10 @@
 									assocColor={ba?.color}
 									paused={isPaused(b)}
 									onAdd={() => void add(group.rule, "task", b.title)}
-									onRename={(title) => setName(b, title)}
-									onSetTime={(text) => setTime(b, text)}
+									onRename={(title: string) => setName(b, title)}
+									onSetTime={(text: string) => setTime(b, text)}
 									onChangeRule={() => changeRule(b)}
-									onEditAssoc={(rect) => openAssoc(b, rect)}
+									onEditAssoc={(rect: DOMRect) => openAssoc(b, rect)}
 									onDelete={() => void remove(b)}
 								/>
 							{:else}
@@ -422,7 +422,7 @@
 
 {#if schedule}
 	<BlockPicker
-		colorOf={(o) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
+		colorOf={(o: BlockOption) => (o.block.assoc ? resolve(o.block.assoc).color : undefined)}
 		options={scheduleChoices.options}
 		anchor={schedule.anchor}
 		placeholder="Schedule in a block…"
@@ -435,7 +435,7 @@
 {#if pickerRoutine && pickerAnchor}
 	<AssociationPicker
 		options={index.associationOptions()}
-		create={(kind, name) => createAssociation(index, kind, name)}
+		create={(kind: Association["kind"], name: string) => createAssociation(index, kind, name)}
 		current={shownAssoc(pickerRoutine)}
 		anchor={pickerAnchor}
 		onPick={onPickAssoc}

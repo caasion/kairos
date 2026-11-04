@@ -79,6 +79,10 @@ export class IndexAdapter {
 				};
 			},
 			writeDebounceMs: 500,
+			schedule: (fn, ms) => {
+				const id = window.setTimeout(fn, ms);
+				return () => window.clearTimeout(id);
+			},
 		};
 	}
 
