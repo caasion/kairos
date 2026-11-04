@@ -97,20 +97,13 @@ export default defineConfig(
 		// only: these rules stay errors in .ts files.
 		files: SVELTE_FILES,
 		rules: {
-			'@typescript-eslint/no-unnecessary-type-assertion': 'warn',
-			'@typescript-eslint/no-floating-promises': 'warn',
-			'@typescript-eslint/await-thenable': 'warn',
-			'obsidianmd/no-static-styles-assignment': 'warn',
-			'svelte/require-each-key': 'warn',
-			'svelte/no-unused-svelte-ignore': 'warn',
 			// Off: every flagged Map/Set is either a scratch value built inside a
 			// $derived computation or a copy that is mutated and then reassigned
 			// to $state (copy-on-write). Neither is mutated reactively, so
 			// SvelteMap/SvelteSet would only add overhead.
 			'svelte/prefer-svelte-reactivity': 'off',
-			'svelte/prefer-writable-derived': 'warn',
+			// Portal.svelte moves its element to the target on purpose.
 			'svelte/no-dom-manipulating': 'warn',
-			'svelte/no-unused-props': 'warn',
 		},
 	},
 	{
