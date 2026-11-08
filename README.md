@@ -62,3 +62,7 @@ The [Getting started guide](docs/getting-started.md) walks through your first da
 - [Reference](docs/reference.md): the markdown format, every mouse and keyboard shortcut, and all settings.
 
 Kairos works on phones and tablets with touch: tap a task or block to select it, tap **⋯** for everything its right-click menu has, and press and hold to drag. See [Use Kairos on mobile](docs/guide.md#use-kairos-on-mobile). It has been tested on Android; iOS and iPadOS haven't been tested yet.
+
+## Contributing
+
+Bug reports and pull requests are welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) covers setting up, trying a change in a demo vault, and what a pull request needs.

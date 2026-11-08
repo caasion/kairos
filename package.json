@@ -12,7 +12,9 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"svelte-check": "svelte-check --tsconfig tsconfig.json",
-		"lint:css": "stylelint styles.css \"src/**/*.svelte\""
+		"lint:css": "stylelint styles.css \"src/**/*.svelte\"",
+		"check": "npm run build && npm run lint && npm run lint:css && npm test && npm run svelte-check -- --threshold error",
+		"demo-vault": "node scripts/demo-vault.mjs"
 	},
 	"keywords": [],
 	"license": "0-BSD",
