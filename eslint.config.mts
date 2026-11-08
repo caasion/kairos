@@ -33,7 +33,9 @@ export default defineConfig(
 	globalIgnores([
 		'node_modules',
 		'dist',
+		'demo-vault',
 		'esbuild.config.mjs',
+		'scripts',
 		'stylelint.config.mjs',
 		'version-bump.mjs',
 		'versions.json',
